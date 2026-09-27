@@ -1,0 +1,588 @@
+/* ---- pdf-ink annotation view ------------------------------------------- */
+
+.pdf-ink-view {
+	/* The floating tool palette is positioned against this. */
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+	padding: 0;
+	overflow: hidden;
+}
+
+/* ---- toolbar ----------------------------------------------------------- */
+
+.pdf-ink-toolbar {
+	flex: 0 0 auto;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--size-4-3);
+	padding: var(--size-4-1) var(--size-4-2);
+	border-bottom: 1px solid var(--background-modifier-border);
+	background-color: var(--background-secondary);
+}
+
+.pdf-ink-toolbar-group {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-1);
+}
+
+.pdf-ink-toolbar-text {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.pdf-ink-zoom-label {
+	min-width: 5.5em;
+	text-align: center;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+}
+
+.pdf-ink-page-input {
+	width: 4em;
+	text-align: center;
+	font-variant-numeric: tabular-nums;
+}
+
+/* ---- scroll container -------------------------------------------------- */
+
+/* The IntersectionObserver root. */
+.pdf-ink-scroll {
+	position: relative;
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	background-color: var(--background-secondary-alt);
+	/* Keeps clientWidth constant, so fit-width cannot oscillate as the vertical
+	   scrollbar appears and the zoom anchor never has to re-measure. */
+	scrollbar-gutter: stable;
+	/* One- and two-finger panning still scroll; the two-finger pinch is handled
+	   in script, so the webview must not claim it as browser zoom. */
+	touch-action: pan-x pan-y;
+	overscroll-behavior: contain;
+	-webkit-overflow-scrolling: touch;
+}
+
+/*
+ * Carries the SCALED content box, so scrollWidth/scrollHeight stay honest while a
+ * transform preview is running. `margin-inline: auto` centres it, and per spec the
+ * auto margins resolve to 0 once the content is wider than the container, so wide
+ * pages are never clipped the way flex centring would clip them.
+ */
+.pdf-ink-sizer {
+	width: var(--pdf-ink-sizer-w, 0);
+	height: var(--pdf-ink-sizer-h, 0);
+	margin-inline: auto;
+}
+
+/* Carries the UNSCALED content box plus the preview transform. */
+.pdf-ink-pages {
+	/*
+	 * The containing block for the overlays that are positioned from layout
+	 * offsets — the eraser cursor and the page-insert control both measure against
+	 * this element's box. Without it they would resolve against .pdf-ink-scroll
+	 * instead and pick up its centring offset, and only while no preview transform
+	 * was running: a non-identity transform already makes this a containing block,
+	 * so the basis would otherwise change mid-pinch.
+	 */
+	position: relative;
+	width: var(--pdf-ink-content-w, 0);
+	height: var(--pdf-ink-content-h, 0);
+	transform: scale(var(--pdf-ink-zoom-preview, 1));
+	transform-origin: 0 0;
+}
+
+/* will-change permanently promotes a layer holding every live canvas, which is
+   expensive on mobile — so ask for it only while a gesture is running. */
+.pdf-ink-pages.is-zooming {
+	will-change: transform;
+}
+
+/* Strokes must not be taken while a preview transform is active, because
+   getBoundingClientRect is transform-affected. */
+.pdf-ink-pages.is-zooming .pdf-ink-ink {
+	pointer-events: none;
+}
+
+/* ---- pages ------------------------------------------------------------- */
+
+/*
+ * This box is the single source of truth for page geometry, and is correct even
+ * when the page holds no canvas, which is what keeps the scrollbar stable and
+ * gives the observer something to measure.
+ */
+.pdf-ink-page {
+	position: relative;
+	width: var(--pdf-ink-page-w, 0);
+	height: var(--pdf-ink-page-h, 0);
+	margin: 0 auto var(--pdf-ink-page-gap, 12px);
+	/* The paper is white in the PDF; a theme variable would show through at the
+	   edges of a rendered page in dark mode. */
+	background-color: #fff;
+	box-shadow: 0 1px 4px rgb(0 0 0 / 25%);
+	/* `layout` only: `paint` would clip the selection handles at the page edge. */
+	contain: layout;
+	/* Confines the highlighter's multiply blend to this page's own layers, so it
+	   blends with the rendered PDF and not with the app behind it. */
+	isolation: isolate;
+}
+
+.pdf-ink-page:last-child {
+	margin-bottom: 0;
+}
+
+/* Both canvases take their CSS size from the wrapper, so script only ever writes
+   canvas.width / canvas.height (the bitmap) and the two can never drift apart. */
+.pdf-ink-page > canvas {
+	position: absolute;
+	inset: 0;
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+
+.pdf-ink-render {
+	z-index: 0;
+}
+
+/*
+ * Highlighter ink, multiplied against the rendered page so text stays legible
+ * through it. Separate from the pen layer, which must stay opaque.
+ */
+.pdf-ink-highlight {
+	z-index: 1;
+	mix-blend-mode: multiply;
+	pointer-events: none;
+}
+
+/*
+ * The ink capture surface. `touch-action: none` so a finger draws instead of
+ * scrolling the document out from under the stroke.
+ */
+.pdf-ink-ink {
+	z-index: 2;
+	pointer-events: auto;
+	touch-action: none;
+}
+
+/*
+ * Palm rejection. Once a pen has been seen anywhere in this view, touches go back
+ * to panning, so a hand resting on the page scrolls rather than drawing. Set from
+ * script the first time a stylus hovers or lands.
+ */
+.pdf-ink-view.is-pen-seen .pdf-ink-ink {
+	touch-action: pan-x pan-y;
+}
+
+/* A page with no bitmap: show the blank paper rather than a stale or empty canvas. */
+.pdf-ink-page.is-empty > .pdf-ink-render {
+	visibility: hidden;
+}
+
+/* ---- status ------------------------------------------------------------ */
+
+.pdf-ink-status {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-muted);
+	pointer-events: none;
+}
+
+/* ---- floating tool palette --------------------------------------------- */
+
+.pdf-ink-floating {
+	position: absolute;
+	bottom: var(--size-4-4);
+	left: 50%;
+	z-index: 10;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--size-4-2);
+	padding: var(--size-4-1) var(--size-4-2);
+	transform: translateX(-50%);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-l);
+	background-color: var(--background-secondary);
+	box-shadow: 0 2px 12px rgb(0 0 0 / 25%);
+}
+
+.pdf-ink-floating-group {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-1);
+}
+
+.pdf-ink-floating-button.is-active {
+	color: var(--text-on-accent);
+	background-color: var(--interactive-accent);
+}
+
+.pdf-ink-floating-button:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
+/*
+ * The button is stripped back to nothing so no theme's `button` rule can tint it;
+ * the visible dot is the span inside, which nothing else styles.
+ */
+.pdf-ink-swatch {
+	width: 20px;
+	height: 20px;
+	min-width: 20px;
+	padding: 0;
+	border: none;
+	border-radius: 50%;
+	background: none;
+	background-color: transparent;
+	box-shadow: none;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.pdf-ink-swatch-fill {
+	display: block;
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	background-color: var(--pdf-ink-swatch, transparent);
+	/* A ring rather than a border, so the full circle shows its colour. */
+	box-shadow: inset 0 0 0 1px rgb(0 0 0 / 25%);
+	transition: width 80ms ease, height 80ms ease;
+}
+
+.pdf-ink-swatch:hover .pdf-ink-swatch-fill {
+	width: 18px;
+	height: 18px;
+}
+
+/* The selected colour reads as selected without relying on colour alone. */
+.pdf-ink-swatch.is-active .pdf-ink-swatch-fill {
+	width: 18px;
+	height: 18px;
+	box-shadow:
+		inset 0 0 0 1px rgb(0 0 0 / 25%),
+		0 0 0 2px var(--interactive-accent);
+}
+
+.pdf-ink-width {
+	width: 96px;
+}
+
+.pdf-ink-width-label {
+	min-width: 3.5em;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+}
+
+/* ---- colour controls ---------------------------------------------------- */
+
+.pdf-ink-colors.is-hidden {
+	/* The eraser has no colour. */
+	display: none;
+}
+
+.pdf-ink-color-more {
+	position: relative;
+	display: flex;
+	align-items: center;
+}
+
+.pdf-ink-chevron {
+	width: 20px;
+	min-width: 20px;
+}
+
+/* Opens upward: the palette already sits at the bottom of the view. */
+.pdf-ink-popover {
+	position: absolute;
+	bottom: calc(100% + var(--size-4-2));
+	left: 50%;
+	z-index: 20;
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	padding: var(--size-4-2);
+	transform: translateX(-50%);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background-color: var(--background-secondary);
+	box-shadow: 0 2px 12px rgb(0 0 0 / 30%);
+}
+
+.pdf-ink-popover.is-hidden {
+	display: none;
+}
+
+.pdf-ink-color-grid {
+	display: grid;
+	grid-template-columns: repeat(6, auto);
+	gap: var(--size-4-1);
+}
+
+.pdf-ink-custom-color {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--size-4-2);
+}
+
+.pdf-ink-color-input {
+	width: 40px;
+	height: 22px;
+	padding: 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background: none;
+	cursor: pointer;
+}
+
+/* ---- eraser options ----------------------------------------------------- */
+
+.pdf-ink-eraser-wrap {
+	position: relative;
+	display: flex;
+	align-items: center;
+}
+
+.pdf-ink-mode-row {
+	display: flex;
+	gap: var(--size-4-1);
+}
+
+.pdf-ink-mode-button {
+	flex: 1;
+	padding: var(--size-4-1) var(--size-4-2);
+	font-size: var(--font-ui-smaller);
+	cursor: pointer;
+}
+
+.pdf-ink-mode-button.is-active {
+	color: var(--text-on-accent);
+	background-color: var(--interactive-accent);
+}
+
+/*
+ * The sized eraser's circle cursor, at its true radius. Positioned inside the
+ * pages container, so it scrolls with the document rather than lagging behind it.
+ */
+.pdf-ink-eraser-cursor {
+	position: absolute;
+	top: 0;
+	left: 0;
+	z-index: 5;
+	width: var(--pdf-ink-cursor-size, 32px);
+	height: var(--pdf-ink-cursor-size, 32px);
+	margin: calc(var(--pdf-ink-cursor-size, 32px) / -2) 0 0
+		calc(var(--pdf-ink-cursor-size, 32px) / -2);
+	transform: translate(
+		var(--pdf-ink-cursor-x, 0),
+		var(--pdf-ink-cursor-y, 0)
+	);
+	border: 1px solid var(--text-normal);
+	border-radius: 50%;
+	background-color: rgb(127 127 127 / 18%);
+	pointer-events: none;
+}
+
+.pdf-ink-eraser-cursor.is-hidden {
+	display: none;
+}
+
+/* ---- lasso selection ---------------------------------------------------- */
+
+/*
+ * Positioned inside the page wrapper, so it scrolls and zooms with the page. Its
+ * box is set from PDF-space bounds projected through the viewport.
+ */
+.pdf-ink-selection {
+	position: absolute;
+	top: var(--pdf-ink-sel-y, 0);
+	left: var(--pdf-ink-sel-x, 0);
+	z-index: 4;
+	width: var(--pdf-ink-sel-w, 0);
+	height: var(--pdf-ink-sel-h, 0);
+	border: 1px dashed var(--interactive-accent);
+	cursor: move;
+	touch-action: none;
+}
+
+.pdf-ink-handle {
+	position: absolute;
+	width: 12px;
+	height: 12px;
+	border: 1px solid var(--background-primary);
+	border-radius: 2px;
+	background-color: var(--interactive-accent);
+	touch-action: none;
+}
+
+.pdf-ink-handle-nw {
+	top: -6px;
+	left: -6px;
+	cursor: nwse-resize;
+}
+
+.pdf-ink-handle-ne {
+	top: -6px;
+	right: -6px;
+	cursor: nesw-resize;
+}
+
+.pdf-ink-handle-se {
+	right: -6px;
+	bottom: -6px;
+	cursor: nwse-resize;
+}
+
+.pdf-ink-handle-sw {
+	bottom: -6px;
+	left: -6px;
+	cursor: nesw-resize;
+}
+
+.pdf-ink-handle-rotate {
+	top: -30px;
+	left: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	margin-left: -10px;
+	border-radius: 50%;
+	cursor: grab;
+	color: var(--text-on-accent);
+}
+
+.pdf-ink-handle-rotate > svg {
+	width: 12px;
+	height: 12px;
+}
+
+/* Sits above the box, out of the way of the rotation handle. */
+.pdf-ink-selection-bar {
+	position: absolute;
+	bottom: calc(100% + 36px);
+	left: 50%;
+	display: flex;
+	gap: var(--size-4-1);
+	padding: var(--size-4-1);
+	transform: translateX(-50%);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background-color: var(--background-secondary);
+	box-shadow: 0 2px 10px rgb(0 0 0 / 25%);
+	cursor: default;
+}
+
+.pdf-ink-selection-action {
+	width: 26px;
+	height: 26px;
+}
+
+/* ---- text ---------------------------------------------------------------- */
+
+/*
+ * The editing overlay: a real textarea sized and positioned on the box at the
+ * current zoom, so its wrapping matches what the renderer draws.
+ */
+.pdf-ink-text-editor {
+	position: absolute;
+	top: var(--pdf-ink-text-y, 0);
+	left: var(--pdf-ink-text-x, 0);
+	z-index: 6;
+	width: var(--pdf-ink-text-w, 120px);
+	min-height: var(--pdf-ink-text-h, 20px);
+	height: auto;
+	padding: 0;
+	transform: rotate(var(--pdf-ink-text-rotate, 0deg));
+	transform-origin: center;
+	/*
+	 * Clear, with the faintest possible hint of the box. An `outline` rather than a
+	 * border so it takes no layout space: a border would inset the text by its own
+	 * width and shift every glyph off where the renderer will draw it.
+	 */
+	border: none;
+	border-radius: 0;
+	outline: 1px dashed var(--text-faint);
+	outline-offset: 0;
+	background-color: transparent;
+	box-shadow: none;
+	color: var(--pdf-ink-text-color, currentcolor);
+	font-family: var(--pdf-ink-text-font, inherit);
+	font-size: var(--pdf-ink-text-size, 12px);
+	line-height: var(--pdf-ink-text-line, 1.2);
+	resize: none;
+	overflow: hidden;
+	/* Must match the renderer, or the caret would sit where the glyph does not. */
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+/* ---- inserted pages ------------------------------------------------------ */
+
+/*
+ * An added sheet. Called out with a hairline rather than a different colour: it is
+ * a real page of the document now, and should read as one next to the rasterised
+ * pages above and below it.
+ */
+.pdf-ink-page.is-inserted {
+	box-shadow:
+		0 1px 4px rgb(0 0 0 / 25%),
+		inset 0 0 0 1px rgb(0 0 0 / 8%);
+}
+
+/*
+ * The "+" that follows the pointer into the gap between two pages. Positioned from
+ * the layout's own offsets, in the pages container's coordinate space, so it lands
+ * on the gap at any zoom without measuring the DOM.
+ */
+.pdf-ink-gap-insert {
+	position: absolute;
+	top: var(--pdf-ink-gap-top, 0);
+	left: 50%;
+	/* Centred on the boundary, not hanging below it. */
+	transform: translate(-50%, -50%);
+	z-index: 3;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	border-radius: 50%;
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+	box-shadow: 0 1px 4px rgb(0 0 0 / 30%);
+	cursor: pointer;
+}
+
+.pdf-ink-gap-insert:hover {
+	background-color: var(--interactive-accent-hover);
+}
+
+.pdf-ink-gap-insert.is-hidden {
+	display: none;
+}
+
+.pdf-ink-gap-insert .svg-icon {
+	width: 16px;
+	height: 16px;
+}
+
+/* A gesture moves the pages under the control, so it must not be in the way. */
+.pdf-ink-pages.is-zooming .pdf-ink-gap-insert {
+	display: none;
+}

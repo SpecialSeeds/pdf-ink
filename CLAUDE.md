@@ -1,0 +1,82 @@
+# pdf-ink: Obsidian plugin for pen annotation on PDFs
+
+## Invariants (never violate)
+- Never modify the source PDF. Annotations live in `<file>.ink.json` beside it.
+- All stroke points are stored in PDF user space (points, y up), obtained via
+  pdf.js `viewport.convertToPdfPoint`. Never store screen or canvas pixels.
+- No Node or Electron APIs (fs, path, require). Use `app.vault` only. Must run on mobile.
+- Use Obsidian's `loadPdfJs()`; do not bundle a second pdf.js.
+- Export uses pdf-lib on the original bytes. Every original page keeps its size and
+  its relative order; the only pages the output adds are inserted pages, spliced in
+  at the positions their records describe.
+
+## Stack
+TypeScript, esbuild (sample plugin config), pdf-lib, perfect-freehand.
+
+## Identity
+- Author and GitHub owner: specialseeds (github.com/specialseeds). Use that handle
+  everywhere — manifest, package.json, README, LICENSE, workflows. Never write any
+  other account name or email into the repo, including one picked up from the git
+  config or the environment.
+## Data schema (version 4)
+{ version: 4, pages: { [pageKey]: Item[] }, insertedPages: InsertedPage[] }
+PageKey = "pdf:<0-based index>" for a page of the source PDF
+        | "ins:<uuid>"          for an inserted page
+Item = Stroke | Shape | TextBox, all coordinates in PDF user space
+Base  = { id, type, color, opacity, rotation, z, updatedAt, deletedAt? }
+Stroke  = Base & { type: "stroke", tool: "pen"|"highlighter", width, points: [x,y,p][] }
+Shape   = Base & { type: "shape", kind: ShapeKind, box: {x,y,w,h}, width, fill: null|color }
+ShapeKind = "line" | "arrow" | "rect" | "ellipse" | "triangle"
+          | "axes2d_q" | "axes2d_c" | "axes3d_c"
+TextBox = Base & { type: "text", box: {x,y,w,h}, text, fontSize }
+InsertedPage = { id, afterPdfPage, sortKey, template, size: {width,height},
+                 updatedAt, deletedAt? }
+PageTemplate = "blank" | "lined" | "lined7.5" | "lined10" | "grid5" | "dot"
+- Items are keyed by page identity, never by position. An index cannot survive an
+  insertion: putting a page before page 3 would re-home every annotation after it.
+  Migrate v1, v2 and v3 sidecars by rewriting the numeric key as "pdf:<n>".
+- Page order is derived, never stored: inserted pages sit after `afterPdfPage`
+  (-1 means before the first page), ordered by `sortKey` and then by `id`.
+  src/core/pages.ts owns this; the viewer and the exporter both go through it, so
+  they cannot disagree about what page 4 is.
+- `sortKey` is a fractional index (src/core/fracindex.ts), not a position. Two
+  devices inserting into the same gap compute the *same* key from the same
+  neighbours, so both pages survive a merge and the `id` tiebreak orders them
+  identically on both. Inserting between two pages that already share a key is not
+  possible, so the new page goes after the tied run instead.
+- Merge page records by id with the same rule as items: newest `updatedAt` wins, a
+  tombstone wins an exact tie, and tombstones are pruned on the same 90-day window.
+- Deleting a page tombstones the page and every item on it as ONE history
+  operation, so a single undo restores both. A page that came back empty would be
+  worse than no undo at all.
+- Only inserted pages can be deleted or re-ruled. The source PDF is never modified
+  and there is no record that could represent a missing original page.
+- Every template has ONE geometry function in src/core/templates.ts returning lines
+  and dots in PDF space. Canvas rendering and pdf-lib export both consume it.
+- An inserted page has no pdf.js page, so it gets a synthetic PageViewport
+  (src/core/page-viewport.ts) that behaves exactly like pdf.js's for an unrotated
+  page. Everything downstream converts coordinates through a viewport as usual.
+- Every shape kind has ONE geometry function in src/core/shapes.ts returning
+  path commands in PDF space. Canvas rendering and pdf-lib export both consume it.
+- Migrate v1 (strokes only) and v2 (no timestamps) sidecars on load. Items from an
+  older file are stamped updatedAt = 0, so any genuine remote edit beats them.
+- Deletion is a tombstone (deletedAt), never a splice: a removal that left no
+  trace would be resurrected by another device's stale copy.
+- On load, and before every write, merge the file on disk item by item: newest
+  updatedAt wins, and a tombstone wins an exact tie. Sync conflict copies beside
+  the sidecar are merged in and trashed.
+- Write sidecars through a temp file and a rename, keeping one .bak. On load,
+  recover a missing sidecar from .tmp, then .bak, accepting only one that parses.
+- Ignore vault modify events whose content hash matches our last write.
+- Prune tombstones older than 90 days on save.
+- 3D axes are right-handed: y right, z up, x out of the page (drawn down-left,
+  solid and arrow-tipped; the into-page half is dashed). The out-of-page axis is
+  drawn at 45 degrees and 75% of the in-plane axis length.
+- There is only one 3D axes kind. A sidecar naming the removed "axes3d_q" is
+  migrated to "axes3d_c" on load.
+- Stroke gains optional `taper: { start: boolean, end: boolean }` (default both
+  true). Eraser fragments set taper false on any end created by a cut.
+
+## Workflow
+- Small commits per feature. Run `npm run build` and fix all type errors before finishing.
+- Pure geometry and serialization logic goes in `src/core/` with unit tests (vitest).
