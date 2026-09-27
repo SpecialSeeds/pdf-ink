@@ -209,3 +209,18 @@ describe('inputDiagnostics', () => {
 		);
 	});
 });
+
+describe('penDoubleTap', () => {
+	it('is on by default', () => {
+		expect(DEFAULT_SETTINGS.penDoubleTap).toBe(true);
+		expect(mergeSettings({}).penDoubleTap).toBe(true);
+	});
+
+	it('can be turned off', () => {
+		expect(mergeSettings({ penDoubleTap: false }).penDoubleTap).toBe(false);
+	});
+
+	it('ignores a non-boolean', () => {
+		expect(mergeSettings({ penDoubleTap: 'yes' }).penDoubleTap).toBe(true);
+	});
+});
