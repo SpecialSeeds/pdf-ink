@@ -8,6 +8,22 @@ describe('readInkViewState', () => {
 		});
 	});
 
+	it('restores fit-page', () => {
+		expect(readInkViewState({ zoomMode: 'fit-page' }).zoomMode).toEqual({
+			kind: 'fit-page',
+		});
+	});
+
+	it('round-trips every fit mode through write', () => {
+		for (const mode of [
+			{ kind: 'fit-width' },
+			{ kind: 'fit-page' },
+		] as const) {
+			const written = writeInkViewState(mode, 1.2, 1, 'pdf:0');
+			expect(readInkViewState(written).zoomMode).toEqual(mode);
+		}
+	});
+
 	it('restores a fixed zoom', () => {
 		expect(
 			readInkViewState({ zoomMode: 'fixed', zoom: 1.5 }).zoomMode,

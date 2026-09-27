@@ -168,6 +168,10 @@ export interface InkLayerOptions {
 	eraserRadiusPx(): number;
 	/** Whether touches stop drawing once a pen has been seen. */
 	palmRejection(): boolean;
+	/** Whether a stylus has ever been used here, remembered across tabs. */
+	penSeen(): boolean;
+	/** Record that a stylus has now been seen. */
+	notePenSeen(): void;
 	/** The live record for a page, for placing the selection box. */
 	recordForPage(pageKey: PageKey): PageRecord | undefined;
 	/** The current selection, owned by the controller. */
@@ -191,11 +195,23 @@ export interface InkLayerOptions {
  * on the specific ink canvas the gesture started on, which keeps samples arriving
  * when a stroke runs off the edge of the page and still lets events bubble here.
  */
+/**
+ * Whether a touch was made by a stylus rather than a finger.
+ *
+ * `Touch.touchType` is WebKit's, and it is the only way to tell an Apple Pencil
+ * from a finger *inside a touch event* — where the pointer type is not available
+ * and the scroll still has to be refused. Guarded because no other engine sets it.
+ */
+function isStylusTouch(touch: Touch): boolean {
+	return touch.touchType === 'stylus';
+}
+
 export class InkLayer {
 	/**
 	 * Palm rejection: once a pen has been seen, touches are for scrolling. A
 	 * stylus normally hovers before it lands, so this usually flips before the
-	 * palm reaches the glass.
+	 * palm reaches the glass — and the answer is remembered across tabs, because
+	 * relearning it per view meant the first palm of every tab drew a blob.
 	 */
 	private penSeen = false;
 	private active: ActiveStroke | null = null;
@@ -267,6 +283,10 @@ export class InkLayer {
 	}
 
 	attach(): void {
+		// Armed from the start when a stylus has been used here before, so the first
+		// palm of a new tab is rejected rather than teaching the view what a pen is.
+		if (this.options.penSeen()) this.applyPenSeen();
+
 		// passive: false — down/move/up all call preventDefault to stop the webview
 		// turning a pen drag into a scroll or a text selection.
 		this.component.registerDomEvent(
@@ -300,10 +320,51 @@ export class InkLayer {
 		this.component.registerDomEvent(this.pagesEl, 'pointerenter', (evt) => {
 			if (evt.pointerType === 'pen') this.markPenSeen();
 		});
-		// A second finger is a pinch-zoom, not a gesture of ours.
+		// Belt and braces: some WebKit builds report an Apple Pencil as a touch
+		// pointer, and the touch event is the one place that still says otherwise.
 		this.component.registerDomEvent(this.pagesEl, 'touchstart', (evt) => {
-			if (evt.touches.length >= 2) this.cancelActive();
+			for (const touch of Array.from(evt.changedTouches)) {
+				if (isStylusTouch(touch)) {
+					this.markPenSeen();
+					return;
+				}
+			}
 		});
+		/*
+		 * The pencil must not scroll the page.
+		 *
+		 * `touch-action` cannot distinguish a stylus from a finger, so once a pen has
+		 * been seen the ink canvas is set to `pan-x pan-y` to let fingers scroll —
+		 * and on iPadOS the Pencil is a scrolling pointer too, so it panned the
+		 * document instead of drawing, or scrolled away mid-stroke and left a dot.
+		 *
+		 * preventDefault on `pointerdown` does not stop that: WebKit decides
+		 * scrolling from the touch event, so the refusal has to happen here. Only
+		 * stylus touches are claimed, so fingers still scroll normally.
+		 */
+		this.component.registerDomEvent(
+			this.pagesEl,
+			'touchstart',
+			(evt) => {
+				// A second finger is a pinch-zoom, not a gesture of ours.
+				if (evt.touches.length >= 2) {
+					this.cancelActive();
+					return;
+				}
+				if (this.claimsTouch(evt)) evt.preventDefault();
+			},
+			{ passive: false },
+		);
+		this.component.registerDomEvent(
+			this.pagesEl,
+			'touchmove',
+			(evt) => {
+				// Refused on every move as well: a scroll that has not started yet can
+				// still be started by a later move in the same gesture.
+				if (this.claimsTouch(evt)) evt.preventDefault();
+			},
+			{ passive: false },
+		);
 
 		this.component.register(() => {
 			this.cancelActive();
@@ -348,12 +409,49 @@ export class InkLayer {
 		this.finishStroke(false);
 	}
 
+	/**
+	 * Whether this touch belongs to us rather than to the scroller.
+	 *
+	 * A stylus touch is always ours: it is either drawing now or about to. A finger
+	 * is only ours when it would draw, which is when palm rejection is off or no pen
+	 * has been seen — and in that case `touch-action: none` has already refused the
+	 * scroll, so there is nothing left to claim.
+	 */
+	private claimsTouch(evt: TouchEvent): boolean {
+		for (const touch of Array.from(evt.changedTouches)) {
+			if (isStylusTouch(touch)) return true;
+		}
+		// An in-flight gesture keeps its claim even if a later move reports nothing,
+		// so a stroke cannot be scrolled out from under itself half way through.
+		return this.hasActiveGesture && this.penSeen;
+	}
+
+	/** True while any pointer gesture of ours is running. */
+	private get hasActiveGesture(): boolean {
+		return (
+			this.active !== null ||
+			this.erasing !== null ||
+			this.shaping !== null ||
+			this.sizedErase !== null ||
+			this.lasso !== null ||
+			this.selectionDrag !== null ||
+			this.textDrag !== null
+		);
+	}
+
+	/** A stylus has just been seen for the first time here. */
 	private markPenSeen(): void {
 		if (this.penSeen) return;
+		this.applyPenSeen();
+		this.options.notePenSeen();
+	}
+
+	private applyPenSeen(): void {
 		this.penSeen = true;
 		if (!this.options.palmRejection()) return;
 		// Flips the ink canvas from `touch-action: none` to panning, so touches
-		// scroll the document instead of drawing on it.
+		// scroll the document instead of drawing on it. The pencil is kept out of
+		// that by refusing its touch events; see claimsTouch.
 		this.rootEl.addClass('is-pen-seen');
 	}
 

@@ -174,3 +174,21 @@ describe('palm rejection', () => {
 		expect(mergeSettings({ palmRejection: 'yes' }).palmRejection).toBe(true);
 	});
 });
+
+describe('penSeen', () => {
+	it('starts false, so touch drawing works before a stylus appears', () => {
+		expect(DEFAULT_SETTINGS.penSeen).toBe(false);
+		expect(mergeSettings({}).penSeen).toBe(false);
+	});
+
+	it('is remembered once a stylus has been used', () => {
+		// The point of persisting it: palm rejection can only arm after a pen has
+		// been seen, and relearning that per tab let the first palm draw a blob.
+		expect(mergeSettings({ penSeen: true }).penSeen).toBe(true);
+	});
+
+	it('ignores a non-boolean', () => {
+		expect(mergeSettings({ penSeen: 'yes' }).penSeen).toBe(false);
+		expect(mergeSettings({ penSeen: 1 }).penSeen).toBe(false);
+	});
+});

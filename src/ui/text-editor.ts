@@ -68,7 +68,13 @@ export class TextEditor {
 			evt.stopPropagation();
 		});
 
-		areaEl.focus();
+		/*
+		 * preventScroll, because focusing an element otherwise scrolls it into view —
+		 * and the scroll container here is the whole document, so creating a box
+		 * jumped the view away from where the user had just tapped. The box is
+		 * already under their finger; there is nothing to scroll to.
+		 */
+		areaEl.focus({ preventScroll: true });
 		areaEl.setSelectionRange(areaEl.value.length, areaEl.value.length);
 	}
 

@@ -46,6 +46,18 @@ Requires Obsidian 1.7.2 or later.
 The current tab becomes the ink view. `Cmd`/`Ctrl`-click the menu item to open it in a
 new tab instead; the back button returns the tab to the built-in viewer.
 
+## Moving around
+
+The bar along the top carries the same controls as Obsidian's own PDF viewer, in the
+same order — page navigation, a page number you can type into, zoom, and fit width or
+fit page. The ink tools live in a separate floating palette so the two never compete
+for room on a tablet.
+
+The leftmost button opens a panel with **page thumbnails** and the PDF's **outline**.
+Thumbnails include pages you have added, drawn with their ruling, so the panel shows
+the document as it will export rather than the source file. Outline entries jump to
+the right page even when you have inserted pages above it.
+
 ## Tools
 
 | Tool | What it does |
@@ -66,9 +78,13 @@ in one undoable step.
 
 A stylus reports real pressure; a mouse or trackpad draws at a constant width.
 
-**Palm rejection** is on by default: once a pen has been seen, touches scroll the
-document instead of drawing, so a hand resting on the page does no harm. Turn it off in
-settings if you have no stylus and want every touch to draw.
+**Palm rejection** is on by default: once a stylus has been seen, touches scroll the
+document instead of drawing, so a hand resting on the page does no harm. Whether a
+stylus has been used is remembered, so rejection is armed from the first touch in a new
+tab rather than only after the pen lands. Turn it off in settings if you have no stylus
+and want every touch to draw.
+
+On iPad, the Apple Pencil draws and never scrolls, while fingers scroll and never draw.
 
 ### Shapes
 
@@ -214,6 +230,8 @@ it cannot read it and refuses to save over it.
 ## Limitations
 
 - The ink view is opened explicitly; it is not the default PDF handler.
+- There is no text search yet, and no text selection or copying: the viewer draws
+  pages rather than laying out a selectable text layer over them.
 - Undo history does not survive switching tabs, because Obsidian unloads backgrounded
   views. Your annotations do survive — only the ability to undo them is lost.
 - Sized-erasing a shape converts it to pen strokes. Dash patterns and fills do not

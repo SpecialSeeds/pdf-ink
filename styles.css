@@ -109,6 +109,185 @@
 	pointer-events: none;
 }
 
+/* A toolbar control whose mode is currently in force. */
+.pdf-ink-toolbar-button.is-active {
+	color: var(--text-on-accent);
+	background-color: var(--interactive-accent);
+}
+
+/* ---- sidebar ------------------------------------------------------------ */
+
+/* Holds the sidebar and the scroller side by side, under the toolbar. */
+.pdf-ink-body {
+	flex: 1 1 auto;
+	display: flex;
+	min-height: 0;
+	min-width: 0;
+}
+
+.pdf-ink-sidebar {
+	flex: 0 0 auto;
+	display: flex;
+	flex-direction: column;
+	width: 180px;
+	min-height: 0;
+	border-right: 1px solid var(--background-modifier-border);
+	background-color: var(--background-secondary);
+}
+
+.pdf-ink-sidebar.is-hidden {
+	display: none;
+}
+
+.pdf-ink-sidebar-tabs {
+	flex: 0 0 auto;
+	display: flex;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.pdf-ink-sidebar-tab {
+	flex: 1 1 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--size-4-1);
+	padding: var(--size-4-1);
+	border: none;
+	border-radius: 0;
+	background: none;
+	box-shadow: none;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	cursor: pointer;
+}
+
+.pdf-ink-sidebar-tab.is-active {
+	color: var(--text-normal);
+	box-shadow: inset 0 -2px 0 0 var(--interactive-accent);
+}
+
+/* A document with no bookmarks still has a tab; it just has nothing behind it. */
+.pdf-ink-sidebar-tab.is-empty {
+	opacity: 0.5;
+}
+
+.pdf-ink-sidebar-tab .svg-icon {
+	width: 14px;
+	height: 14px;
+}
+
+.pdf-ink-sidebar-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+
+.pdf-ink-sidebar-empty {
+	padding: var(--size-4-3);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	text-align: center;
+}
+
+/* ---- thumbnails --------------------------------------------------------- */
+
+.pdf-ink-thumbnails {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--size-4-2);
+	padding: var(--size-4-2);
+}
+
+.pdf-ink-thumbnails.is-hidden,
+.pdf-ink-outline.is-hidden {
+	display: none;
+}
+
+.pdf-ink-thumbnail {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 2px;
+	padding: 2px;
+	border-radius: var(--radius-s);
+	cursor: pointer;
+}
+
+.pdf-ink-thumbnail:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.pdf-ink-thumbnail.is-active {
+	background-color: var(--background-modifier-active-hover);
+}
+
+/*
+ * The box is reserved from the page's aspect ratio before anything is drawn, so
+ * the list does not reflow as thumbnails arrive one by one.
+ */
+.pdf-ink-thumbnail-canvas {
+	display: block;
+	width: var(--pdf-ink-thumb-w, 116px);
+	height: var(--pdf-ink-thumb-h, 150px);
+	border: 1px solid var(--background-modifier-border);
+	background-color: #fff;
+}
+
+.pdf-ink-thumbnail.is-active .pdf-ink-thumbnail-canvas {
+	border-color: var(--interactive-accent);
+}
+
+.pdf-ink-thumbnail-label {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+}
+
+/* ---- outline ------------------------------------------------------------ */
+
+.pdf-ink-outline {
+	padding: var(--size-4-2);
+}
+
+.pdf-ink-outline-item {
+	/* Nesting is expressed as an indent rather than by nesting the elements, so a
+	   deep outline cannot run out of width. */
+	padding-left: calc(var(--pdf-ink-outline-depth, 0) * var(--size-4-3));
+}
+
+.pdf-ink-outline-link {
+	display: block;
+	width: 100%;
+	padding: var(--size-4-1);
+	border: none;
+	border-radius: var(--radius-s);
+	background: none;
+	box-shadow: none;
+	color: var(--text-normal);
+	font-size: var(--font-ui-smaller);
+	text-align: left;
+	cursor: pointer;
+}
+
+.pdf-ink-outline-link:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.pdf-ink-outline-link:disabled {
+	color: var(--text-muted);
+	cursor: default;
+}
+
+.pdf-ink-outline-link.is-bold {
+	font-weight: var(--font-bold);
+}
+
+.pdf-ink-outline-link.is-italic {
+	font-style: italic;
+}
+
 /* ---- pages ------------------------------------------------------------- */
 
 /*
@@ -206,9 +385,18 @@
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
+	justify-content: center;
 	gap: var(--size-4-2);
 	padding: var(--size-4-1) var(--size-4-2);
 	transform: translateX(-50%);
+	/*
+	 * `left: 50%` with an automatic width leaves the palette only the space from
+	 * the middle to the right edge — half the pane — so on a tablet it wrapped
+	 * into a tall stack and pushed the colour swatches out of sight. max-content
+	 * sizes it to its buttons instead, and max-width keeps it on screen.
+	 */
+	width: max-content;
+	max-width: calc(100% - 2 * var(--size-4-4));
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-l);
 	background-color: var(--background-secondary);
@@ -249,10 +437,17 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	/* iOS gives a button its own rendering unless told otherwise, which can win
+	   over a flat, borderless swatch. */
+	-webkit-appearance: none;
+	appearance: none;
 }
 
 .pdf-ink-swatch-fill {
 	display: block;
+	/* Fixed, and not shrinkable: the swatch is the colour, so a flex parent must
+	   never be able to squeeze it to nothing. */
+	flex: 0 0 auto;
 	width: 16px;
 	height: 16px;
 	border-radius: 50%;

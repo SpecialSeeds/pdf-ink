@@ -3,6 +3,7 @@ import { FIT_WIDTH_GUTTER, SETTLE_DELAY_MS } from '../constants';
 import {
 	anchoredScroll,
 	clampZoom,
+	fitPageZoom,
 	fitWidthZoom,
 	nextZoom,
 	prevZoom,
@@ -16,6 +17,8 @@ export interface ZoomHost {
 	readonly pagesEl: HTMLElement;
 	/** Widest page at scale 1, for fit-width. */
 	maxBaseWidth(): number;
+	/** Tallest page at scale 1, for fit-page. */
+	maxBaseHeight(): number;
 	/** Current committed content box, in CSS px. */
 	contentSize(): { width: number; height: number };
 	/** Relayout every page at this zoom. */
@@ -95,10 +98,14 @@ export class ZoomController {
 		this.setZoom(this.computeFitWidth(), { kind: 'fit-width' });
 	}
 
-	/** Re-fit after a pane or window resize, but only while in fit-width mode. */
+	fitPage(): void {
+		this.setZoom(this.computeFitPage(), { kind: 'fit-page' });
+	}
+
+	/** Re-fit after a pane or window resize, but only while in a fit mode. */
 	recomputeFit(): void {
-		if (this.mode.kind !== 'fit-width') return;
-		this.setZoom(this.computeFitWidth(), { kind: 'fit-width' });
+		if (this.mode.kind === 'fixed') return;
+		this.setZoom(this.computeFit(this.mode), this.mode);
 	}
 
 	/**
@@ -114,9 +121,13 @@ export class ZoomController {
 
 	/** Zoom the current fit-width mode resolves to, for the initial layout. */
 	resolveInitialZoom(mode: ZoomMode): number {
-		return mode.kind === 'fit-width'
-			? this.computeFitWidth()
-			: clampZoom(mode.zoom);
+		return mode.kind === 'fixed' ? clampZoom(mode.zoom) : this.computeFit(mode);
+	}
+
+	private computeFit(mode: ZoomMode): number {
+		return mode.kind === 'fit-page'
+			? this.computeFitPage()
+			: this.computeFitWidth();
 	}
 
 	private computeFitWidth(): number {
@@ -127,11 +138,21 @@ export class ZoomController {
 		);
 	}
 
+	private computeFitPage(): number {
+		return fitPageZoom(
+			this.host.scrollEl.clientWidth,
+			this.host.scrollEl.clientHeight,
+			FIT_WIDTH_GUTTER,
+			this.host.maxBaseWidth(),
+			this.host.maxBaseHeight(),
+		);
+	}
+
 	/** Commit a zoom straight away, anchored on the viewport centre. */
 	private setZoom(zoom: number, mode: ZoomMode): void {
 		const anchor = this.captureAnchor();
 		const next = clampZoom(zoom);
-		this.mode = mode.kind === 'fit-width' ? mode : { kind: 'fixed', zoom: next };
+		this.mode = mode.kind === 'fixed' ? { kind: 'fixed', zoom: next } : mode;
 		this.zoom = next;
 		this.host.applyZoom(next);
 		this.restoreAnchor(anchor, next / anchor.startZoom);

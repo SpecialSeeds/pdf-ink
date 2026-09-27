@@ -30,6 +30,8 @@ export function readInkViewState(state: unknown): RestoredInkState {
 	const zoom = raw['zoom'];
 	if (kind === 'fit-width') {
 		zoomMode = { kind: 'fit-width' };
+	} else if (kind === 'fit-page') {
+		zoomMode = { kind: 'fit-page' };
 	} else if (
 		kind === 'fixed' &&
 		typeof zoom === 'number' &&

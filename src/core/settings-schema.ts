@@ -42,6 +42,16 @@ export interface PdfInkSettings {
 	 * with no stylus, where every touch is meant to draw.
 	 */
 	palmRejection: boolean;
+	/**
+	 * Whether a stylus has ever been used in this vault.
+	 *
+	 * Remembered rather than re-learned per view, because palm rejection can only
+	 * start once a pen has been seen — and a hand usually reaches the glass before
+	 * the pencil does. Learning it afresh in every tab meant the first palm of each
+	 * tab drew a blob. Not shown in settings: it is an observation, not a choice,
+	 * and turning palm rejection off is the way to override it.
+	 */
+	penSeen: boolean;
 }
 
 /** Tools whose size is a width rather than a font size. */
@@ -84,6 +94,7 @@ export const DEFAULT_SETTINGS: PdfInkSettings = {
 	exportSuffix: DEFAULT_EXPORT_SUFFIX,
 	exportMode: 'flatten',
 	palmRejection: true,
+	penSeen: false,
 };
 
 function clampWidth(tool: SizedTool, value: number): number {
@@ -179,6 +190,9 @@ export function mergeSettings(stored: unknown): PdfInkSettings {
 
 	const palm = raw['palmRejection'];
 	if (typeof palm === 'boolean') merged.palmRejection = palm;
+
+	const penSeen = raw['penSeen'];
+	if (typeof penSeen === 'boolean') merged.penSeen = penSeen;
 
 	return merged;
 }

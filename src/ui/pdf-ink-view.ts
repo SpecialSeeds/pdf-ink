@@ -14,7 +14,7 @@ import {
 	DESKTOP_BUDGET,
 	MOBILE_BUDGET,
 } from '../core/canvas-budget';
-import { maxBaseWidth } from '../core/layout';
+import { maxBaseHeight, maxBaseWidth } from '../core/layout';
 import { composePages, pagesSignature } from '../core/page-composition';
 import type { PageKey } from '../core/pages';
 import { readInkViewState, writeInkViewState } from '../core/view-state';
@@ -25,6 +25,7 @@ import { type PdfInkHost } from '../settings';
 import type { PageGeometry, ZoomMode } from '../types/view';
 import { PageEditor } from './page-editor';
 import { PageList } from './page-list';
+import { PdfSidebar } from './pdf-sidebar';
 import { PageRenderer } from './page-renderer';
 import { PdfInkToolbar } from './toolbar';
 import { ZoomController, type ZoomHost } from './zoom-controller';
@@ -46,6 +47,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 
 	private statusEl!: HTMLElement;
 	private toolbar!: PdfInkToolbar;
+	private sidebar!: PdfSidebar;
 	private renderer!: PageRenderer;
 	private zoom!: ZoomController;
 
@@ -173,6 +175,15 @@ export class PdfInkView extends FileView implements ZoomHost {
 		});
 
 		this.toolbar = new PdfInkToolbar(this.contentEl, this, {
+			toggleSidebar: () => {
+				this.toolbar.setSidebarOpen(this.sidebar.toggle());
+			},
+			previousPage: () => {
+				this.goToPage(this.currentPageNumber() - 1);
+			},
+			nextPage: () => {
+				this.goToPage(this.currentPageNumber() + 1);
+			},
 			zoomOut: () => {
 				this.zoom.zoomOut();
 			},
@@ -182,12 +193,24 @@ export class PdfInkView extends FileView implements ZoomHost {
 			fitWidth: () => {
 				this.zoom.fitWidth();
 			},
+			fitPage: () => {
+				this.zoom.fitPage();
+			},
 			goToPage: (pageNumber) => {
-				this.pageList?.scrollToPage(pageNumber - 1);
+				this.goToPage(pageNumber);
 			},
 		});
 
-		this.scrollEl = this.contentEl.createDiv({ cls: 'pdf-ink-scroll' });
+		// The sidebar sits beside the scroller, not above it, so opening it narrows
+		// the page rather than covering it.
+		const bodyEl = this.contentEl.createDiv({ cls: 'pdf-ink-body' });
+		this.sidebar = new PdfSidebar(bodyEl, this, {
+			goToIndex: (index) => {
+				this.pageList?.scrollToPage(index);
+			},
+		});
+
+		this.scrollEl = bodyEl.createDiv({ cls: 'pdf-ink-scroll' });
 		this.statusEl = this.scrollEl.createDiv({ cls: 'pdf-ink-status' });
 		this.sizerEl = this.scrollEl.createDiv({ cls: 'pdf-ink-sizer' });
 		this.pagesEl = this.sizerEl.createDiv({ cls: 'pdf-ink-pages' });
@@ -301,6 +324,10 @@ export class PdfInkView extends FileView implements ZoomHost {
 		return maxBaseWidth(this.composed);
 	}
 
+	maxBaseHeight(): number {
+		return maxBaseHeight(this.composed);
+	}
+
 	contentSize(): { width: number; height: number } {
 		const layout = this.pageList?.getLayout();
 		return {
@@ -329,6 +356,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 			this.renderer,
 			(pageNumber) => {
 				this.toolbar.setCurrentPage(pageNumber);
+				this.sidebar.setActiveIndex(pageNumber - 1);
 			},
 			this.host.settings.bufferPages,
 		);
@@ -340,6 +368,8 @@ export class PdfInkView extends FileView implements ZoomHost {
 		);
 		this.composedSignature = pagesSignature(this.composed);
 		this.toolbar.setPageCount(this.composed.length);
+		this.sidebar.setPages(this.composed);
+		void this.sidebar.loadOutline(loaded.doc);
 
 		const mode: ZoomMode = this.pendingZoomMode ?? this.defaultZoomMode();
 		this.pendingZoomMode = null;
@@ -408,6 +438,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 			this.ink?.cancelActive();
 			list.setPages(composed, this.zoom.getZoom());
 			this.toolbar.setPageCount(composed.length);
+			this.sidebar.setPages(composed);
 			// Fit-width is measured against the widest page, which may have changed.
 			this.zoom.recomputeFit();
 			// A deleted page leaves a selection pointing at items that are now gone.
@@ -455,6 +486,10 @@ export class PdfInkView extends FileView implements ZoomHost {
 		await this.annotations.flush();
 		this.annotations.discard();
 
+		// Thumbnails and the outline belong to the document that is going away; page
+		// keys repeat between documents, so they cannot be left to be matched.
+		this.sidebar.reset();
+
 		this.pageEditor = null;
 		// Unloads its listeners before PageList.dispose() empties the container the
 		// insert control lives in.
@@ -478,6 +513,18 @@ export class PdfInkView extends FileView implements ZoomHost {
 				console.error('pdf-ink: error releasing PDF', err);
 			}
 		}
+	}
+
+	/** Scroll to a 1-based page number, clamped to the document. */
+	private goToPage(pageNumber: number): void {
+		const list = this.pageList;
+		if (!list || this.composed.length === 0) return;
+		const clamped = Math.min(
+			Math.max(1, Math.round(pageNumber)),
+			this.composed.length,
+		);
+		list.scrollToPage(clamped - 1);
+		this.toolbar.setCurrentPage(clamped);
 	}
 
 	private currentPageNumber(): number {

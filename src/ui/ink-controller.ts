@@ -114,6 +114,12 @@ export class InkController {
 			eraserMode: () => this.toolState.eraser.mode,
 			eraserRadiusPx: () => this.toolState.eraser.radiusPx,
 			palmRejection: () => this.host.settings.palmRejection,
+			penSeen: () => this.host.settings.penSeen,
+			notePenSeen: () => {
+				if (this.host.settings.penSeen) return;
+				this.host.settings.penSeen = true;
+				void this.host.saveSettings();
+			},
 			recordForPage: (pageKey) => this.options.recordForPage(pageKey),
 			selection: () => this.selection,
 			setSelection: (refs) => {

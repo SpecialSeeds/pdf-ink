@@ -74,10 +74,40 @@ export interface PDFPageProxy {
 	cleanup(resetStats?: boolean): boolean;
 }
 
+/** An indirect object reference, as a destination's first element. */
+export interface PDFRef {
+	readonly num: number;
+	readonly gen: number;
+}
+
+/**
+ * A destination array: `[ref, {name}, ...args]`. Only the first element is used
+ * here — the rest position the view within the page, which this viewer does not
+ * honour, because a page top is where an outline entry is expected to land.
+ */
+export type PDFDestination = readonly unknown[];
+
+export interface PDFOutlineNode {
+	readonly title: string;
+	/** A destination array, a named destination, or null for a heading. */
+	readonly dest: PDFDestination | string | null;
+	/** An external link, which this viewer ignores. */
+	readonly url: string | null;
+	readonly bold?: boolean;
+	readonly italic?: boolean;
+	readonly items: readonly PDFOutlineNode[];
+}
+
 export interface PDFDocumentProxy {
 	readonly numPages: number;
 	/** 1-based. */
 	getPage(pageNumber: number): Promise<PDFPageProxy>;
+	/** The document's bookmarks, or null when it has none. */
+	getOutline(): Promise<PDFOutlineNode[] | null>;
+	/** Resolve a named destination to a destination array. */
+	getDestination(id: string): Promise<PDFDestination | null>;
+	/** 0-based index of the page a reference points at. */
+	getPageIndex(ref: PDFRef): Promise<number>;
 	destroy(): Promise<void>;
 }
 

@@ -73,6 +73,18 @@ describe('styles.css and the code agree on custom properties', () => {
 			'pdf-ink-text-editor',
 			'pdf-ink-eraser-cursor',
 			'pdf-ink-gap-insert',
+			'pdf-ink-body',
+			'pdf-ink-sidebar',
+			'pdf-ink-sidebar-tab',
+			'pdf-ink-sidebar-body',
+			'pdf-ink-sidebar-empty',
+			'pdf-ink-thumbnails',
+			'pdf-ink-thumbnail',
+			'pdf-ink-thumbnail-canvas',
+			'pdf-ink-thumbnail-label',
+			'pdf-ink-outline',
+			'pdf-ink-outline-item',
+			'pdf-ink-outline-link',
 		]) {
 			expect(css, cls).toContain(`.${cls}`);
 		}

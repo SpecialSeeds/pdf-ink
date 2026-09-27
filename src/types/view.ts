@@ -95,6 +95,8 @@ export interface PageRecord {
 
 export type ZoomMode =
 	| { readonly kind: 'fit-width' }
+	/** The whole page in view, constrained by whichever axis runs out first. */
+	| { readonly kind: 'fit-page' }
 	| { readonly kind: 'fixed'; readonly zoom: number };
 
 /** One page's resolved box. All CSS px. */

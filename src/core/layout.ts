@@ -65,6 +65,34 @@ export function maxBaseWidth(pages: readonly PageBase[]): number {
 	return max;
 }
 
+export function maxBaseHeight(pages: readonly PageBase[]): number {
+	let max = 0;
+	for (const page of pages) {
+		if (page.baseHeight > max) max = page.baseHeight;
+	}
+	return max;
+}
+
+/**
+ * Zoom at which the largest page fits entirely within the pane.
+ *
+ * The smaller of the two fits, so the constraining axis wins and nothing is cut
+ * off. Like {@link fitWidthZoom} this is one zoom for the whole document rather
+ * than one per page, so a nominal pen width means the same thing on every page.
+ */
+export function fitPageZoom(
+	clientWidth: number,
+	clientHeight: number,
+	gutter: number,
+	widest: number,
+	tallest: number,
+): number {
+	if (widest <= 0 || tallest <= 0) return 1;
+	const byWidth = (clientWidth - 2 * gutter) / widest;
+	const byHeight = (clientHeight - 2 * gutter) / tallest;
+	return clampZoom(Math.min(byWidth, byHeight) / PDF_TO_CSS_UNITS);
+}
+
 /**
  * Snap a page's box to whole CSS pixels, then re-derive the scale from the
  * snapped box.
