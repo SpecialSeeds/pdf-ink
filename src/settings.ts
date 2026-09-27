@@ -7,6 +7,7 @@ import {
 import { QUICK_COLORS, SIZED_ERASER_RANGE, WIDTH_RANGES } from './core/tools';
 
 export {
+	type ToolbarSide,
 	DEFAULT_SETTINGS,
 	type DefaultZoomMode,
 	type ExportMode,
@@ -87,6 +88,23 @@ export class PdfInkSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.bufferPages)
 					.onChange((value) => {
 						this.plugin.settings.bufferPages = value;
+						this.save();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Tool palette side')
+			.setDesc(
+				'Which edge the floating tool palette sits against. Put it under the hand that is not holding the pen.',
+			)
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption('left', 'Left')
+					.addOption('right', 'Right')
+					.setValue(this.plugin.settings.toolbarSide)
+					.onChange((value) => {
+						this.plugin.settings.toolbarSide =
+							value === 'right' ? 'right' : 'left';
 						this.save();
 					}),
 			);

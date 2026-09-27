@@ -69,10 +69,14 @@ the right page even when you have inserted pages above it.
 | **Eraser** | Whole-stroke, or a sized rubber that cuts strokes into fragments. |
 | **Select** | Lasso or click, then move, scale, rotate, recolour, duplicate or reorder. |
 
-Colours sit on the toolbar: four to hand, twelve more behind the chevron, and a native
+The tool palette is a vertical column against one edge of the page, so tools are under
+the hand that is not holding the pen. Put it on the **left** or the **right** in
+settings, or run **Move tool palette to the other side** to flip it.
+
+Colours sit on the palette: four to hand, twelve more behind the chevron, and a native
 colour picker for anything else. A colour applies to the active tool, and each tool
 remembers its own. With something selected, picking a colour recolours the selection
-in one undoable step.
+in one undoable step. Stroke size is behind the button showing the current value.
 
 ### Drawing
 
@@ -219,6 +223,7 @@ it cannot read it and refuses to save over it.
 - Default **colour** and **width** per tool, and the default text size.
 - Default eraser **mode**, whole-stroke reach and sized radius.
 - Export **mode** and filename **suffix**.
+- **Tool palette side**, left or right.
 - **Input diagnostics**, for reporting a problem with a pen or tablet.
 
 ### Input diagnostics

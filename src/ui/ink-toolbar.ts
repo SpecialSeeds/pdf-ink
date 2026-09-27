@@ -1,5 +1,6 @@
 import { type Component, Menu, setIcon } from 'obsidian';
 import type { ShapeKind } from '../core/items';
+import type { ToolbarSide } from '../core/settings-schema';
 import {
 	EXTRA_COLORS,
 	type EraserMode,
@@ -50,8 +51,11 @@ export class InkToolbar {
 	private readonly colorGroupEl: HTMLElement;
 	private readonly colorPopoverEl: HTMLElement;
 	private readonly colorInputEl: HTMLInputElement;
+	private readonly barEl: HTMLElement;
 	private readonly widthEl: HTMLInputElement;
 	private readonly widthLabelEl: HTMLElement;
+	private readonly widthButtonEl: HTMLButtonElement;
+	private readonly widthPopoverEl: HTMLElement;
 	private readonly eraserPopoverEl: HTMLElement;
 	private readonly eraserModeButtons = new Map<EraserMode, HTMLElement>();
 	private readonly eraserRadiusEl: HTMLInputElement;
@@ -65,6 +69,7 @@ export class InkToolbar {
 		private readonly callbacks: InkToolbarCallbacks,
 	) {
 		const barEl = parentEl.createDiv({ cls: 'pdf-ink-floating' });
+		this.barEl = barEl;
 
 		const toolsEl = barEl.createDiv({ cls: 'pdf-ink-floating-group' });
 		for (const tool of TOOLS) {
@@ -205,16 +210,42 @@ export class InkToolbar {
 			this.colorPopoverEl.addClass('is-hidden');
 		});
 
-		// --- width ---------------------------------------------------------
-		const widthGroupEl = barEl.createDiv({ cls: 'pdf-ink-floating-group' });
-		this.widthEl = widthGroupEl.createEl('input', {
+		/*
+		 * --- width ---------------------------------------------------------
+		 *
+		 * Behind a button rather than inline. A range input cannot be laid out
+		 * vertically without `writing-mode`, which is too new to rely on in the web
+		 * view a tablet ships with, and a horizontal one would set the width of the
+		 * whole palette — which is meant to be one column wide.
+		 */
+		const widthWrapEl = barEl.createDiv({ cls: 'pdf-ink-width-wrap' });
+		this.widthButtonEl = widthWrapEl.createEl('button', {
+			cls: 'pdf-ink-width-button',
+			attr: { type: 'button', 'aria-label': 'Stroke width' },
+		});
+		this.widthPopoverEl = widthWrapEl.createDiv({
+			cls: 'pdf-ink-popover is-hidden',
+		});
+		const widthRowEl = this.widthPopoverEl.createDiv({
+			cls: 'pdf-ink-custom-color',
+		});
+		widthRowEl.createSpan({ text: 'Size', cls: 'pdf-ink-toolbar-text' });
+		this.widthLabelEl = widthRowEl.createSpan({ cls: 'pdf-ink-width-label' });
+		this.widthEl = this.widthPopoverEl.createEl('input', {
 			cls: 'pdf-ink-width',
 			attr: { type: 'range', 'aria-label': 'Stroke width' },
 		});
-		this.widthLabelEl = widthGroupEl.createSpan({ cls: 'pdf-ink-width-label' });
 		this.component.registerDomEvent(this.widthEl, 'input', () => {
 			const value = Number.parseFloat(this.widthEl.value);
 			if (Number.isFinite(value)) this.callbacks.setWidth(value);
+		});
+		this.component.registerDomEvent(this.widthButtonEl, 'click', () => {
+			this.widthPopoverEl.toggleClass(
+				'is-hidden',
+				!this.widthPopoverEl.hasClass('is-hidden'),
+			);
+			this.colorPopoverEl.addClass('is-hidden');
+			this.eraserPopoverEl.addClass('is-hidden');
 		});
 
 		// --- history -------------------------------------------------------
@@ -225,6 +256,11 @@ export class InkToolbar {
 		this.redoEl = this.addButton(historyEl, 'redo', 'Redo', () => {
 			this.callbacks.redo();
 		});
+	}
+
+	/** Dock the palette to one side, for whichever hand is free. */
+	setSide(side: ToolbarSide): void {
+		this.barEl.toggleClass('is-right', side === 'right');
 	}
 
 	update(state: ToolState, canUndo: boolean, canRedo: boolean): void {
@@ -256,6 +292,13 @@ export class InkToolbar {
 		const range = widthRangeFor(state);
 		const width = activeWidth(state);
 		const unit = widthUnitFor(state);
+		this.widthButtonEl.setText(
+			Number.isInteger(width) ? String(width) : width.toFixed(1),
+		);
+		this.widthButtonEl.setAttribute(
+			'aria-label',
+			`Size: ${String(width)}${unit}`,
+		);
 		for (const sliderEl of [this.widthEl, this.eraserRadiusEl]) {
 			sliderEl.min = String(range.min);
 			sliderEl.max = String(range.max);

@@ -90,6 +90,8 @@ describe('styles.css and the code agree on custom properties', () => {
 			'pdf-ink-diagnostics-button',
 			'pdf-ink-diagnostics-log',
 			'pdf-ink-diagnostics-line',
+			'pdf-ink-width-wrap',
+			'pdf-ink-width-button',
 		]) {
 			expect(css, cls).toContain(`.${cls}`);
 		}

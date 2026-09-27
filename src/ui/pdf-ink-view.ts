@@ -322,6 +322,12 @@ export class PdfInkView extends FileView implements ZoomHost {
 	refreshSettings(): void {
 		if (!this.ready) return;
 		this.diagnostics.setEnabled(this.host.settings.inputDiagnostics);
+		this.ink?.applySettings();
+	}
+
+	/** Move the tool palette to the other edge. */
+	flipToolbarSide(): void {
+		this.ink?.flipToolbarSide();
 	}
 
 	override onResize(): void {

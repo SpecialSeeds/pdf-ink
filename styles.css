@@ -385,36 +385,63 @@
 
 /* ---- floating tool palette --------------------------------------------- */
 
+/*
+ * A vertical column against one edge, so tools are under the hand that is not
+ * holding the pen and can be changed without crossing the page.
+ */
 .pdf-ink-floating {
 	position: absolute;
-	bottom: var(--size-4-4);
-	left: 50%;
+	top: 50%;
+	left: var(--size-4-2);
 	z-index: 10;
 	display: flex;
-	flex-wrap: wrap;
+	flex-direction: column;
 	align-items: center;
-	justify-content: center;
 	gap: var(--size-4-2);
-	padding: var(--size-4-1) var(--size-4-2);
-	transform: translateX(-50%);
-	/*
-	 * `left: 50%` with an automatic width leaves the palette only the space from
-	 * the middle to the right edge — half the pane — so on a tablet it wrapped
-	 * into a tall stack and pushed the colour swatches out of sight. max-content
-	 * sizes it to its buttons instead, and max-width keeps it on screen.
-	 */
+	padding: var(--size-4-2) var(--size-4-1);
+	/* Centred on the edge rather than pinned to a corner: the middle is where a
+	   hand resting on the bezel already is. */
+	transform: translateY(-50%);
 	width: max-content;
-	max-width: calc(100% - 2 * var(--size-4-4));
+	max-height: calc(100% - 2 * var(--size-4-4));
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-l);
 	background-color: var(--background-secondary);
 	box-shadow: 0 2px 12px rgb(0 0 0 / 25%);
 }
 
+.pdf-ink-floating.is-right {
+	left: auto;
+	right: var(--size-4-2);
+}
+
 .pdf-ink-floating-group {
 	display: flex;
+	flex-direction: column;
 	align-items: center;
 	gap: var(--size-4-1);
+}
+
+/* Separates the groups without spending height on a rule. */
+.pdf-ink-floating-group + .pdf-ink-floating-group,
+.pdf-ink-width-wrap,
+.pdf-ink-colors {
+	padding-top: var(--size-4-2);
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+/* Two across, so four swatches cost two rows of height rather than four. */
+.pdf-ink-colors {
+	display: grid;
+	grid-template-columns: repeat(2, auto);
+	gap: var(--size-4-1);
+	align-items: center;
+	justify-items: center;
+}
+
+/* The chevron sits under the swatches, spanning both columns. */
+.pdf-ink-color-more {
+	grid-column: 1 / -1;
 }
 
 .pdf-ink-floating-button.is-active {
@@ -523,14 +550,16 @@
 /* Opens upward: the palette already sits at the bottom of the view. */
 .pdf-ink-popover {
 	position: absolute;
-	bottom: calc(100% + var(--size-4-2));
-	left: 50%;
+	/* Beside the bar, not above it: the bar is a column, and a popover over it
+	   would cover the tools it was opened from. */
+	left: calc(100% + var(--size-4-2));
+	top: 50%;
 	z-index: 20;
 	display: flex;
 	flex-direction: column;
 	gap: var(--size-4-2);
 	padding: var(--size-4-2);
-	transform: translateX(-50%);
+	transform: translateY(-50%);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-m);
 	background-color: var(--background-secondary);
@@ -566,10 +595,37 @@
 
 /* ---- eraser options ----------------------------------------------------- */
 
+.pdf-ink-floating.is-right .pdf-ink-popover {
+	left: auto;
+	right: calc(100% + var(--size-4-2));
+}
+
 .pdf-ink-eraser-wrap {
 	position: relative;
 	display: flex;
 	align-items: center;
+}
+
+/* The width control: a button showing the current size, opening a slider. */
+.pdf-ink-width-wrap {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.pdf-ink-width-button {
+	width: 28px;
+	height: 28px;
+	min-width: 28px;
+	padding: 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background-color: var(--background-primary);
+	color: var(--text-normal);
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+	cursor: pointer;
 }
 
 .pdf-ink-mode-row {
