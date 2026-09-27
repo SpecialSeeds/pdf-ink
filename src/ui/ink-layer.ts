@@ -8,6 +8,7 @@ import {
 } from '../core/coords';
 import type { ItemRef } from '../core/history';
 import { MultiTouchTap, type TapPoint } from '../core/multitouch-tap';
+import { PenDoubleTap, isTap } from '../core/pen-double-tap';
 import type { PageKey } from '../core/pages';
 import type { Bounds } from '../core/hit-test';
 import {
@@ -80,6 +81,19 @@ interface ActiveStroke {
 	/** The same samples in canvas CSS px, so the live stroke needs no reprojection. */
 	readonly canvasSamples: StrokeSample[];
 	readonly captureEl: HTMLElement;
+	/** For spotting a tap: when it began, and where, in client px. */
+	readonly startedAt: number;
+	readonly startX: number;
+	readonly startY: number;
+	/** Furthest the tip has strayed from where it landed. */
+	travelPx: number;
+	readonly pointerType: string;
+}
+
+/** A committed stroke that might yet turn out to be half of a double tap. */
+interface TapStroke {
+	readonly pageKey: PageKey;
+	readonly id: string;
 }
 
 interface ActiveErase {
@@ -177,6 +191,10 @@ export interface InkLayerOptions {
 	 * expose to the page at all.
 	 */
 	multiTouchTap(fingers: number): void;
+	/** Whether tapping the pen tip twice switches tool. */
+	penDoubleTap(): boolean;
+	/** The pen tip was tapped twice in one place. */
+	penDoubleTapped(): void;
 	/** Record an input event, when diagnostics are switched on. */
 	traceInput(event: string, fields: Record<string, string | number | boolean>): void;
 	/** Whether anything is listening, so nothing is formatted needlessly. */
@@ -235,6 +253,9 @@ export class InkLayer {
 	 */
 	private gesturePointerType: string | null = null;
 	private readonly tap = new MultiTouchTap();
+	private readonly penTap = new PenDoubleTap();
+	/** The stroke the pending first tap left behind, to remove if a pair forms. */
+	private pendingTapStroke: TapStroke | null = null;
 	private active: ActiveStroke | null = null;
 	private erasing: ActiveErase | null = null;
 	private shaping: ActiveShape | null = null;
@@ -757,6 +778,11 @@ export class InkLayer {
 			stroke: createStroke(preset),
 			canvasSamples: [],
 			captureEl,
+			startedAt: evt.timeStamp,
+			startX: evt.clientX,
+			startY: evt.clientY,
+			travelPx: 0,
+			pointerType: evt.pointerType,
 		};
 		this.addSample(evt, rect);
 		this.paint(record);
@@ -904,7 +930,7 @@ export class InkLayer {
 		if (!active || evt.pointerId !== active.pointerId) return;
 		evt.preventDefault();
 		this.addSample(evt, active.record.inkCanvasEl.getBoundingClientRect());
-		this.finishStroke(true);
+		this.finishStroke(true, evt.timeStamp);
 	}
 
 	private onPointerCancel(evt: PointerEvent): void {
@@ -1216,7 +1242,7 @@ export class InkLayer {
 		return shape;
 	}
 
-	private finishStroke(commit: boolean): void {
+	private finishStroke(commit: boolean, endedAt = 0): void {
 		const active = this.active;
 		if (!active) return;
 		this.active = null;
@@ -1224,8 +1250,76 @@ export class InkLayer {
 
 		if (commit && active.stroke.points.length > 0) {
 			this.store.addItem(active.record.geom.key, active.stroke);
+			this.considerPenTap(active, endedAt);
+		} else if (!commit) {
+			// An abandoned stroke is not a tap, and breaks a pending pair.
+			this.penTap.reset();
+			this.pendingTapStroke = null;
 		}
 		this.paint(active.record);
+	}
+
+	/**
+	 * A stylus stroke has landed. If it was a tap, and the second of a pair, treat
+	 * it as the gesture rather than as ink.
+	 *
+	 * The two dots the taps left are removed together, so switching tool does not
+	 * also draw on the page. They are removed rather than withheld because holding
+	 * a dot back until the pair could be ruled out would make every full stop
+	 * appear a third of a second late.
+	 */
+	private considerPenTap(active: ActiveStroke, endedAt: number): void {
+		if (!this.options.penDoubleTap()) return;
+		if (active.pointerType !== 'pen') return;
+
+		const pageKey = active.record.geom.key;
+		const candidate = {
+			x: active.startX,
+			y: active.startY,
+			at: endedAt,
+			durationMs: endedAt - active.startedAt,
+			travelPx: active.travelPx,
+		};
+		const previous = this.pendingTapStroke;
+		const paired = this.penTap.register(candidate);
+
+		if (this.options.tracingInput()) {
+			this.options.traceInput('pen-tap', {
+				isTap: isTap(candidate),
+				durationMs: Math.round(candidate.durationMs),
+				travelPx: Math.round(candidate.travelPx),
+				paired,
+			});
+		}
+
+		if (!paired) {
+			// Remember it only while it is still a candidate first tap.
+			this.pendingTapStroke = isTap(candidate)
+				? { pageKey, id: active.stroke.id }
+				: null;
+			return;
+		}
+
+		this.pendingTapStroke = null;
+		this.removeStrokes([
+			...(previous ? [previous] : []),
+			{ pageKey, id: active.stroke.id },
+		]);
+		this.options.penDoubleTapped();
+	}
+
+	/** Remove committed strokes by id, as one undoable step. */
+	private removeStrokes(targets: readonly TapStroke[]): void {
+		const refs: ItemRef[] = [];
+		for (const target of targets) {
+			const items = this.store.itemsFor(target.pageKey);
+			const index = items.findIndex((item) => item.id === target.id);
+			const item = items[index];
+			if (index >= 0 && item) {
+				refs.push({ pageKey: target.pageKey, index, item });
+			}
+		}
+		if (refs.length > 0) this.store.removeItems(refs);
 	}
 
 	private takeCapture(el: HTMLElement, pointerId: number): void {
@@ -1245,6 +1339,11 @@ export class InkLayer {
 		const active = this.active;
 		if (!active) return;
 		const { record } = active;
+
+		active.travelPx = Math.max(
+			active.travelPx,
+			Math.hypot(evt.clientX - active.startX, evt.clientY - active.startY),
+		);
 
 		const [cssX, cssY] = clientToCanvasPoint(
 			rect,

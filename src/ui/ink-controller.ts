@@ -127,6 +127,10 @@ export class InkController {
 				// for without putting the pen down.
 				if (fingers === 2) this.toggleTool('eraser');
 			},
+			penDoubleTap: () => this.host.settings.penDoubleTap,
+			penDoubleTapped: () => {
+				this.toggleTool('eraser');
+			},
 			traceInput: (event, fields) => {
 				this.options.traceInput(event, fields);
 			},

@@ -89,18 +89,23 @@ draw. A hand resting on the page no longer interrupts a stroke.
 
 ### Switching tools without putting the pen down
 
-**Tap two fingers** anywhere on the document to switch to the eraser, and tap again
-to go back to whatever you were using. A tap means both fingers down and up without
-dragging; a pinch or a pan is unaffected, and taps are ignored while the pen is on
-the page.
+Two ways to reach the eraser and come straight back to what you were using:
 
-The same thing is available as the **Toggle eraser** command, along with **Toggle
-selection tool**, if you would rather bind a key.
+- **Tap the pen tip twice** in the same spot. Both taps have to be brief and still,
+  and close together in time and place, so ordinary marks are not mistaken for the
+  gesture — the two dots they would have left are removed along the way. Turn it off
+  in settings if your punctuation sets it off.
+- **Tap two fingers** anywhere on the document. A pinch or a pan is unaffected, and
+  finger taps are ignored while the pen is on the page.
 
-> **Why not the Apple Pencil's own gestures?** Double-tap and squeeze are delivered
-> to native code through `UIPencilInteraction`, and the web view Obsidian renders in
-> does not pass them to plugins — there is no browser event for either, so no plugin
-> can see them. The two-finger tap is the closest thing the platform allows.
+Both are also the **Toggle eraser** command, alongside **Toggle selection tool**, if
+you would rather bind a key.
+
+> **Why not the Apple Pencil's own double-tap?** It is a barrel gesture, delivered to
+> native code through `UIPencilInteraction`. The web view Obsidian renders in never
+> receives it — there is no browser event for it, and the plugin's own input log
+> records nothing at all when you double-tap the barrel. Tapping the tip is the
+> closest gesture the platform actually exposes.
 
 ### Shapes
 
@@ -244,6 +249,7 @@ it cannot read it and refuses to save over it.
 - Default **colour** and **width** per tool, and the default text size.
 - Default eraser **mode**, whole-stroke reach and sized radius.
 - Export **mode** and filename **suffix**.
+- **Double-tap the pen to erase**, on or off.
 - **Input diagnostics**, for reporting a problem with a pen or tablet.
 
 ### Input diagnostics
