@@ -92,20 +92,6 @@ export class PdfInkSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName('Double-tap the pen to erase')
-			.setDesc(
-				'Tap the stylus tip twice in the same spot to switch to the eraser, and twice again to switch back. A stylus barrel double-tap is not available to plugins, so this stands in for it. Turn it off if punctuation triggers it.',
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.penDoubleTap)
-					.onChange((value) => {
-						this.plugin.settings.penDoubleTap = value;
-						this.save();
-					}),
-			);
-
-		new Setting(containerEl)
 			.setName('Palm rejection')
 			.setDesc(
 				'Once a pen has been seen, treat touches as scrolling rather than drawing. Turn this off on a device with no stylus, where every touch should draw.',

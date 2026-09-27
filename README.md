@@ -91,61 +91,21 @@ draw. A hand resting on the page no longer interrupts a stroke.
 
 ### Switching tools without putting the pen down
 
-Two ways to reach the eraser and come straight back to what you were using:
+**Tap two fingers** anywhere on the document to switch to the eraser, and tap again
+to go back to whatever you were using. The gesture is told apart from a pinch by the
+fingers' spread changing, and from a pan by their centre moving, so neither is
+affected — and finger taps are ignored entirely while the pen is on the page. The
+tool it switched to is named briefly on screen.
 
-- **Tap the pen tip twice** in the same spot. Both taps have to be brief and roughly
-  still, and close together in time and place, so ordinary marks are not mistaken for
-  the gesture — the two dots they would have left are removed along the way. The tool
-  it switched to is named on screen, so you know it took. Turn it off in settings if
-  your punctuation sets it off.
-- **Tap two fingers** anywhere on the document. A pinch or a pan is unaffected, and
-  finger taps are ignored while the pen is on the page.
+The same thing is the **Toggle eraser** command, alongside **Toggle selection tool**,
+if you would rather bind a key.
 
-Both are also the **Toggle eraser** command, alongside **Toggle selection tool**, if
-you would rather bind a key.
-
-> **Why not the Apple Pencil's own double-tap?** It is a barrel gesture, delivered to
-> native code through `UIPencilInteraction`. The web view Obsidian renders in never
-> receives it — there is no browser event for it, and the plugin's own input log
-> records nothing at all when you double-tap the barrel. Tapping the tip is the
-> closest gesture the platform actually exposes.
-
-### Shapes
-
-Drag to create. Hold **Shift** to constrain — line and arrow snap to 15°, rectangles
-become squares, ellipses become circles. The equilateral triangle always locks its
-height to `√3/2 × side`.
-
-3D axes are right-handed, drawn the way physics and engineering diagrams are: **y** to
-the right, **z** up, and **x** out of the page toward you — down-left on paper, solid
-and arrow-tipped, with the into-page half dashed.
-
-### Text
-
-Tap for a default-width box, or drag to size one. Editing uses a real textarea overlaid
-on the box, so the caret, selection, IME and the mobile keyboard all behave normally.
-Commit with **Escape** or by clicking away, and double-tap a box with the text or select
-tool to edit it again.
-
-Scaling a box vertically changes the font size; scaling it horizontally only changes
-where the text wraps.
-
-### Erasing
-
-**Whole stroke** removes an entire mark. **Sized** behaves like a rubber: it takes away
-only what the circle touches, splitting a stroke into fragments and leaving blunt ends
-where it cut. The radius is set in screen pixels, so it feels the same at any zoom, and
-a whole drag is one undo step.
-
-An Apple Pencil's eraser end — or a tablet pen's eraser tip — switches to the eraser for
-as long as it is held, using whichever mode is selected.
-
-### Selecting
-
-Click an object, or lasso a group. A stroke is selected when at least 60% of it falls
-inside the loop; shapes and text when their centre does. The selection box has corner
-handles for scaling, a rotation handle, and a bar for delete, duplicate, bring forward
-and send back. Drag inside the box to move it.
+> **The Apple Pencil's own double-tap cannot be used.** Squeezing or double-tapping
+> the barrel is delivered to native code through `UIPencilInteraction`. It never
+> reaches the web view Obsidian renders in, so there is no event for a plugin to
+> listen to — this plugin's own input log records nothing at all while the barrel is
+> tapped. Nothing a plugin can do will change that; it would have to come from
+> Obsidian itself.
 
 ## Adding pages
 
@@ -252,7 +212,6 @@ it cannot read it and refuses to save over it.
 - Default **colour** and **width** per tool, and the default text size.
 - Default eraser **mode**, whole-stroke reach and sized radius.
 - Export **mode** and filename **suffix**.
-- **Double-tap the pen to erase**, on or off.
 - **Input diagnostics**, for reporting a problem with a pen or tablet.
 
 ### Input diagnostics
