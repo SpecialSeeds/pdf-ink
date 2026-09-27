@@ -90,6 +90,51 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 		});
 	}
 
+	/*
+	 * Page management, as commands as well as the "+" between pages and the page
+	 * context menu. Neither of those is reachable on a tablet — the "+" follows a
+	 * hovering pointer, and iOS does not reliably raise a context menu on a long
+	 * press — so without these there is no way to add a page on an iPad.
+	 */
+	for (const [id, name, icon, run] of [
+		[
+			'insert-page-below',
+			'Insert page below',
+			'arrow-down-to-line',
+			(view: PdfInkView) => {
+				view.insertPageBelowCurrent();
+			},
+		],
+		[
+			'insert-page-above',
+			'Insert page above',
+			'arrow-up-to-line',
+			(view: PdfInkView) => {
+				view.insertPageAboveCurrent();
+			},
+		],
+		[
+			'page-options',
+			'Page options',
+			'file-cog',
+			(view: PdfInkView) => {
+				view.openPageMenu();
+			},
+		],
+	] as const) {
+		plugin.addCommand({
+			id,
+			name,
+			icon,
+			checkCallback: (checking: boolean): boolean => {
+				const view = plugin.app.workspace.getActiveViewOfType(PdfInkView);
+				if (!view?.hasCurrentPage()) return false;
+				if (!checking) run(view);
+				return true;
+			},
+		});
+	}
+
 	plugin.addCommand({
 		id: 'export-annotated-pdf',
 		name: 'Export annotated PDF',
