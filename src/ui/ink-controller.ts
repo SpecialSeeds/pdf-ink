@@ -33,6 +33,12 @@ export interface InkControllerOptions {
 	recordForPage(pageKey: PageKey): PageRecord | undefined;
 	/** Repaint every live page, after an undo, redo or load. */
 	repaint(): void;
+	/** Record an input event, when diagnostics are switched on. */
+	traceInput(
+		event: string,
+		fields: Record<string, string | number | boolean>,
+	): void;
+	tracingInput(): boolean;
 }
 
 /**
@@ -117,11 +123,14 @@ export class InkController {
 			eraserRadiusPx: () => this.toolState.eraser.radiusPx,
 			palmRejection: () => this.host.settings.palmRejection,
 			multiTouchTap: (fingers) => {
-				// Two to erase, three to select — the two tools worth reaching for
-				// without putting the pen down.
+				// Two fingers, and only two: the eraser is the one tool worth reaching
+				// for without putting the pen down.
 				if (fingers === 2) this.toggleTool('eraser');
-				else if (fingers >= 3) this.toggleTool('lasso');
 			},
+			traceInput: (event, fields) => {
+				this.options.traceInput(event, fields);
+			},
+			tracingInput: () => this.options.tracingInput(),
 			penSeen: () => this.host.settings.penSeen,
 			notePenSeen: () => {
 				if (this.host.settings.penSeen) return;

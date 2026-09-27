@@ -52,6 +52,13 @@ export interface PdfInkSettings {
 	 * and turning palm rejection off is the way to override it.
 	 */
 	penSeen: boolean;
+	/**
+	 * Show a live readout of touch and stylus events over the document.
+	 *
+	 * For diagnosing input problems on a tablet, where the same code behaves
+	 * differently and there is otherwise no way to see what the device reported.
+	 */
+	inputDiagnostics: boolean;
 }
 
 /** Tools whose size is a width rather than a font size. */
@@ -95,6 +102,7 @@ export const DEFAULT_SETTINGS: PdfInkSettings = {
 	exportMode: 'flatten',
 	palmRejection: true,
 	penSeen: false,
+	inputDiagnostics: false,
 };
 
 function clampWidth(tool: SizedTool, value: number): number {
@@ -193,6 +201,9 @@ export function mergeSettings(stored: unknown): PdfInkSettings {
 
 	const penSeen = raw['penSeen'];
 	if (typeof penSeen === 'boolean') merged.penSeen = penSeen;
+
+	const diagnostics = raw['inputDiagnostics'];
+	if (typeof diagnostics === 'boolean') merged.inputDiagnostics = diagnostics;
 
 	return merged;
 }

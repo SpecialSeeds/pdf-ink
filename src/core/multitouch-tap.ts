@@ -17,11 +17,33 @@ export interface TapPoint {
 	readonly y: number;
 }
 
-/** Longer than this is a hold, not a tap. */
-export const TAP_MAX_MS = 320;
+/**
+ * Longer than this is a hold, not a tap.
+ *
+ * Generous, because two fingers rarely land or lift together and a tablet is held
+ * in the other hand. A window that is too tight reads an ordinary tap as a hold and
+ * silently does nothing, which is indistinguishable from the feature being broken.
+ */
+export const TAP_MAX_MS = 500;
 
 /** Further than this from where it landed and the finger was dragging. */
-export const TAP_MAX_MOVE_PX = 14;
+export const TAP_MAX_MOVE_PX = 24;
+
+/**
+ * Why a gesture was not a tap.
+ *
+ * Reported rather than swallowed so the diagnostics overlay can say what happened:
+ * "nothing at all" and "you held it a shade too long" need very different fixes.
+ */
+export type TapOutcome =
+	| { readonly kind: 'tap'; readonly fingers: number }
+	/** Fingers are still down; nothing decided yet. */
+	| { readonly kind: 'pending' }
+	| {
+			readonly kind: 'rejected';
+			readonly reason: 'moved' | 'too-slow' | 'not-tracking';
+			readonly fingers: number;
+		};
 
 interface Tracked {
 	readonly startedAt: number;
@@ -66,10 +88,6 @@ export class MultiTouchTap {
 	update(points: readonly TapPoint[], now: number): void {
 		const tracked = this.tracked;
 		if (!tracked || tracked.moved) return;
-		if (now - tracked.startedAt > this.maxDurationMs) {
-			tracked.moved = true;
-			return;
-		}
 		for (const point of points) {
 			const origin = tracked.origins.get(point.id);
 			if (!origin) continue;
@@ -83,19 +101,25 @@ export class MultiTouchTap {
 	}
 
 	/**
-	 * A touch ended. Returns the finger count once the last one lifts and the
-	 * gesture was a clean tap, and null otherwise.
+	 * A touch ended. Decides the gesture once the last finger lifts.
+	 *
+	 * Duration is judged here, at the end, rather than while moving: a stationary
+	 * finger still produces a stream of touchmove events on a tablet, and treating a
+	 * late one as a drag rejected taps that never moved at all.
 	 */
-	end(remaining: number, now: number): number | null {
+	end(remaining: number, now: number): TapOutcome {
 		const tracked = this.tracked;
-		if (!tracked) return null;
+		if (!tracked) return { kind: 'rejected', reason: 'not-tracking', fingers: 0 };
 		// Still fingers down: the gesture is not over yet.
-		if (remaining > 0) return null;
+		if (remaining > 0) return { kind: 'pending' };
 
 		this.tracked = null;
-		if (tracked.moved) return null;
-		if (now - tracked.startedAt > this.maxDurationMs) return null;
-		return tracked.fingers;
+		const fingers = tracked.fingers;
+		if (tracked.moved) return { kind: 'rejected', reason: 'moved', fingers };
+		if (now - tracked.startedAt > this.maxDurationMs) {
+			return { kind: 'rejected', reason: 'too-slow', fingers };
+		}
+		return { kind: 'tap', fingers };
 	}
 
 	/** Abandon the gesture — a pen landed, or the view is going away. */

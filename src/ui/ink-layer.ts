@@ -171,12 +171,16 @@ export interface InkLayerOptions {
 	/** Whether touches stop drawing once a pen has been seen. */
 	palmRejection(): boolean;
 	/**
-	 * A quick tap with `fingers` fingers, nothing dragged.
+	 * A quick two-finger tap, nothing dragged.
 	 *
 	 * The stand-in for the Apple Pencil's own double-tap, which WKWebView does not
 	 * expose to the page at all.
 	 */
 	multiTouchTap(fingers: number): void;
+	/** Record an input event, when diagnostics are switched on. */
+	traceInput(event: string, fields: Record<string, string | number | boolean>): void;
+	/** Whether anything is listening, so nothing is formatted needlessly. */
+	tracingInput(): boolean;
 	/** Whether a stylus has ever been used here, remembered across tabs. */
 	penSeen(): boolean;
 	/** Record that a stylus has now been seen. */
@@ -372,7 +376,6 @@ export class InkLayer {
 				if (evt.touches.length >= 2 && !this.penIsDrawing) {
 					this.cancelActive();
 				}
-				this.trackTap(evt, 'start');
 				if (this.claimsTouch(evt)) evt.preventDefault();
 			},
 			{ passive: false },
@@ -381,7 +384,6 @@ export class InkLayer {
 			this.pagesEl,
 			'touchmove',
 			(evt) => {
-				this.trackTap(evt, 'move');
 				// Refused on every move as well: a scroll that has not started yet can
 				// still be started by a later move in the same gesture.
 				if (this.claimsTouch(evt)) evt.preventDefault();
@@ -389,18 +391,40 @@ export class InkLayer {
 			{ passive: false },
 		);
 
-		for (const kind of ['touchend', 'touchcancel'] as const) {
-			this.component.registerDomEvent(this.pagesEl, kind, (evt) => {
-				const fingers =
-					kind === 'touchend'
-						? this.tap.end(evt.touches.length, evt.timeStamp)
-						: (this.tap.cancel(), null);
-				// One finger is an ordinary tap on the page; leave it alone.
-				if (fingers !== null && fingers >= 2) {
-					this.options.multiTouchTap(fingers);
-				}
-			});
-		}
+		/*
+		 * Tap detection listens on the whole scrolling area, not just the pages.
+		 *
+		 * A two-finger tap lands wherever the hand happens to be — in the margin
+		 * beside the page as often as on it — and listeners confined to the pages
+		 * container simply never saw those.
+		 */
+		const tapEl =
+			this.rootEl.querySelector<HTMLElement>('.pdf-ink-scroll') ?? this.rootEl;
+		this.component.registerDomEvent(tapEl, 'touchstart', (evt) => {
+			this.trackTap(evt, 'start');
+		});
+		this.component.registerDomEvent(tapEl, 'touchmove', (evt) => {
+			this.trackTap(evt, 'move');
+		});
+		this.component.registerDomEvent(tapEl, 'touchend', (evt) => {
+			const outcome = this.tap.end(evt.touches.length, evt.timeStamp);
+			if (this.options.tracingInput() && outcome.kind !== 'pending') {
+				this.options.traceInput('tap', {
+					outcome: outcome.kind,
+					reason: outcome.kind === 'rejected' ? outcome.reason : '-',
+					fingers: outcome.fingers,
+					remaining: evt.touches.length,
+				});
+			}
+			// One finger is an ordinary tap on the page; leave it alone.
+			if (outcome.kind === 'tap' && outcome.fingers >= 2) {
+				this.options.multiTouchTap(outcome.fingers);
+			}
+		});
+		this.component.registerDomEvent(tapEl, 'touchcancel', () => {
+			this.tap.cancel();
+			this.options.traceInput('touchcancel', { note: 'tap abandoned' });
+		});
 
 		this.component.register(() => {
 			this.cancelActive();
@@ -409,6 +433,16 @@ export class InkLayer {
 
 	/** Feed the tap recogniser, which only ever sees fingers. */
 	private trackTap(evt: TouchEvent, phase: 'start' | 'move'): void {
+		if (phase === 'start' && this.options.tracingInput()) {
+			const first = evt.touches.item(0);
+			this.options.traceInput('touchstart', {
+				touches: evt.touches.length,
+				kind: first?.touchType ?? 'unknown',
+				penDrawing: this.penIsDrawing,
+				target:
+					evt.target instanceof Element ? evt.target.className : 'non-element',
+			});
+		}
 		// A pen on the glass means the fingers are a resting hand, not a gesture.
 		if (this.penIsDrawing) {
 			this.tap.cancel();
@@ -556,6 +590,15 @@ export class InkLayer {
 	}
 
 	private onPointerDown(evt: PointerEvent): void {
+		if (this.options.tracingInput()) {
+			this.options.traceInput('pointerdown', {
+				type: evt.pointerType,
+				pressure: evt.pressure.toFixed(2),
+				buttons: evt.buttons,
+				penSeen: this.penSeen,
+				palmRejection: this.options.palmRejection(),
+			});
+		}
 		if (evt.pointerType === 'pen') this.markPenSeen();
 		// Palm rejection: let the scroll container have this touch. Off means every
 		// touch draws, which is what a device with no stylus wants.
@@ -865,6 +908,10 @@ export class InkLayer {
 	}
 
 	private onPointerCancel(evt: PointerEvent): void {
+		this.options.traceInput('pointercancel', {
+			type: evt.pointerType,
+			wasDrawing: this.hasActiveGesture,
+		});
 		if (this.selectionDrag?.pointerId === evt.pointerId) {
 			this.finishSelectionDrag(false);
 			return;

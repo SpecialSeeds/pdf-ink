@@ -89,20 +89,18 @@ draw. A hand resting on the page no longer interrupts a stroke.
 
 ### Switching tools without putting the pen down
 
-| Gesture | Action |
-|---|---|
-| Two-finger tap | Eraser, and back again |
-| Three-finger tap | Selection tool, and back again |
+**Tap two fingers** anywhere on the document to switch to the eraser, and tap again
+to go back to whatever you were using. A tap means both fingers down and up without
+dragging; a pinch or a pan is unaffected, and taps are ignored while the pen is on
+the page.
 
-A tap means both fingers down and up quickly without moving — a pinch or a drag is
-still a pinch or a drag, and taps are ignored entirely while the pen is on the page.
-Both also exist as commands (**Toggle eraser**, **Toggle selection tool**) if you
-would rather bind them to keys.
+The same thing is available as the **Toggle eraser** command, along with **Toggle
+selection tool**, if you would rather bind a key.
 
 > **Why not the Apple Pencil's own gestures?** Double-tap and squeeze are delivered
 > to native code through `UIPencilInteraction`, and the web view Obsidian renders in
 > does not pass them to plugins — there is no browser event for either, so no plugin
-> can see them. The finger taps above are the closest thing the platform allows.
+> can see them. The two-finger tap is the closest thing the platform allows.
 
 ### Shapes
 
@@ -246,6 +244,17 @@ it cannot read it and refuses to save over it.
 - Default **colour** and **width** per tool, and the default text size.
 - Default eraser **mode**, whole-stroke reach and sized radius.
 - Export **mode** and filename **suffix**.
+- **Input diagnostics**, for reporting a problem with a pen or tablet.
+
+### Input diagnostics
+
+Turning this on overlays a live log of what the touchscreen and stylus are actually
+reporting — pointer types, pressure, how many fingers landed, and why a tap was or
+was not recognised — with a **Copy** button.
+
+Input behaviour differs between devices in ways that cannot be reproduced at a desk,
+so if a pen or a gesture misbehaves, switching this on, reproducing it and pasting
+the log into an issue is by far the most useful thing you can send.
 
 ## Limitations
 
