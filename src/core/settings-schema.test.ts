@@ -209,3 +209,21 @@ describe('inputDiagnostics', () => {
 		);
 	});
 });
+
+describe('toolbarSide', () => {
+	it('defaults to the left', () => {
+		expect(DEFAULT_SETTINGS.toolbarSide).toBe('left');
+		expect(mergeSettings({}).toolbarSide).toBe('left');
+	});
+
+	it('accepts either edge', () => {
+		expect(mergeSettings({ toolbarSide: 'right' }).toolbarSide).toBe('right');
+		expect(mergeSettings({ toolbarSide: 'left' }).toolbarSide).toBe('left');
+	});
+
+	it('ignores anything else', () => {
+		for (const side of ['top', 'bottom', '', 3, null]) {
+			expect(mergeSettings({ toolbarSide: side }).toolbarSide).toBe('left');
+		}
+	});
+});

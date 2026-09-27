@@ -59,7 +59,17 @@ export interface PdfInkSettings {
 	 * differently and there is otherwise no way to see what the device reported.
 	 */
 	inputDiagnostics: boolean;
+	/**
+	 * Which edge the floating tool palette sits against.
+	 *
+	 * A vertical bar under the hand that is not holding the pen, so tools can be
+	 * changed without crossing the page or looking away from what is being written.
+	 */
+	toolbarSide: ToolbarSide;
 }
+
+/** The edge the tool palette docks to. */
+export type ToolbarSide = 'left' | 'right';
 
 /** Tools whose size is a width rather than a font size. */
 export type SizedTool = 'pen' | 'highlighter' | 'shape';
@@ -103,6 +113,7 @@ export const DEFAULT_SETTINGS: PdfInkSettings = {
 	palmRejection: true,
 	penSeen: false,
 	inputDiagnostics: false,
+	toolbarSide: 'left',
 };
 
 function clampWidth(tool: SizedTool, value: number): number {
@@ -204,6 +215,9 @@ export function mergeSettings(stored: unknown): PdfInkSettings {
 
 	const diagnostics = raw['inputDiagnostics'];
 	if (typeof diagnostics === 'boolean') merged.inputDiagnostics = diagnostics;
+
+	const side = raw['toolbarSide'];
+	if (side === 'left' || side === 'right') merged.toolbarSide = side;
 
 	return merged;
 }

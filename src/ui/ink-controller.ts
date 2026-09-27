@@ -198,6 +198,8 @@ export class InkController {
 			},
 		});
 
+		this.toolbar.setSide(host.settings.toolbarSide);
+
 		this.scope = new Scope(app.scope);
 		this.scope.register(['Mod'], 'z', () => {
 			this.undo();
@@ -361,6 +363,19 @@ export class InkController {
 		}
 
 		this.refresh();
+	}
+
+	/** Re-read settings that change how the palette is laid out. */
+	applySettings(): void {
+		this.toolbar.setSide(this.host.settings.toolbarSide);
+	}
+
+	/** Move the palette to the other edge, and remember it. */
+	flipToolbarSide(): void {
+		this.host.settings.toolbarSide =
+			this.host.settings.toolbarSide === 'left' ? 'right' : 'left';
+		void this.host.saveSettings();
+		this.applySettings();
 	}
 
 	/** Bring the palette back in sync with the tool state and history. */

@@ -136,6 +136,18 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 	}
 
 	plugin.addCommand({
+		id: 'flip-toolbar-side',
+		name: 'Move tool palette to the other side',
+		icon: 'flip-horizontal',
+		checkCallback: (checking: boolean): boolean => {
+			const view = plugin.app.workspace.getActiveViewOfType(PdfInkView);
+			if (!view) return false;
+			if (!checking) view.flipToolbarSide();
+			return true;
+		},
+	});
+
+	plugin.addCommand({
 		id: 'export-annotated-pdf',
 		name: 'Export annotated PDF',
 		icon: 'file-down',
