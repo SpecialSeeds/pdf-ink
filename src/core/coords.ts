@@ -191,14 +191,25 @@ export const DEFAULT_PRESSURE = 0.5;
  *
  * A mouse has no pressure sensor — the spec says 0.5 while a button is held, but
  * implementations disagree and some report 0 — so it is pinned to the default.
- * Pens that report 0 on first contact get the same treatment, because a pressure
- * of 0 would render a zero-width, invisible stroke.
+ * A pen reporting 0 gets `fallback`, because a pressure of 0 would render a
+ * zero-width, invisible stroke.
+ *
+ * `fallback` is the previous sample's pressure while a stroke is in progress.
+ * WebKit drops the occasional zero into the middle of an Apple Pencil stroke, and
+ * substituting a fixed 0.5 for those made the width lurch from hairline to
+ * half-weight and back — a line of visible beads. Carrying the last known
+ * pressure through a dropout keeps the stroke smooth instead.
  */
 export function normalizePressure(
 	pressure: number,
 	pointerType: string,
+	fallback: number = DEFAULT_PRESSURE,
 ): number {
 	if (pointerType === 'mouse') return DEFAULT_PRESSURE;
-	if (!Number.isFinite(pressure) || pressure <= 0) return DEFAULT_PRESSURE;
+	if (!Number.isFinite(pressure) || pressure <= 0) {
+		return Number.isFinite(fallback) && fallback > 0
+			? Math.min(1, fallback)
+			: DEFAULT_PRESSURE;
+	}
 	return Math.min(1, pressure);
 }

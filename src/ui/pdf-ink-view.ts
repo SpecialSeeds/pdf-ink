@@ -22,6 +22,7 @@ import { AnnotationStore } from '../pdf/annotation-store';
 import { type PdfInkDocument, openPdfDocument } from '../pdf/document';
 import { getPdfJs } from '../pdf/pdfjs';
 import { type PdfInkHost } from '../settings';
+import type { ToolKind } from '../core/tools';
 import type { PageGeometry, ZoomMode } from '../types/view';
 import { PageEditor } from './page-editor';
 import { PageList } from './page-list';
@@ -467,6 +468,11 @@ export class PdfInkView extends FileView implements ZoomHost {
 
 	toggleEraserMode(): void {
 		this.ink?.toggleEraser();
+	}
+
+	/** Switch to a tool, or back to the previous one. */
+	toggleTool(tool: ToolKind): void {
+		this.ink?.toggleTool(tool);
 	}
 
 	/** Repaint every live page's ink from PDF space at the current viewport. */

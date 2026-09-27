@@ -303,20 +303,37 @@ export class InkToolbar {
 		color: string,
 		label: string,
 	): HTMLElement {
-		const swatchEl = parentEl.createEl('button', {
-			cls: 'pdf-ink-swatch',
-			attr: { type: 'button', 'aria-label': label, title: label },
-		});
 		/*
-		 * The colour goes on an inner span, not the button. Obsidian and themes style
-		 * `button` backgrounds through selectors that outrank a single plugin class,
-		 * so a background set on the button itself is liable to be overridden — a
-		 * plain span has nothing competing for it.
+		 * Deliberately a div and not a <button>.
+		 *
+		 * Obsidian styles `button` through selectors that outrank a single plugin
+		 * class, and on mobile it also gives every button a minimum touch size — which
+		 * stretched the 20x20 swatch into a grey ellipse, because a 50% radius on a
+		 * non-square box is an ellipse. A div carries none of that, so the swatch is
+		 * exactly the circle it is meant to be on every platform.
 		 */
+		const swatchEl = parentEl.createDiv({
+			cls: 'pdf-ink-swatch',
+			attr: {
+				role: 'button',
+				tabindex: '0',
+				'aria-label': label,
+				title: label,
+			},
+		});
+		// The colour goes on an inner span, which nothing else styles at all.
 		const fillEl = swatchEl.createSpan({ cls: 'pdf-ink-swatch-fill' });
 		fillEl.setCssProps({ '--pdf-ink-swatch': color });
-		this.component.registerDomEvent(swatchEl, 'click', () => {
+
+		const choose = (): void => {
 			this.callbacks.selectColor(color);
+		};
+		this.component.registerDomEvent(swatchEl, 'click', choose);
+		// A div has no built-in keyboard activation, so it has to be given one.
+		this.component.registerDomEvent(swatchEl, 'keydown', (evt) => {
+			if (evt.key !== 'Enter' && evt.key !== ' ') return;
+			evt.preventDefault();
+			choose();
 		});
 		return swatchEl;
 	}

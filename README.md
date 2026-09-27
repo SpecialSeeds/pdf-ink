@@ -84,7 +84,25 @@ stylus has been used is remembered, so rejection is armed from the first touch i
 tab rather than only after the pen lands. Turn it off in settings if you have no stylus
 and want every touch to draw.
 
-On iPad, the Apple Pencil draws and never scrolls, while fingers scroll and never draw.
+On iPad, the Apple Pencil draws and never scrolls, while fingers scroll and never
+draw. A hand resting on the page no longer interrupts a stroke.
+
+### Switching tools without putting the pen down
+
+| Gesture | Action |
+|---|---|
+| Two-finger tap | Eraser, and back again |
+| Three-finger tap | Selection tool, and back again |
+
+A tap means both fingers down and up quickly without moving — a pinch or a drag is
+still a pinch or a drag, and taps are ignored entirely while the pen is on the page.
+Both also exist as commands (**Toggle eraser**, **Toggle selection tool**) if you
+would rather bind them to keys.
+
+> **Why not the Apple Pencil's own gestures?** Double-tap and squeeze are delivered
+> to native code through `UIPencilInteraction`, and the web view Obsidian renders in
+> does not pass them to plugins — there is no browser event for either, so no plugin
+> can see them. The finger taps above are the closest thing the platform allows.
 
 ### Shapes
 
@@ -151,11 +169,13 @@ never touched. Pages you add live entirely in the sidecar until you export.
 |---|---|
 | `Mod+Z` | Undo |
 | `Mod+Shift+Z` | Redo |
-| `Mod+Shift+E` | Toggle eraser mode |
+| `Mod+Shift+E` | Toggle eraser mode (whole-stroke or sized) |
 | `Escape` | Deselect, or commit an open text box |
 
 These are scoped to the ink view, so they never shadow Obsidian's own shortcuts
-elsewhere. Every action also has a command, so you can rebind it.
+elsewhere. Every action also has a command, so you can rebind it — including
+**Toggle eraser** and **Toggle selection tool**, which switch to a tool and back to
+whatever you were using.
 
 Zoom with `Ctrl`/`Cmd` and the scroll wheel, a two-finger pinch, or the toolbar.
 

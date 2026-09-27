@@ -1,11 +1,13 @@
 import type { Vec2 } from 'perfect-freehand';
 import type { Component } from 'obsidian';
 import {
+	DEFAULT_PRESSURE,
 	clientToCanvasPoint,
 	normalizePressure,
 	type RectLike,
 } from '../core/coords';
 import type { ItemRef } from '../core/history';
+import { MultiTouchTap, type TapPoint } from '../core/multitouch-tap';
 import type { PageKey } from '../core/pages';
 import type { Bounds } from '../core/hit-test';
 import {
@@ -168,6 +170,13 @@ export interface InkLayerOptions {
 	eraserRadiusPx(): number;
 	/** Whether touches stop drawing once a pen has been seen. */
 	palmRejection(): boolean;
+	/**
+	 * A quick tap with `fingers` fingers, nothing dragged.
+	 *
+	 * The stand-in for the Apple Pencil's own double-tap, which WKWebView does not
+	 * expose to the page at all.
+	 */
+	multiTouchTap(fingers: number): void;
 	/** Whether a stylus has ever been used here, remembered across tabs. */
 	penSeen(): boolean;
 	/** Record that a stylus has now been seen. */
@@ -214,6 +223,14 @@ export class InkLayer {
 	 * relearning it per view meant the first palm of every tab drew a blob.
 	 */
 	private penSeen = false;
+	/**
+	 * The pointer type that started the gesture in flight.
+	 *
+	 * Needed to tell a palm from a second finger: while a pen is drawing, another
+	 * touch is a hand resting on the glass, not a pinch.
+	 */
+	private gesturePointerType: string | null = null;
+	private readonly tap = new MultiTouchTap();
 	private active: ActiveStroke | null = null;
 	private erasing: ActiveErase | null = null;
 	private shaping: ActiveShape | null = null;
@@ -346,11 +363,16 @@ export class InkLayer {
 			this.pagesEl,
 			'touchstart',
 			(evt) => {
-				// A second finger is a pinch-zoom, not a gesture of ours.
-				if (evt.touches.length >= 2) {
+				/*
+				 * A second finger is a pinch-zoom — unless a pen is drawing, in which
+				 * case it is the hand resting on the page. Cancelling on it was what
+				 * broke every stroke into a dot: a palm almost always reaches the
+				 * glass while writing, and each landing abandoned the stroke.
+				 */
+				if (evt.touches.length >= 2 && !this.penIsDrawing) {
 					this.cancelActive();
-					return;
 				}
+				this.trackTap(evt, 'start');
 				if (this.claimsTouch(evt)) evt.preventDefault();
 			},
 			{ passive: false },
@@ -359,6 +381,7 @@ export class InkLayer {
 			this.pagesEl,
 			'touchmove',
 			(evt) => {
+				this.trackTap(evt, 'move');
 				// Refused on every move as well: a scroll that has not started yet can
 				// still be started by a later move in the same gesture.
 				if (this.claimsTouch(evt)) evt.preventDefault();
@@ -366,9 +389,44 @@ export class InkLayer {
 			{ passive: false },
 		);
 
+		for (const kind of ['touchend', 'touchcancel'] as const) {
+			this.component.registerDomEvent(this.pagesEl, kind, (evt) => {
+				const fingers =
+					kind === 'touchend'
+						? this.tap.end(evt.touches.length, evt.timeStamp)
+						: (this.tap.cancel(), null);
+				// One finger is an ordinary tap on the page; leave it alone.
+				if (fingers !== null && fingers >= 2) {
+					this.options.multiTouchTap(fingers);
+				}
+			});
+		}
+
 		this.component.register(() => {
 			this.cancelActive();
 		});
+	}
+
+	/** Feed the tap recogniser, which only ever sees fingers. */
+	private trackTap(evt: TouchEvent, phase: 'start' | 'move'): void {
+		// A pen on the glass means the fingers are a resting hand, not a gesture.
+		if (this.penIsDrawing) {
+			this.tap.cancel();
+			return;
+		}
+		const points: TapPoint[] = Array.from(evt.touches)
+			.filter((touch) => !isStylusTouch(touch))
+			.map((touch) => ({
+				id: touch.identifier,
+				x: touch.clientX,
+				y: touch.clientY,
+			}));
+		if (points.length === 0) {
+			this.tap.cancel();
+			return;
+		}
+		if (phase === 'start') this.tap.start(points, evt.timeStamp);
+		else this.tap.update(points, evt.timeStamp);
 	}
 
 	/** Repaint a page's ink. Called whenever its canvases were resized/cleared. */
@@ -378,6 +436,7 @@ export class InkLayer {
 
 	/** Abandon anything in progress without committing it. */
 	cancelActive(): void {
+		this.gesturePointerType = null;
 		if (this.selectionDrag) this.finishSelectionDrag(false);
 		if (this.lasso) {
 			const lasso = this.lasso;
@@ -424,6 +483,16 @@ export class InkLayer {
 		// An in-flight gesture keeps its claim even if a later move reports nothing,
 		// so a stroke cannot be scrolled out from under itself half way through.
 		return this.hasActiveGesture && this.penSeen;
+	}
+
+	/**
+	 * True while a pen gesture is in flight.
+	 *
+	 * Read through the live gesture rather than from the stored pointer type alone,
+	 * so a stale value left over from a finished stroke cannot suppress a pinch.
+	 */
+	private get penIsDrawing(): boolean {
+		return this.hasActiveGesture && this.gesturePointerType === 'pen';
 	}
 
 	/** True while any pointer gesture of ours is running. */
@@ -543,6 +612,7 @@ export class InkLayer {
 		if (!record || !isDrawable(record)) return;
 
 		evt.preventDefault();
+		this.gesturePointerType = evt.pointerType;
 		const captureEl = record.inkCanvasEl;
 		this.takeCapture(captureEl, evt.pointerId);
 		const rect = captureEl.getBoundingClientRect();
@@ -1137,10 +1207,17 @@ export class InkLayer {
 			record.cssHeight,
 		);
 		// A highlighter is a flat chisel: its width must not track pressure.
+		const previous = active.stroke.points[active.stroke.points.length - 1];
 		const pressure =
 			active.stroke.tool === 'highlighter'
 				? FLAT_PRESSURE
-				: normalizePressure(evt.pressure, evt.pointerType);
+				: normalizePressure(
+						evt.pressure,
+						evt.pointerType,
+						// A dropout mid-stroke continues at the last known pressure
+						// rather than jumping to the default and beading the line.
+						previous?.[2] ?? DEFAULT_PRESSURE,
+					);
 
 		active.canvasSamples.push([cssX, cssY, pressure]);
 		// Stored in PDF user space, so the stroke is independent of zoom, device

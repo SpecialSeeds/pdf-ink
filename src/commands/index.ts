@@ -65,6 +65,31 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 		},
 	});
 
+	/*
+	 * Tool toggles, as commands as well as gestures.
+	 *
+	 * The Apple Pencil's double-tap and squeeze are delivered to native code and
+	 * never reach the page, so there is nothing to bind them to directly. These
+	 * give the same effect from a keyboard, and from the two- and three-finger taps
+	 * the ink layer recognises.
+	 */
+	for (const [tool, name, icon] of [
+		['eraser', 'Toggle eraser', 'eraser'],
+		['lasso', 'Toggle selection tool', 'lasso'],
+	] as const) {
+		plugin.addCommand({
+			id: `toggle-${tool}-tool`,
+			name,
+			icon,
+			checkCallback: (checking: boolean): boolean => {
+				const view = plugin.app.workspace.getActiveViewOfType(PdfInkView);
+				if (!view) return false;
+				if (!checking) view.toggleTool(tool);
+				return true;
+			},
+		});
+	}
+
 	plugin.addCommand({
 		id: 'export-annotated-pdf',
 		name: 'Export annotated PDF',

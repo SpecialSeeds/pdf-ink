@@ -424,9 +424,18 @@
  * the visible dot is the span inside, which nothing else styles.
  */
 .pdf-ink-swatch {
+	/*
+	 * Pinned square on every axis. A 50% radius on a box that is not square draws
+	 * an ellipse, and mobile enforces a minimum touch size on anything it takes for
+	 * a control — which is how these turned into grey ellipses.
+	 */
+	flex: 0 0 auto;
 	width: 20px;
 	height: 20px;
 	min-width: 20px;
+	min-height: 20px;
+	max-width: 20px;
+	max-height: 20px;
 	padding: 0;
 	border: none;
 	border-radius: 50%;
@@ -437,10 +446,13 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	/* iOS gives a button its own rendering unless told otherwise, which can win
-	   over a flat, borderless swatch. */
 	-webkit-appearance: none;
 	appearance: none;
+}
+
+.pdf-ink-swatch:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
 }
 
 .pdf-ink-swatch-fill {

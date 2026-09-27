@@ -54,6 +54,8 @@ export class InkController {
 	/** The page the open editor belongs to. */
 	/** The page the open text editor belongs to. Empty when nothing is open. */
 	private editingPage: PageKey = '';
+	/** What to return to when a toggled tool is toggled off. */
+	private previousTool: ToolKind | null = null;
 	private readonly layer: InkLayer;
 	private readonly toolbar: InkToolbar;
 
@@ -114,6 +116,12 @@ export class InkController {
 			eraserMode: () => this.toolState.eraser.mode,
 			eraserRadiusPx: () => this.toolState.eraser.radiusPx,
 			palmRejection: () => this.host.settings.palmRejection,
+			multiTouchTap: (fingers) => {
+				// Two to erase, three to select — the two tools worth reaching for
+				// without putting the pen down.
+				if (fingers === 2) this.toggleTool('eraser');
+				else if (fingers >= 3) this.toggleTool('lasso');
+			},
 			penSeen: () => this.host.settings.penSeen,
 			notePenSeen: () => {
 				if (this.host.settings.penSeen) return;
@@ -210,6 +218,22 @@ export class InkController {
 
 	redo(): void {
 		if (this.store.redo()) this.options.repaint();
+	}
+
+	/**
+	 * Switch to a tool, or back to the one in use before if it is already active.
+	 *
+	 * The behaviour a stylus side-button would give, reachable by gesture and by
+	 * command: tap to erase, tap again to carry on drawing with whatever was in hand.
+	 */
+	toggleTool(tool: ToolKind): void {
+		if (this.toolState.active === tool) {
+			this.selectTool(this.previousTool ?? 'pen');
+			this.previousTool = null;
+			return;
+		}
+		this.previousTool = this.toolState.active;
+		this.selectTool(tool);
 	}
 
 	selectTool(tool: ToolKind): void {

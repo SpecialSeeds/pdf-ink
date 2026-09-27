@@ -277,3 +277,36 @@ describe('normalizePressure', () => {
 		expect(normalizePressure(4, 'pen')).toBe(1);
 	});
 });
+
+describe('pressure dropouts', () => {
+	it('carries the previous pressure through a zero reading', () => {
+		// WebKit drops the occasional zero into an Apple Pencil stroke. Substituting
+		// a fixed default for those made the width lurch and beaded the line.
+		expect(normalizePressure(0, 'pen', 0.12)).toBeCloseTo(0.12, 6);
+		expect(normalizePressure(0, 'pen', 0.9)).toBeCloseTo(0.9, 6);
+	});
+
+	it('still falls back to the default at the start of a stroke', () => {
+		expect(normalizePressure(0, 'pen')).toBe(DEFAULT_PRESSURE);
+		expect(normalizePressure(0, 'touch')).toBe(DEFAULT_PRESSURE);
+	});
+
+	it('ignores an unusable fallback', () => {
+		for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+			expect(normalizePressure(0, 'pen', bad)).toBe(DEFAULT_PRESSURE);
+		}
+	});
+
+	it('clamps a fallback above 1', () => {
+		expect(normalizePressure(0, 'pen', 4)).toBe(1);
+	});
+
+	it('prefers a real reading over the fallback', () => {
+		expect(normalizePressure(0.3, 'pen', 0.9)).toBeCloseTo(0.3, 6);
+	});
+
+	it('still pins a mouse to the default, fallback or not', () => {
+		expect(normalizePressure(0, 'mouse', 0.9)).toBe(DEFAULT_PRESSURE);
+		expect(normalizePressure(0.8, 'mouse', 0.9)).toBe(DEFAULT_PRESSURE);
+	});
+});

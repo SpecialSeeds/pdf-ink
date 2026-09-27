@@ -1,4 +1,7 @@
 import type { Component } from 'obsidian';
+
+/** Long enough for the on-screen keyboard to finish animating in, in ms. */
+const KEYBOARD_SETTLE_MS = 350;
 import type { TextItem } from '../core/items';
 import { LINE_HEIGHT } from '../core/text-layout';
 import { TEXT_FONT_STACK } from './item-renderers';
@@ -24,6 +27,8 @@ export class TextEditor {
 	private record: PageRecord | null = null;
 	/** Guards against blur and Escape both committing the same edit. */
 	private closing = false;
+	/** Pending scroll restore while the on-screen keyboard animates in. */
+	private settleTimer: number | null = null;
 
 	constructor(
 		private readonly component: Component,
@@ -40,6 +45,7 @@ export class TextEditor {
 
 	open(record: PageRecord, item: TextItem): void {
 		this.close(true);
+		this.clearSettleTimer();
 
 		const areaEl = record.wrapperEl.createEl('textarea', {
 			cls: 'pdf-ink-text-editor',
@@ -68,14 +74,49 @@ export class TextEditor {
 			evt.stopPropagation();
 		});
 
-		/*
-		 * preventScroll, because focusing an element otherwise scrolls it into view —
-		 * and the scroll container here is the whole document, so creating a box
-		 * jumped the view away from where the user had just tapped. The box is
-		 * already under their finger; there is nothing to scroll to.
-		 */
+		this.focusInPlace(areaEl, record);
+	}
+
+	/**
+	 * Focus the textarea without moving the document.
+	 *
+	 * Focusing an element scrolls it into view, and the scroll container here is the
+	 * whole PDF — so creating a box threw the view somewhere else entirely. iOS goes
+	 * further and scrolls again when the keyboard animates in, which `preventScroll`
+	 * does not cover, so the position is captured and put back: once immediately,
+	 * once on the next frame, and once after the keyboard has settled.
+	 */
+	private focusInPlace(
+		areaEl: HTMLTextAreaElement,
+		record: PageRecord,
+	): void {
+		const scrollEl = record.wrapperEl.closest<HTMLElement>('.pdf-ink-scroll');
+		const top = scrollEl?.scrollTop ?? 0;
+		const left = scrollEl?.scrollLeft ?? 0;
+
 		areaEl.focus({ preventScroll: true });
 		areaEl.setSelectionRange(areaEl.value.length, areaEl.value.length);
+		if (!scrollEl) return;
+
+		const restore = (): void => {
+			// Only while this editor is still the open one, so a later deliberate
+			// scroll by the user is never undone.
+			if (this.areaEl !== areaEl) return;
+			if (scrollEl.scrollTop !== top) scrollEl.scrollTop = top;
+			if (scrollEl.scrollLeft !== left) scrollEl.scrollLeft = left;
+		};
+
+		restore();
+		const win = areaEl.win;
+		win.requestAnimationFrame(restore);
+		// Long enough for the on-screen keyboard to finish animating in.
+		this.settleTimer = win.setTimeout(restore, KEYBOARD_SETTLE_MS);
+	}
+
+	private clearSettleTimer(): void {
+		if (this.settleTimer === null) return;
+		this.areaEl?.win.clearTimeout(this.settleTimer);
+		this.settleTimer = null;
 	}
 
 	/** Re-place the textarea after a zoom. */
@@ -88,6 +129,7 @@ export class TextEditor {
 		const item = this.editing;
 		if (!areaEl || !item || this.closing) return;
 		this.closing = true;
+		this.clearSettleTimer();
 
 		const text = areaEl.value;
 		this.areaEl = null;
