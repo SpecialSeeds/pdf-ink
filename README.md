@@ -77,6 +77,8 @@ in one undoable step.
 ### Drawing
 
 A stylus reports real pressure; a mouse or trackpad draws at a constant width.
+Pressure narrows a stroke but never thins it to nothing — a line drawn as lightly as
+the pen can register is still a solid line, not a row of specks.
 
 **Palm rejection** is on by default: once a stylus has been seen, touches scroll the
 document instead of drawing, so a hand resting on the page does no harm. Whether a

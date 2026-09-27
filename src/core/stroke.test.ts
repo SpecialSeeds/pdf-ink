@@ -12,6 +12,8 @@ import {
 } from './items';
 import {
 	DEFAULT_PEN,
+	MIN_RENDER_PRESSURE,
+	MIN_VISIBLE_STROKE_CSS,
 	strokeOptions,
 	createStroke,
 	createStrokeId,
@@ -315,5 +317,63 @@ describe('cut ends are blunt', () => {
 
 	it('a highlighter keeps its flat nib when cut', () => {
 		expect(strokeOptions(4, true, 'highlighter', { end: true }).thinning).toBe(0);
+	});
+});
+
+describe('a stroke never breaks up into dots', () => {
+	/** perfect-freehand's width at a given pressure. */
+	const widthAt = (size: number, thinning: number, pressure: number): number =>
+		size * (1 - thinning + thinning * pressure);
+
+	it('stays visible at the lightest pressure a stylus reports', () => {
+		// An Apple Pencil resting lightly reports about 0.08. At the old settings a
+		// 1pt nib came out around 0.6px wide, which rasterises as specks.
+		for (const widthPt of [1, 1.5, 2, 4, 12]) {
+			const sizeCss = widthPt * (96 / 72);
+			const options = strokeOptions(sizeCss, true, 'pen');
+			const lightest = widthAt(
+				options.size ?? 0,
+				options.thinning ?? 0,
+				MIN_RENDER_PRESSURE,
+			);
+			expect(lightest).toBeGreaterThanOrEqual(MIN_VISIBLE_STROKE_CSS - 1e-9);
+		}
+	});
+
+	it('never lets a reported pressure of nearly zero through', () => {
+		const outline = strokeOutline(
+			[
+				[0, 0, 0.01],
+				[10, 0, 0.02],
+				[20, 0, 0.01],
+			],
+			1,
+			true,
+			'pen',
+		);
+		// A visible band, not a line of separate specks.
+		const ys = outline.map(([, y]) => y);
+		const thickness = Math.max(...ys) - Math.min(...ys);
+		expect(thickness).toBeGreaterThanOrEqual(MIN_VISIBLE_STROKE_CSS - 1e-9);
+	});
+
+	it('keeps a heavy stroke at its nominal width', () => {
+		// The floor must not inflate a stroke that was already wide enough.
+		const sizeCss = 12 * (96 / 72);
+		expect(strokeOptions(sizeCss, true, 'pen').size).toBeCloseTo(sizeCss, 6);
+	});
+
+	it('still varies width with pressure', () => {
+		// Fixing the dots must not flatten the pen into a marker.
+		const options = strokeOptions(4, true, 'pen');
+		const light = widthAt(options.size ?? 0, options.thinning ?? 0, 0.4);
+		const heavy = widthAt(options.size ?? 0, options.thinning ?? 0, 1);
+		expect(heavy).toBeGreaterThan(light * 1.15);
+	});
+
+	it('leaves the highlighter a flat chisel', () => {
+		const options = strokeOptions(20, true, 'highlighter');
+		expect(options.thinning).toBe(0);
+		expect(options.size).toBe(20);
 	});
 });
