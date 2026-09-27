@@ -75,6 +75,38 @@ export function toCanvasSamples(
 /** Pressure recorded for tools that must not vary in width. */
 export const FLAT_PRESSURE = 1;
 
+/**
+ * How much pressure is allowed to narrow a stroke.
+ *
+ * Lower than it was. An Apple Pencil resting lightly reports around 0.08, and at
+ * the old 0.6 that thinned a 1pt nib to roughly six tenths of a device pixel —
+ * which the rasteriser renders as a broken line of specks rather than a faint one.
+ */
+const PEN_THINNING = 0.35;
+
+/**
+ * The lightest pressure that reaches the outline generator.
+ *
+ * Pressure below this still reads as the lightest possible line rather than as
+ * nothing: the difference between 0.02 and 0.08 is not something anyone is
+ * controlling deliberately, and treating it as real is what makes a stroke break up.
+ */
+export const MIN_RENDER_PRESSURE = 0.4;
+
+/** No stroke is ever drawn thinner than this, in CSS px. Below it, ink dots. */
+export const MIN_VISIBLE_STROKE_CSS = 1.4;
+
+/**
+ * The nominal size needed for the lightest touch to still be visible.
+ *
+ * perfect-freehand's width at pressure p is `size * ((1 - thinning) + thinning * p)`,
+ * so this inverts that at the pressure floor and takes whichever is larger.
+ */
+function visibleSize(sizeCss: number, thinning: number): number {
+	const lightest = 1 - thinning + thinning * MIN_RENDER_PRESSURE;
+	return Math.max(sizeCss, MIN_VISIBLE_STROKE_CSS / Math.max(0.05, lightest));
+}
+
 export interface CutEnds {
 	readonly start?: boolean;
 	readonly end?: boolean;
@@ -86,10 +118,11 @@ function strokeOptionsFor(
 	tool: InkTool,
 	cut?: CutEnds,
 ): StrokeOptions {
+	const thinning = tool === 'highlighter' ? 0 : PEN_THINNING;
 	return {
-		size: Math.max(1, sizeCss),
+		size: Math.max(1, visibleSize(sizeCss, thinning)),
 		// A highlighter is a flat chisel: pressure must not change its width.
-		thinning: tool === 'highlighter' ? 0 : 0.6,
+		thinning,
 		smoothing: 0.5,
 		streamline: 0.5,
 		// Real pressure is supplied, so perfect-freehand must not invent its own
@@ -124,7 +157,13 @@ export function strokeOutline(
 ): Vec2[] {
 	if (samples.length === 0) return [];
 	return getStroke(
-		samples.map(([x, y, pressure]) => [x, y, pressure]),
+		// Pressure is floored here rather than when captured, so the recorded stroke
+		// keeps what the stylus actually said and only the drawing is clamped.
+		samples.map(([x, y, pressure]) => [
+			x,
+			y,
+			Math.max(MIN_RENDER_PRESSURE, pressure),
+		]),
 		strokeOptionsFor(sizeCss, complete, tool, cut),
 	);
 }

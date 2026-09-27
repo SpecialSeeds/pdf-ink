@@ -38,18 +38,29 @@ describe('MultiTouchTap', () => {
 		expect(fingers(tap.end(0, 80))).toBe(2);
 	});
 
-	it('rejects a drag', () => {
+	it('rejects a two-finger pan', () => {
 		const tap = new MultiTouchTap();
 		tap.start([at(1, 100, 100), at(2, 160, 100)], 0);
-		tap.update([at(1, 100, 200), at(2, 160, 200)], 50);
+		tap.update([at(1, 100, 300), at(2, 160, 300)], 50);
 		expect(fingers(tap.end(0, 90))).toBeNull();
 	});
 
 	it('rejects a pinch, where the fingers move apart', () => {
 		const tap = new MultiTouchTap();
 		tap.start([at(1, 100, 100), at(2, 160, 100)], 0);
-		tap.update([at(1, 60, 100), at(2, 200, 100)], 40);
+		// The centre stays put; only the spread changes, which is a pinch exactly.
+		tap.update([at(1, 0, 100), at(2, 260, 100)], 40);
 		expect(fingers(tap.end(0, 80))).toBeNull();
+	});
+
+	it('allows two fingers settling against the glass', () => {
+		// The case that made this look broken: a deliberate two-finger tap always
+		// shuffles a little, and judging each finger on its own rejected it.
+		const tap = new MultiTouchTap();
+		tap.start([at(1, 100, 100), at(2, 160, 100)], 0);
+		tap.update([at(1, 108, 112), at(2, 150, 94)], 60);
+		tap.update([at(1, 112, 116), at(2, 146, 90)], 120);
+		expect(fingers(tap.end(0, 400))).toBe(2);
 	});
 
 	it('rejects a hold', () => {
@@ -80,24 +91,24 @@ describe('MultiTouchTap', () => {
 	});
 
 	it('allows a window long enough for two fingers to land and lift', () => {
-		// A tablet held in one hand does not produce a 100ms tap.
-		expect(TAP_MAX_MS).toBeGreaterThanOrEqual(400);
-		expect(TAP_MAX_MOVE_PX).toBeGreaterThanOrEqual(20);
+		// A device log showed a deliberate two-finger tap taking 553ms.
+		expect(TAP_MAX_MS).toBeGreaterThanOrEqual(600);
+		expect(TAP_MAX_MOVE_PX).toBeGreaterThanOrEqual(40);
 	});
 
-	it('allows movement up to the threshold', () => {
+	it('allows a single finger to move up to its threshold', () => {
 		const tap = new MultiTouchTap();
-		tap.start([at(1, 0, 0), at(2, 50, 0)], 0);
-		tap.update([at(1, TAP_MAX_MOVE_PX - 1, 0), at(2, 50, 0)], 20);
-		expect(fingers(tap.end(0, 60))).toBe(2);
+		tap.start([at(1, 0, 0)], 0);
+		tap.update([at(1, TAP_MAX_MOVE_PX - 1, 0)], 20);
+		expect(fingers(tap.end(0, 60))).toBe(1);
 	});
 
 	it('measures movement from where a finger landed, not from the last sample', () => {
 		// Creeping a pixel at a time must still add up to a drag.
 		const tap = new MultiTouchTap();
-		tap.start([at(1, 0, 0), at(2, 50, 0)], 0);
+		tap.start([at(1, 0, 0)], 0);
 		for (let x = 1; x <= TAP_MAX_MOVE_PX + 5; x++) {
-			tap.update([at(1, x, 0), at(2, 50, 0)], 10);
+			tap.update([at(1, x, 0)], 10);
 		}
 		expect(fingers(tap.end(0, 60))).toBeNull();
 	});
@@ -149,11 +160,16 @@ describe('MultiTouchTap', () => {
 });
 
 describe('outcomes say why a gesture was not a tap', () => {
-	it('reports a drag as moved', () => {
-		const tap = new MultiTouchTap();
-		tap.start([at(1, 0, 0), at(2, 50, 0)], 0);
-		tap.update([at(1, 0, 400), at(2, 50, 400)], 30);
-		expect(reason(tap.end(0, 60))).toBe('moved');
+	it('tells a pan from a pinch', () => {
+		const pan = new MultiTouchTap();
+		pan.start([at(1, 0, 0), at(2, 50, 0)], 0);
+		pan.update([at(1, 0, 400), at(2, 50, 400)], 30);
+		expect(reason(pan.end(0, 60))).toBe('panned');
+
+		const pinch = new MultiTouchTap();
+		pinch.start([at(1, 0, 0), at(2, 50, 0)], 0);
+		pinch.update([at(1, -100, 0), at(2, 150, 0)], 30);
+		expect(reason(pinch.end(0, 60))).toBe('pinched');
 	});
 
 	it('reports a hold as too slow', () => {

@@ -24,10 +24,22 @@ export interface TapPoint {
  * in the other hand. A window that is too tight reads an ordinary tap as a hold and
  * silently does nothing, which is indistinguishable from the feature being broken.
  */
-export const TAP_MAX_MS = 500;
+export const TAP_MAX_MS = 800;
 
-/** Further than this from where it landed and the finger was dragging. */
-export const TAP_MAX_MOVE_PX = 24;
+/**
+ * Movement thresholds, measured against the gesture as a whole rather than each
+ * finger on its own.
+ *
+ * Two fingers tapped together always shuffle — a device log showed a deliberate
+ * two-finger tap rejected for movement — but what separates a tap from a pinch is
+ * the fingers' spread changing, and from a pan is their centre travelling. Judging
+ * each finger's own displacement confuses all three.
+ */
+export const TAP_MAX_PAN_PX = 56;
+export const TAP_MAX_SPREAD_PX = 40;
+
+/** A single finger has no spread, so this is its only movement limit. */
+export const TAP_MAX_MOVE_PX = 56;
 
 /**
  * Why a gesture was not a tap.
@@ -41,7 +53,12 @@ export type TapOutcome =
 	| { readonly kind: 'pending' }
 	| {
 			readonly kind: 'rejected';
-			readonly reason: 'moved' | 'too-slow' | 'not-tracking';
+			readonly reason:
+				| 'panned'
+				| 'pinched'
+				| 'moved'
+				| 'too-slow'
+				| 'not-tracking';
 			readonly fingers: number;
 		};
 
@@ -49,8 +66,30 @@ interface Tracked {
 	readonly startedAt: number;
 	/** The most fingers seen at once, which is what the tap is counted by. */
 	fingers: number;
-	moved: boolean;
+	moved: 'panned' | 'pinched' | 'moved' | null;
 	readonly origins: Map<number, TapPoint>;
+}
+
+interface Spread {
+	readonly cx: number;
+	readonly cy: number;
+	/** Mean distance from the centre, which is what a pinch changes. */
+	readonly radius: number;
+}
+
+function spreadOf(points: readonly TapPoint[]): Spread | null {
+	if (points.length === 0) return null;
+	let sx = 0;
+	let sy = 0;
+	for (const point of points) {
+		sx += point.x;
+		sy += point.y;
+	}
+	const cx = sx / points.length;
+	const cy = sy / points.length;
+	let total = 0;
+	for (const point of points) total += Math.hypot(point.x - cx, point.y - cy);
+	return { cx, cy, radius: total / points.length };
 }
 
 export class MultiTouchTap {
@@ -70,7 +109,7 @@ export class MultiTouchTap {
 			this.tracked = {
 				startedAt: now,
 				fingers: points.length,
-				moved: false,
+				moved: null,
 				origins: new Map(),
 			};
 		}
@@ -84,18 +123,42 @@ export class MultiTouchTap {
 		this.tracked.fingers = Math.max(this.tracked.fingers, points.length);
 	}
 
-	/** Positions changed. Any real movement disqualifies the gesture. */
-	update(points: readonly TapPoint[], now: number): void {
+	/**
+	 * Positions changed. A pinch or a pan disqualifies the gesture; fingers merely
+	 * settling against the glass does not.
+	 */
+	update(points: readonly TapPoint[], _now: number): void {
 		const tracked = this.tracked;
-		if (!tracked || tracked.moved) return;
-		for (const point of points) {
+		if (!tracked || tracked.moved !== null) return;
+
+		// Compare only the fingers that were there at the start, so a late arrival
+		// cannot look like a sudden lurch.
+		const known = points.filter((point) => tracked.origins.has(point.id));
+		if (known.length === 0) return;
+		const origins = known.map((point) => {
 			const origin = tracked.origins.get(point.id);
-			if (!origin) continue;
-			const dx = point.x - origin.x;
-			const dy = point.y - origin.y;
-			if (Math.hypot(dx, dy) > this.maxMovePx) {
-				tracked.moved = true;
-				return;
+			return origin ?? point;
+		});
+
+		const now = spreadOf(known);
+		const then = spreadOf(origins);
+		if (!now || !then) return;
+
+		if (Math.hypot(now.cx - then.cx, now.cy - then.cy) > TAP_MAX_PAN_PX) {
+			tracked.moved = 'panned';
+			return;
+		}
+		if (known.length > 1 && Math.abs(now.radius - then.radius) > TAP_MAX_SPREAD_PX) {
+			tracked.moved = 'pinched';
+			return;
+		}
+		// One finger has no spread to judge, so its own displacement is the test.
+		if (known.length === 1) {
+			const point = known[0];
+			const origin = origins[0];
+			if (point && origin) {
+				const travelled = Math.hypot(point.x - origin.x, point.y - origin.y);
+				if (travelled > this.maxMovePx) tracked.moved = 'moved';
 			}
 		}
 	}
@@ -115,7 +178,9 @@ export class MultiTouchTap {
 
 		this.tracked = null;
 		const fingers = tracked.fingers;
-		if (tracked.moved) return { kind: 'rejected', reason: 'moved', fingers };
+		if (tracked.moved !== null) {
+			return { kind: 'rejected', reason: tracked.moved, fingers };
+		}
 		if (now - tracked.startedAt > this.maxDurationMs) {
 			return { kind: 'rejected', reason: 'too-slow', fingers };
 		}
