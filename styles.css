@@ -297,6 +297,14 @@
  */
 .pdf-ink-page {
 	position: relative;
+	/*
+	 * A long press with a stylus otherwise raises iOS's own callout — the
+	 * selection and undo/redo bar — over the page, which does nothing useful here
+	 * and swallows the gesture. There is no text to select on a canvas.
+	 */
+	-webkit-touch-callout: none;
+	-webkit-user-select: none;
+	user-select: none;
 	width: var(--pdf-ink-page-w, 0);
 	height: var(--pdf-ink-page-h, 0);
 	margin: 0 auto var(--pdf-ink-page-gap, 12px);
@@ -708,6 +716,10 @@
  */
 .pdf-ink-text-editor {
 	position: absolute;
+	/* A real text box: selection and the callout are wanted here. */
+	-webkit-touch-callout: default;
+	-webkit-user-select: text;
+	user-select: text;
 	top: var(--pdf-ink-text-y, 0);
 	left: var(--pdf-ink-text-x, 0);
 	z-index: 6;
@@ -851,6 +863,9 @@
 }
 
 .pdf-ink-diagnostics-line {
+	/* Selectable, so the log can be copied by hand if the clipboard refuses. */
+	-webkit-user-select: text;
+	user-select: text;
 	color: var(--text-normal);
 	font-family: var(--font-monospace);
 	font-size: 10px;
