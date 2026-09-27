@@ -59,15 +59,6 @@ export interface PdfInkSettings {
 	 * differently and there is otherwise no way to see what the device reported.
 	 */
 	inputDiagnostics: boolean;
-	/**
-	 * Tapping the stylus tip twice in one spot switches to the eraser, and back.
-	 *
-	 * The Apple Pencil's own double-tap is a barrel gesture that never reaches a
-	 * web view, so this is the nearest equivalent. It shares its shape with a full
-	 * stop, which is why it is a setting: the thresholds are tight, but someone who
-	 * punctuates quickly may still want it off.
-	 */
-	penDoubleTap: boolean;
 }
 
 /** Tools whose size is a width rather than a font size. */
@@ -112,7 +103,6 @@ export const DEFAULT_SETTINGS: PdfInkSettings = {
 	palmRejection: true,
 	penSeen: false,
 	inputDiagnostics: false,
-	penDoubleTap: true,
 };
 
 function clampWidth(tool: SizedTool, value: number): number {
@@ -214,9 +204,6 @@ export function mergeSettings(stored: unknown): PdfInkSettings {
 
 	const diagnostics = raw['inputDiagnostics'];
 	if (typeof diagnostics === 'boolean') merged.inputDiagnostics = diagnostics;
-
-	const penDoubleTap = raw['penDoubleTap'];
-	if (typeof penDoubleTap === 'boolean') merged.penDoubleTap = penDoubleTap;
 
 	return merged;
 }
