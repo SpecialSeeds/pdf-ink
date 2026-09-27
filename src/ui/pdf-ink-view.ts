@@ -26,6 +26,7 @@ import type { ToolKind } from '../core/tools';
 import type { PageGeometry, ZoomMode } from '../types/view';
 import { PageEditor } from './page-editor';
 import { PageList } from './page-list';
+import { InputDiagnostics } from './input-diagnostics';
 import { PdfSidebar } from './pdf-sidebar';
 import { PageRenderer } from './page-renderer';
 import { PdfInkToolbar } from './toolbar';
@@ -49,6 +50,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 	private statusEl!: HTMLElement;
 	private toolbar!: PdfInkToolbar;
 	private sidebar!: PdfSidebar;
+	private diagnostics!: InputDiagnostics;
 	private renderer!: PageRenderer;
 	private zoom!: ZoomController;
 
@@ -212,6 +214,8 @@ export class PdfInkView extends FileView implements ZoomHost {
 		});
 
 		this.scrollEl = bodyEl.createDiv({ cls: 'pdf-ink-scroll' });
+		this.diagnostics = new InputDiagnostics(this.contentEl, this);
+		this.diagnostics.setEnabled(this.host.settings.inputDiagnostics);
 		this.statusEl = this.scrollEl.createDiv({ cls: 'pdf-ink-status' });
 		this.sizerEl = this.scrollEl.createDiv({ cls: 'pdf-ink-sizer' });
 		this.pagesEl = this.sizerEl.createDiv({ cls: 'pdf-ink-pages' });
@@ -246,6 +250,10 @@ export class PdfInkView extends FileView implements ZoomHost {
 				repaint: () => {
 					this.repaintInk();
 				},
+				traceInput: (event, fields) => {
+					this.diagnostics.log(event, fields);
+				},
+				tracingInput: () => this.diagnostics.isEnabled,
 			},
 		);
 		this.scope = this.ink.scope;
@@ -308,6 +316,12 @@ export class PdfInkView extends FileView implements ZoomHost {
 		this.ready = false;
 		this.epoch++;
 		await this.releaseDocument();
+	}
+
+	/** Re-read settings that can change while a view is open. */
+	refreshSettings(): void {
+		if (!this.ready) return;
+		this.diagnostics.setEnabled(this.host.settings.inputDiagnostics);
 	}
 
 	override onResize(): void {

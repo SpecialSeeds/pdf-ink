@@ -37,6 +37,12 @@ export default class PdfInkPlugin extends Plugin {
 
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
+		// Settings that change how an open view behaves — the diagnostics overlay —
+		// take effect where the user can see them, not on the next reopen.
+		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_PDF_INK)) {
+			const view = leaf.view;
+			if (view instanceof PdfInkView) view.refreshSettings();
+		}
 	}
 
 	// No onunload: registerView, addCommand and registerEvent all unwind on their

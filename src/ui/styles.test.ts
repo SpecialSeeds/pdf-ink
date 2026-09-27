@@ -85,6 +85,11 @@ describe('styles.css and the code agree on custom properties', () => {
 			'pdf-ink-outline',
 			'pdf-ink-outline-item',
 			'pdf-ink-outline-link',
+			'pdf-ink-diagnostics',
+			'pdf-ink-diagnostics-header',
+			'pdf-ink-diagnostics-button',
+			'pdf-ink-diagnostics-log',
+			'pdf-ink-diagnostics-line',
 		]) {
 			expect(css, cls).toContain(`.${cls}`);
 		}

@@ -47,6 +47,7 @@ export class PdfInkSettingTab extends PluginSettingTab {
 		this.addToolSection();
 		this.addEraserSection();
 		this.addExportSection();
+		this.addDiagnosticsSection();
 	}
 
 	private save(): void {
@@ -100,6 +101,25 @@ export class PdfInkSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.palmRejection)
 					.onChange((value) => {
 						this.plugin.settings.palmRejection = value;
+						this.save();
+					}),
+			);
+	}
+
+	private addDiagnosticsSection(): void {
+		const { containerEl } = this;
+		new Setting(containerEl).setName('Diagnostics').setHeading();
+
+		new Setting(containerEl)
+			.setName('Show input diagnostics')
+			.setDesc(
+				'Overlay a live log of touch and stylus events on the document, with a button to copy it. For reporting problems with a pen or tablet.',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.inputDiagnostics)
+					.onChange((value) => {
+						this.plugin.settings.inputDiagnostics = value;
 						this.save();
 					}),
 			);

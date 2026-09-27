@@ -192,3 +192,20 @@ describe('penSeen', () => {
 		expect(mergeSettings({ penSeen: 1 }).penSeen).toBe(false);
 	});
 });
+
+describe('inputDiagnostics', () => {
+	it('is off by default', () => {
+		expect(DEFAULT_SETTINGS.inputDiagnostics).toBe(false);
+		expect(mergeSettings({}).inputDiagnostics).toBe(false);
+	});
+
+	it('round-trips', () => {
+		expect(mergeSettings({ inputDiagnostics: true }).inputDiagnostics).toBe(true);
+	});
+
+	it('ignores a non-boolean', () => {
+		expect(mergeSettings({ inputDiagnostics: 'on' }).inputDiagnostics).toBe(
+			false,
+		);
+	});
+});
