@@ -489,6 +489,40 @@ export class PdfInkView extends FileView implements ZoomHost {
 		this.ink?.toggleTool(tool);
 	}
 
+	/** Whether there is a page to act on, for the command's check pass. */
+	hasCurrentPage(): boolean {
+		return this.ready && this.composed.length > 0;
+	}
+
+	/**
+	 * Open the page menu for whatever page is in view.
+	 *
+	 * Anchored to the middle of the document rather than to a pointer, because the
+	 * command can be run from the palette or from a mobile toolbar where there is no
+	 * pointer to anchor to.
+	 */
+	openPageMenu(): void {
+		const key = this.currentPageKey();
+		if (key === null) return;
+		const box = this.scrollEl.getBoundingClientRect();
+		this.pageEditor?.showMenuFor(key, {
+			x: box.left + box.width / 2,
+			y: box.top + Math.min(box.height / 2, 200),
+		});
+	}
+
+	/** Insert a page immediately after the one in view. */
+	insertPageBelowCurrent(): void {
+		const key = this.currentPageKey();
+		if (key !== null) this.pageEditor?.insertBelow(key);
+	}
+
+	/** Insert a page immediately before the one in view. */
+	insertPageAboveCurrent(): void {
+		const key = this.currentPageKey();
+		if (key !== null) this.pageEditor?.insertAbove(key);
+	}
+
 	/** Repaint every live page's ink from PDF space at the current viewport. */
 	private repaintInk(): void {
 		const ink = this.ink;

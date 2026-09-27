@@ -109,9 +109,16 @@ if you would rather bind a key.
 
 ## Adding pages
 
-Hover between two pages and a **+** appears in the gap. Click it to slip a new sheet in
-there. Right-click any page for **Insert page above** and **Insert page below**, which
-is also how to do it on a tablet.
+Three ways in, because the first two need a pointer:
+
+- **Hover between two pages** and a **+** appears in the gap. Click it to slip a new
+  sheet in there.
+- **Right-click a page** for **Insert page above**, **Insert page below**, the ruling
+  and **Delete page**.
+- **Run a command** — **Insert page below**, **Insert page above**, or **Page
+  options**, which opens the same menu as a right-click. These are the way in on a
+  tablet, where there is no hover and no reliable long-press menu; put them on the
+  mobile toolbar in **Settings → Mobile** to have them to hand.
 
 A new page takes the size of the page above it, and its ruling too when that page is one
 you added — so extending a PDF into a notebook is one click per sheet. Right-click a page

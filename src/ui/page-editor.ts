@@ -241,10 +241,30 @@ export class PageEditor {
 		const wrapperEl = target.closest<HTMLElement>('.pdf-ink-page');
 		const pageKey = wrapperEl?.dataset.pageKey;
 		if (pageKey === undefined) return;
-		const geom = this.host.geometry().find((page) => page.key === pageKey);
-		if (!geom) return;
+		if (!this.host.geometry().some((page) => page.key === pageKey)) return;
 
 		evt.preventDefault();
+		this.buildMenu(pageKey)?.showAtMouseEvent(evt);
+	}
+
+	/**
+	 * Show the page menu for a key, without a pointer event to anchor it.
+	 *
+	 * The way in on a tablet: the "+" between pages is a hover affordance, and iOS
+	 * does not reliably raise a context menu on long press, so without this there
+	 * was no way to add a page on an iPad at all.
+	 */
+	showMenuFor(pageKey: PageKey, at: { x: number; y: number }): boolean {
+		const menu = this.buildMenu(pageKey);
+		if (!menu) return false;
+		menu.showAtPosition(at);
+		return true;
+	}
+
+	private buildMenu(pageKey: PageKey): Menu | null {
+		const geom = this.host.geometry().find((page) => page.key === pageKey);
+		if (!geom) return null;
+
 		const menu = new Menu();
 		const key = geom.key;
 
@@ -294,6 +314,6 @@ export class PageEditor {
 			);
 		}
 
-		menu.showAtMouseEvent(evt);
+		return menu;
 	}
 }
