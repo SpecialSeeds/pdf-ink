@@ -1281,14 +1281,22 @@ export class InkLayer {
 			travelPx: active.travelPx,
 		};
 		const previous = this.pendingTapStroke;
-		const paired = this.penTap.register(candidate);
+		const result = this.penTap.register(candidate);
+		const paired = result.kind === 'paired';
 
 		if (this.options.tracingInput()) {
 			this.options.traceInput('pen-tap', {
+				result: result.kind,
 				isTap: isTap(candidate),
 				durationMs: Math.round(candidate.durationMs),
 				travelPx: Math.round(candidate.travelPx),
-				paired,
+				// Whichever threshold it missed, so the numbers can be tuned.
+				missedBy:
+					result.kind === 'too-late'
+						? `${String(Math.round(result.elapsedMs))}ms`
+						: result.kind === 'too-far'
+							? `${String(Math.round(result.distancePx))}px`
+							: '-',
 			});
 		}
 

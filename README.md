@@ -91,10 +91,11 @@ draw. A hand resting on the page no longer interrupts a stroke.
 
 Two ways to reach the eraser and come straight back to what you were using:
 
-- **Tap the pen tip twice** in the same spot. Both taps have to be brief and still,
-  and close together in time and place, so ordinary marks are not mistaken for the
-  gesture — the two dots they would have left are removed along the way. Turn it off
-  in settings if your punctuation sets it off.
+- **Tap the pen tip twice** in the same spot. Both taps have to be brief and roughly
+  still, and close together in time and place, so ordinary marks are not mistaken for
+  the gesture — the two dots they would have left are removed along the way. The tool
+  it switched to is named on screen, so you know it took. Turn it off in settings if
+  your punctuation sets it off.
 - **Tap two fingers** anywhere on the document. A pinch or a pan is unaffected, and
   finger taps are ignored while the pen is on the page.
 

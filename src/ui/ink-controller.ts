@@ -1,4 +1,4 @@
-import { type App, type Component, Scope } from 'obsidian';
+import { type App, type Component, Notice, Scope } from 'obsidian';
 import type { ItemRef } from '../core/history';
 import type { ShapeKind, TextItem } from '../core/items';
 import type { PageKey } from '../core/pages';
@@ -27,6 +27,16 @@ import type { AnnotationStore } from '../pdf/annotation-store';
 import type { PageRecord } from '../types/view';
 import { InkLayer } from './ink-layer';
 import { InkToolbar } from './ink-toolbar';
+
+/** How a tool is named when a gesture announces it. */
+const TOOL_NAMES: Record<string, string> = {
+	pen: 'Pen',
+	highlighter: 'Highlighter',
+	shape: 'Shape',
+	text: 'Text',
+	eraser: 'Eraser',
+	lasso: 'Select',
+};
 
 export interface InkControllerOptions {
 	resolveRecord(target: EventTarget | null): PageRecord | undefined;
@@ -125,11 +135,11 @@ export class InkController {
 			multiTouchTap: (fingers) => {
 				// Two fingers, and only two: the eraser is the one tool worth reaching
 				// for without putting the pen down.
-				if (fingers === 2) this.toggleTool('eraser');
+				if (fingers === 2) this.toggleByGesture('eraser');
 			},
 			penDoubleTap: () => this.host.settings.penDoubleTap,
 			penDoubleTapped: () => {
-				this.toggleTool('eraser');
+				this.toggleByGesture('eraser');
 			},
 			traceInput: (event, fields) => {
 				this.options.traceInput(event, fields);
@@ -247,6 +257,18 @@ export class InkController {
 		}
 		this.previousTool = this.toolState.active;
 		this.selectTool(tool);
+	}
+
+	/**
+	 * Toggle a tool from a gesture, and say so.
+	 *
+	 * A gesture has no button to light up under the finger that made it, and the
+	 * palette can easily be outside the user's eyeline on a tablet — so a gesture
+	 * that worked and one that was never recognised look identical without this.
+	 */
+	private toggleByGesture(tool: ToolKind): void {
+		this.toggleTool(tool);
+		new Notice(TOOL_NAMES[this.toolState.active] ?? this.toolState.active, 900);
 	}
 
 	selectTool(tool: ToolKind): void {

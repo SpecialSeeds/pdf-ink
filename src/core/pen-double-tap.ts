@@ -12,17 +12,24 @@
  * must land in nearly the same place in quick succession.
  */
 
-/** Longer than this and the pen was drawing, not tapping. */
-export const PEN_TAP_MAX_MS = 200;
+/**
+ * Longer than this and the pen was drawing, not tapping.
+ *
+ * The thresholds below are measured rather than guessed: a device log showed a
+ * deliberate tap lasting 29ms and straying 2px, and another lasting 59ms and
+ * straying 15px. A tip skids on glass, so an allowance of a few pixels rejected
+ * taps that were plainly taps.
+ */
+export const PEN_TAP_MAX_MS = 250;
 
 /** A tap that travelled further than this was a mark, however short. */
-export const PEN_TAP_MAX_TRAVEL_PX = 8;
+export const PEN_TAP_MAX_TRAVEL_PX = 20;
 
 /** The second tap has to follow this quickly. */
-export const PEN_DOUBLE_TAP_GAP_MS = 320;
+export const PEN_DOUBLE_TAP_GAP_MS = 450;
 
 /** And land this close, so two marks in different places are never a gesture. */
-export const PEN_DOUBLE_TAP_MAX_DISTANCE_PX = 32;
+export const PEN_DOUBLE_TAP_MAX_DISTANCE_PX = 48;
 
 export interface PenTap {
 	/** Screen position of the tap, in CSS px. */
@@ -43,6 +50,21 @@ export function isTap(tap: PenTap): boolean {
 	);
 }
 
+/**
+ * What became of a stroke offered to the recogniser.
+ *
+ * Reported rather than reduced to a boolean so the diagnostics overlay can say
+ * which threshold a gesture missed — "nothing happened" is not a bug report.
+ */
+export type PenTapResult =
+	| { readonly kind: 'paired' }
+	/** A tap, now waiting for a partner. */
+	| { readonly kind: 'first' }
+	/** Too long or too far to be a tap at all; any pending pair is broken. */
+	| { readonly kind: 'not-a-tap' }
+	| { readonly kind: 'too-late'; readonly elapsedMs: number }
+	| { readonly kind: 'too-far'; readonly distancePx: number };
+
 export class PenDoubleTap {
 	private first: PenTap | null = null;
 
@@ -58,26 +80,30 @@ export class PenDoubleTap {
 	 * taps means they were not a pair, and treating them as one would fire the
 	 * gesture in the middle of writing.
 	 */
-	register(tap: PenTap): boolean {
+	register(tap: PenTap): PenTapResult {
 		if (!isTap(tap)) {
 			this.first = null;
-			return false;
+			return { kind: 'not-a-tap' };
 		}
 		const first = this.first;
 		if (!first) {
 			this.first = tap;
-			return false;
+			return { kind: 'first' };
 		}
-		const elapsed = tap.at - first.at;
-		const distance = Math.hypot(tap.x - first.x, tap.y - first.y);
-		if (elapsed > this.gapMs || distance > this.maxDistancePx) {
-			// Too late or too far to pair, but it is a perfectly good first tap.
+		const elapsedMs = tap.at - first.at;
+		const distancePx = Math.hypot(tap.x - first.x, tap.y - first.y);
+		if (elapsedMs > this.gapMs) {
+			// Too late to pair, but a perfectly good first tap in its own right.
 			this.first = tap;
-			return false;
+			return { kind: 'too-late', elapsedMs };
+		}
+		if (distancePx > this.maxDistancePx) {
+			this.first = tap;
+			return { kind: 'too-far', distancePx };
 		}
 		// Consumed, so a third tap starts a fresh pair rather than firing again.
 		this.first = null;
-		return true;
+		return { kind: 'paired' };
 	}
 
 	reset(): void {
