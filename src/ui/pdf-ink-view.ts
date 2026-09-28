@@ -447,6 +447,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 				scrollToPage: (index) => {
 					list.scrollToPage(index);
 				},
+				documentRuling: () => loaded.ruling,
 			},
 		);
 

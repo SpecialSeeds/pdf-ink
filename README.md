@@ -49,6 +49,18 @@ command palette, or right-click the PDF in the file explorer and choose **Annota
 with ink**. The current tab becomes the ink view. `Cmd`/`Ctrl`-click the menu item to
 open it in a new tab instead; the back button returns the tab to the built-in viewer.
 
+## Creating a PDF
+
+The **Create new PDF** button in the left ribbon makes a fresh PDF and opens it ready
+to write on — a notebook of your own rather than a document to annotate.
+Right-click a folder and choose **New PDF** to make one there, or run **Create new
+PDF** from the command palette.
+
+New PDFs are named `Untitled.pdf`, `Untitled 1.pdf` and so on, and land where
+Obsidian puts new notes. Their page size (Letter or A4) and ruling are set under
+**Creating files** in settings. The ruling is part of the PDF, so it reads the same in
+any viewer, and pages you add to the notebook later take the same ruling.
+
 ## Moving around
 
 The bar along the top carries the same controls as Obsidian's own PDF viewer, in the
@@ -250,6 +262,7 @@ it cannot read it and refuses to save over it.
 - Default **colour** and **width** per tool, and the default text size.
 - Default eraser **mode**, whole-stroke reach and sized radius.
 - Export **mode** and filename **suffix**.
+- Page size and ruling for **new PDFs**.
 - **Tool palette side**, left or right.
 - **Input diagnostics**, for reporting a problem with a pen or tablet.
 

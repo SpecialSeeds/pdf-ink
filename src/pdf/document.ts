@@ -4,7 +4,9 @@ import type {
 	PDFDocumentProxy,
 	PdfJsModule,
 } from '../types/pdfjs';
+import { rulingFromKeywords } from '../core/new-pdf';
 import { pdfPageKey } from '../core/pages';
+import type { PageTemplate } from '../core/templates';
 import type { PageGeometry } from '../types/view';
 
 /** How many page-tree lookups to keep in flight during the sizing sweep. */
@@ -36,6 +38,21 @@ export interface PdfInkDocument {
 	 * the view, which is the only place that knows about both.
 	 */
 	readonly geometry: readonly PageGeometry[];
+	/**
+	 * The ruling this PDF declares for pages inserted into it, when it was made by
+	 * this plugin. Null for any other PDF.
+	 */
+	readonly ruling: PageTemplate | null;
+}
+
+/** Metadata is a nicety: a PDF whose Info dictionary cannot be read has none. */
+async function readRuling(doc: PDFDocumentProxy): Promise<PageTemplate | null> {
+	try {
+		const { info } = await doc.getMetadata();
+		return rulingFromKeywords(info['Keywords']);
+	} catch {
+		return null;
+	}
 }
 
 async function readGeometry(
@@ -90,5 +107,5 @@ export async function openPdfDocument(
 		geometry.push(...(await Promise.all(batch)));
 	}
 
-	return { doc, loadingTask, geometry };
+	return { doc, loadingTask, geometry, ruling: await readRuling(doc) };
 }

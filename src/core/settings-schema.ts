@@ -5,6 +5,8 @@
  */
 
 import { BUFFER_PAGES } from '../constants';
+import { type NewPdfPageSize, isNewPdfPageSize } from './new-pdf';
+import { type PageTemplate, isPageTemplate } from './templates';
 import {
 	COLOURED_TOOLS,
 	type ColouredTool,
@@ -78,6 +80,10 @@ export interface PdfInkSettings {
 	 * leave it alone, so a hand on the glass cannot rescale the page mid-sentence.
 	 */
 	zoomLocked: boolean;
+	/** Page size of a PDF created from the ribbon or a folder's menu. */
+	newPdfPageSize: NewPdfPageSize;
+	/** Ruling of a new PDF, and of pages later inserted into it. */
+	newPdfTemplate: PageTemplate;
 }
 
 /** The edge the tool palette docks to. */
@@ -128,6 +134,8 @@ export const DEFAULT_SETTINGS: PdfInkSettings = {
 	toolbarSide: 'left',
 	openByDefault: true,
 	zoomLocked: false,
+	newPdfPageSize: 'letter',
+	newPdfTemplate: 'lined',
 };
 
 function clampWidth(tool: SizedTool, value: number): number {
@@ -238,6 +246,12 @@ export function mergeSettings(stored: unknown): PdfInkSettings {
 
 	const zoomLocked = raw['zoomLocked'];
 	if (typeof zoomLocked === 'boolean') merged.zoomLocked = zoomLocked;
+
+	const pageSize = raw['newPdfPageSize'];
+	if (isNewPdfPageSize(pageSize)) merged.newPdfPageSize = pageSize;
+
+	const template = raw['newPdfTemplate'];
+	if (isPageTemplate(template)) merged.newPdfTemplate = template;
 
 	return merged;
 }

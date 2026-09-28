@@ -10,7 +10,7 @@ import fontkit from '@pdf-lib/fontkit';
 import { type Item, type ShapeItem, type Stroke, type TextItem, inZOrder } from '../core/items';
 import { type InsertedPage, type PageKey, orderPages } from '../core/pages';
 import { type PathSegment, shapeGeometry } from '../core/shapes';
-import { templateGeometry } from '../core/templates';
+import { type PageTemplate, templateGeometry } from '../core/templates';
 import { outlineToPathData, strokeOutline } from '../core/stroke';
 import { layoutTextLines } from '../core/text-layout';
 import { embeddedFontBytes } from './font';
@@ -191,11 +191,22 @@ function drawItem(
 
 /** The ruling for an inserted page, drawn under whatever is on it. */
 function drawTemplate(page: PDFPage, inserted: InsertedPage): void {
-	const geometry = templateGeometry(
-		inserted.template,
-		inserted.size.width,
-		inserted.size.height,
-	);
+	drawRuling(page, inserted.template, inserted.size.width, inserted.size.height);
+}
+
+/**
+ * Draw a template's ruling onto a page whose MediaBox starts at (0, 0).
+ *
+ * Shared by export and by creating a new PDF, so a ruled page looks the same
+ * whichever way it came to exist.
+ */
+export function drawRuling(
+	page: PDFPage,
+	template: PageTemplate,
+	width: number,
+	height: number,
+): void {
+	const geometry = templateGeometry(template, width, height);
 	const color = toRgb(geometry.color);
 	// Not drawSvgPath: these are page-space primitives with no y-flip to undo, and
 	// an inserted page's MediaBox origin is (0, 0) by construction.

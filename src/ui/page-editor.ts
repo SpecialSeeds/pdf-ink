@@ -30,6 +30,8 @@ export interface PageEditorHost {
 	pdfPageCount(): number;
 	/** Bring a page into view after it is created. */
 	scrollToPage(index: number): void;
+	/** The ruling the document declares for new pages, or null. */
+	documentRuling(): PageTemplate | null;
 }
 
 /**
@@ -166,14 +168,15 @@ export class PageEditor {
 	 * neighbour is an inserted page, and otherwise blank.
 	 *
 	 * An original PDF page has no template to copy, so a page inserted next to one
-	 * starts blank rather than guessing.
+	 * takes the ruling the document declares — a PDF made here names its own — and
+	 * otherwise starts blank rather than guessing.
 	 */
 	private templateFor(at: number): PageTemplate {
 		const geometry = this.host.geometry();
 		for (const geom of [geometry[at - 1], geometry[at]]) {
 			if (geom?.source.kind === 'inserted') return geom.source.page.template;
 		}
-		return 'blank';
+		return this.host.documentRuling() ?? 'blank';
 	}
 
 	private onPointerMove(evt: PointerEvent): void {

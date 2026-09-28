@@ -10,6 +10,7 @@ import {
 	mergeSettings,
 } from './settings';
 import { PdfInkView } from './ui/pdf-ink-view';
+import { createPdf } from './utils/create-pdf';
 import { DefaultPdfViewer } from './utils/default-viewer';
 
 export default class PdfInkPlugin extends Plugin {
@@ -27,6 +28,12 @@ export default class PdfInkPlugin extends Plugin {
 			VIEW_TYPE_PDF_INK,
 			(leaf) => new PdfInkView(leaf, this),
 		);
+
+		// Like a drawing plugin's "new drawing": one click from the sidebar ribbon
+		// to a fresh page to write on.
+		this.addRibbonIcon('file-plus-2', 'Create new PDF', () => {
+			void createPdf(this.app, this.settings);
+		});
 
 		registerCommands(this);
 		registerFileMenu(this);

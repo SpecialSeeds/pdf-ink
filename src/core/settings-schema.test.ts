@@ -262,3 +262,22 @@ describe('zoomLocked', () => {
 		}
 	});
 });
+
+describe('new PDF settings', () => {
+	it('default to lined Letter', () => {
+		expect(mergeSettings({}).newPdfPageSize).toBe('letter');
+		expect(mergeSettings({}).newPdfTemplate).toBe('lined');
+	});
+
+	it('keep a stored choice', () => {
+		const merged = mergeSettings({ newPdfPageSize: 'a4', newPdfTemplate: 'dot' });
+		expect(merged.newPdfPageSize).toBe('a4');
+		expect(merged.newPdfTemplate).toBe('dot');
+	});
+
+	it('ignore anything unknown', () => {
+		const merged = mergeSettings({ newPdfPageSize: 'legal', newPdfTemplate: 'wavy' });
+		expect(merged.newPdfPageSize).toBe('letter');
+		expect(merged.newPdfTemplate).toBe('lined');
+	});
+});
