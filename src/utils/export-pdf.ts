@@ -3,20 +3,7 @@ import type { ExportMode } from '../core/settings-schema';
 import { confirm } from '../ui/confirm-modal';
 import { parseInkData, sidecarPathFor } from '../core/ink-serialization';
 import { exportAnnotatedPdf } from '../pdf/export';
-
-/**
- * `paper.pdf` becomes `paper (annotated).pdf`, beside the original.
- *
- * The suffix goes before the extension so the result is still a `.pdf`, and an
- * empty suffix is refused because it would export over the source.
- */
-export function exportPathFor(pdfPath: string, suffix: string): string {
-	const safe = suffix.trim().length > 0 ? suffix : ' (annotated)';
-	const dot = pdfPath.lastIndexOf('.');
-	const stem = dot > 0 ? pdfPath.slice(0, dot) : pdfPath;
-	const extension = dot > 0 ? pdfPath.slice(dot) : '.pdf';
-	return `${stem}${safe}${extension}`;
-}
+import { exportPathFor, parentFolder } from '../core/export-path';
 
 export interface ExportSettings {
 	readonly suffix: string;
@@ -73,8 +60,15 @@ export async function exportAnnotatedCopy(
 			flattened.byteOffset,
 			flattened.byteOffset + flattened.byteLength,
 		) as ArrayBuffer;
-		if (existing) await app.vault.modifyBinary(existing, buffer);
-		else await app.vault.createBinary(target, buffer);
+		if (existing) {
+			await app.vault.modifyBinary(existing, buffer);
+		} else {
+			const folder = parentFolder(target);
+			if (folder && !app.vault.getFolderByPath(folder)) {
+				await app.vault.createFolder(folder);
+			}
+			await app.vault.createBinary(target, buffer);
+		}
 
 		new Notice(`Exported to ${target}`);
 	} catch (err) {
