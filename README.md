@@ -178,8 +178,10 @@ re-fits when the pane is resized.
 ## Exporting
 
 Press the export button at the end of the top bar, or run **PDF ink: Export
-annotated PDF**. Anything you have just drawn is saved first, so it is included. The result is written beside the original with a
-configurable suffix, and you are asked before an earlier export is replaced. The source
+annotated PDF**. Anything you have just drawn is saved first, so it is included. The
+result goes into an **`annotated`** folder beside the original, created the first time,
+with a configurable suffix on the name. You are asked before an earlier export is
+replaced. The source
 PDF is only ever read.
 
 Two modes, in settings:
