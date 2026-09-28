@@ -62,6 +62,14 @@ export class SelectionOverlay {
 		return target.closest('.pdf-ink-selection') !== null;
 	}
 
+	/** Whether an event landed on the context bar's buttons. */
+	isBarTarget(target: EventTarget | null): boolean {
+		return (
+			target instanceof Element &&
+			target.closest('.pdf-ink-selection-bar') !== null
+		);
+	}
+
 	/** The handle an event landed on, or null when it is not a drag target. */
 	handleFor(target: EventTarget | null): SelectionHandle | null {
 		if (!(target instanceof Element)) return null;

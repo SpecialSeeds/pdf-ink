@@ -38,9 +38,9 @@ import { attachZoomGestures } from './zoom-gestures';
 /**
  * A PDF viewer with an ink layer stacked over every page.
  *
- * Registered with `registerView` only, never `registerExtensions`: the core PDF
- * viewer stays the default handler for `.pdf` and this view is reached solely
- * through its command, its file-menu item, or a restored workspace.
+ * By default it is the handler for `.pdf` (see DefaultPdfViewer), and with that
+ * setting off it is reached through its command, its file-menu item, or a
+ * restored workspace.
  */
 export class PdfInkView extends FileView implements ZoomHost {
 	scrollEl!: HTMLElement;
@@ -120,10 +120,9 @@ export class PdfInkView extends FileView implements ZoomHost {
 	}
 
 	/**
-	 * Not dead code despite extension routing never reaching this view: Obsidian
-	 * consults it when putting a file into an existing leaf of this type, such as
-	 * back/forward navigation. Returning false would make the leaf silently swap
-	 * itself back to another view type.
+	 * Obsidian consults this when putting a file into an existing leaf of this
+	 * type, such as back/forward navigation, even when `.pdf` is routed elsewhere.
+	 * Returning false would make the leaf silently swap itself to another view.
 	 */
 	override canAcceptExtension(extension: string): boolean {
 		return extension.toLowerCase() === 'pdf';
@@ -199,6 +198,9 @@ export class PdfInkView extends FileView implements ZoomHost {
 			fitPage: () => {
 				this.zoom.fitPage();
 			},
+			toggleZoomLock: () => {
+				this.toggleZoomLock();
+			},
 			goToPage: (pageNumber) => {
 				this.goToPage(pageNumber);
 			},
@@ -229,6 +231,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 			},
 		);
 		this.zoom = new ZoomController(this, this);
+		this.applyZoomLock();
 		attachZoomGestures(this, this.scrollEl, this.zoom);
 
 		this.dprWatcher = new DprWatcher(this, this.containerEl, (dpr) => {
@@ -322,7 +325,22 @@ export class PdfInkView extends FileView implements ZoomHost {
 	refreshSettings(): void {
 		if (!this.ready) return;
 		this.diagnostics.setEnabled(this.host.settings.inputDiagnostics);
+		this.applyZoomLock();
 		this.ink?.applySettings();
+	}
+
+	/** Lock or unlock the zoom, in every open ink view. */
+	toggleZoomLock(): void {
+		this.host.settings.zoomLocked = !this.host.settings.zoomLocked;
+		// Saving refreshes every open view, this one included.
+		void this.host.saveSettings();
+		new Notice(this.host.settings.zoomLocked ? 'Zoom locked' : 'Zoom unlocked', 900);
+	}
+
+	private applyZoomLock(): void {
+		const locked = this.host.settings.zoomLocked;
+		this.zoom.setLocked(locked);
+		this.toolbar.setZoomLocked(locked);
 	}
 
 	/** Move the tool palette to the other edge. */

@@ -1,6 +1,9 @@
 import type { Plugin } from 'obsidian';
 import { PDF_INK_ICON } from '../constants';
-import { openInInkViewSafely } from '../utils/open-ink-view';
+import {
+	openInInkViewSafely,
+	openInPlainViewSafely,
+} from '../utils/open-ink-view';
 import type { PdfInkHost } from '../settings';
 import { PdfInkView } from '../ui/pdf-ink-view';
 import { exportAnnotatedCopy } from '../utils/export-pdf';
@@ -21,6 +24,24 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 			if (target.alreadyInk) return false;
 			if (checking) return true;
 			openInInkViewSafely(plugin.app, target.file, target.leaf);
+			return true;
+		},
+	});
+
+	plugin.addCommand({
+		id: 'open-in-plain-viewer',
+		name: "Open current PDF in Obsidian's viewer",
+		icon: 'file-text',
+		checkCallback: (checking: boolean): boolean => {
+			const target = resolvePdfTarget(plugin.app);
+			if (!target?.alreadyInk) return false;
+			if (checking) return true;
+			openInPlainViewSafely(
+				plugin.app,
+				target.file,
+				target.leaf,
+				plugin.plainPdfViewType,
+			);
 			return true;
 		},
 	});
@@ -56,7 +77,8 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 		id: 'toggle-eraser-mode',
 		name: 'Toggle eraser mode',
 		icon: 'eraser',
-		// Also Mod+Shift+E while the ink view has focus, via the view's Scope.
+		// No hotkey, here or in the view's Scope: an eraser key is too easy to hit
+		// by accident mid-page. Users who want one can bind it.
 		checkCallback: (checking: boolean): boolean => {
 			const view = plugin.app.workspace.getActiveViewOfType(PdfInkView);
 			if (!view) return false;
@@ -134,6 +156,18 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 			},
 		});
 	}
+
+	plugin.addCommand({
+		id: 'toggle-zoom-lock',
+		name: 'Toggle zoom lock',
+		icon: 'lock',
+		checkCallback: (checking: boolean): boolean => {
+			const view = plugin.app.workspace.getActiveViewOfType(PdfInkView);
+			if (!view) return false;
+			if (!checking) view.toggleZoomLock();
+			return true;
+		},
+	});
 
 	plugin.addCommand({
 		id: 'flip-toolbar-side',

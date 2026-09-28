@@ -59,11 +59,23 @@ export class ZoomController {
 	private frame = 0;
 	private settleTimer = 0;
 	private pinch: Pinch | null = null;
+	private locked = false;
 
 	constructor(
 		private readonly component: Component,
 		private readonly host: ZoomHost,
 	) {}
+
+	/** Whether the user has locked the zoom. Resizing still re-fits a fit mode. */
+	get isLocked(): boolean {
+		return this.locked;
+	}
+
+	setLocked(locked: boolean): void {
+		this.locked = locked;
+		// A gesture in flight when the lock lands is settled where it is.
+		if (locked && this.anchor) this.commit();
+	}
 
 	getZoom(): number {
 		return this.zoom;
@@ -87,18 +99,22 @@ export class ZoomController {
 	}
 
 	zoomIn(): void {
+		if (this.locked) return;
 		this.setZoom(nextZoom(this.zoom), { kind: 'fixed', zoom: 0 });
 	}
 
 	zoomOut(): void {
+		if (this.locked) return;
 		this.setZoom(prevZoom(this.zoom), { kind: 'fixed', zoom: 0 });
 	}
 
 	fitWidth(): void {
+		if (this.locked) return;
 		this.setZoom(this.computeFitWidth(), { kind: 'fit-width' });
 	}
 
 	fitPage(): void {
+		if (this.locked) return;
 		this.setZoom(this.computeFitPage(), { kind: 'fit-page' });
 	}
 
@@ -207,7 +223,7 @@ export class ZoomController {
 	}
 
 	beginGesture(clientX: number, clientY: number): void {
-		if (this.anchor) return;
+		if (this.anchor || this.locked) return;
 		this.anchor = this.captureAnchor(clientX, clientY);
 		this.host.pagesEl.addClass('is-zooming');
 	}
@@ -220,6 +236,7 @@ export class ZoomController {
 	 * what makes the anchor formula exact rather than approximate.
 	 */
 	preview(zoom: number): void {
+		if (this.locked) return;
 		this.pending = clampZoom(zoom);
 		if (this.frame !== 0) return;
 		this.frame = this.host.scrollEl.win.requestAnimationFrame(() => {

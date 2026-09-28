@@ -1,4 +1,4 @@
-/** View type id. Registered with `registerView`, never `registerExtensions`. */
+/** View type id. Takes over `.pdf` only through DefaultPdfViewer. */
 export const VIEW_TYPE_PDF_INK = 'pdf-ink-view';
 
 export const PDF_INK_ICON = 'pen-tool';
