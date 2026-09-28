@@ -29,6 +29,11 @@
 	gap: var(--size-4-1);
 }
 
+/* Page and export actions sit at the far end, apart from navigation and zoom. */
+.pdf-ink-toolbar-actions {
+	margin-left: auto;
+}
+
 .pdf-ink-toolbar-text {
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);

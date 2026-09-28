@@ -11,6 +11,11 @@ export interface ToolbarCallbacks {
 	fitPage(): void;
 	toggleZoomLock(): void;
 	goToPage(pageNumber: number): void;
+	insertPageAbove(): void;
+	insertPageBelow(): void;
+	/** Open the page menu, anchored under the button at this point. */
+	pageOptions(at: { x: number; y: number }): void;
+	exportPdf(): void;
 }
 
 /**
@@ -20,6 +25,9 @@ export interface ToolbarCallbacks {
  * viewer — someone who opens a PDF for annotation should not have to relearn how
  * to move around it. The ink tools live in their own floating palette rather than
  * here, so the two sets never compete for width on a tablet.
+ *
+ * After those, the page and export actions — otherwise reachable only from the
+ * command palette on a tablet, which has no hover "+" and no right-click.
  */
 export class PdfInkToolbar {
 	private readonly sidebarButtonEl: HTMLElement;
@@ -130,6 +138,47 @@ export class PdfInkToolbar {
 		);
 
 		this.zoomButtonEls.push(this.fitWidthButtonEl, this.fitPageButtonEl);
+
+		const actionsGroupEl = toolbarEl.createDiv({
+			cls: 'pdf-ink-toolbar-group pdf-ink-toolbar-actions',
+		});
+		this.addButton(
+			actionsGroupEl,
+			component,
+			'arrow-up-to-line',
+			'Insert page above',
+			() => {
+				callbacks.insertPageAbove();
+			},
+		);
+		this.addButton(
+			actionsGroupEl,
+			component,
+			'arrow-down-to-line',
+			'Insert page below',
+			() => {
+				callbacks.insertPageBelow();
+			},
+		);
+		const pageOptionsEl = this.addButton(
+			actionsGroupEl,
+			component,
+			'file-cog',
+			'Page options',
+			() => {
+				const box = pageOptionsEl.getBoundingClientRect();
+				callbacks.pageOptions({ x: box.left, y: box.bottom });
+			},
+		);
+		this.addButton(
+			actionsGroupEl,
+			component,
+			'file-down',
+			'Export annotated PDF',
+			() => {
+				callbacks.exportPdf();
+			},
+		);
 
 		const submitPage = (): void => {
 			const value = Number.parseInt(this.pageInputEl.value, 10);
