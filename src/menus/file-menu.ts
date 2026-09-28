@@ -1,6 +1,10 @@
 import { Keymap, type Plugin, TFile } from 'obsidian';
-import { PDF_INK_ICON } from '../constants';
-import { openInInkViewSafely } from '../utils/open-ink-view';
+import { PDF_INK_ICON, VIEW_TYPE_PDF_INK } from '../constants';
+import type { PdfInkHost } from '../settings';
+import {
+	openInInkViewSafely,
+	openInPlainViewSafely,
+} from '../utils/open-ink-view';
 
 /**
  * Add an annotate entry to the context menu of any `.pdf`.
@@ -9,7 +13,7 @@ import { openInInkViewSafely } from '../utils/open-ink-view';
  * are exactly the sources that pass a `leaf` — so this one handler covers the
  * core PDF viewer's own menu, with the right leaf, for free.
  */
-export function registerFileMenu(plugin: Plugin): void {
+export function registerFileMenu(plugin: Plugin & PdfInkHost): void {
 	plugin.registerEvent(
 		plugin.app.workspace.on('file-menu', (menu, file, _source, leaf) => {
 			// `file` is a TAbstractFile: narrow it, never cast. `extension` is
@@ -37,6 +41,25 @@ export function registerFileMenu(plugin: Plugin): void {
 						openInInkViewSafely(plugin.app, file, target);
 					}),
 			);
+
+			// From an ink tab's own menu, offer the way back to the plain viewer —
+			// the only one besides the command once PDFs open here by default.
+			if (leaf?.view.getViewType() === VIEW_TYPE_PDF_INK) {
+				menu.addItem((item) =>
+					item
+						.setTitle("Open in Obsidian's viewer")
+						.setIcon('file-text')
+						.setSection('open')
+						.onClick(() => {
+							openInPlainViewSafely(
+								plugin.app,
+								file,
+								leaf,
+								plugin.plainPdfViewType,
+							);
+						}),
+				);
+			}
 		}),
 	);
 }

@@ -23,6 +23,8 @@ export {
 export interface PdfInkHost {
 	settings: PdfInkSettings;
 	saveSettings(): Promise<void>;
+	/** The view type that shows a PDF without ink, for leaving the ink view. */
+	readonly plainPdfViewType: string;
 }
 
 const TOOL_LABELS: Record<string, string> = {
@@ -58,6 +60,20 @@ export class PdfInkSettingTab extends PluginSettingTab {
 	private addViewingSection(): void {
 		const { containerEl } = this;
 		new Setting(containerEl).setName('Viewing').setHeading();
+
+		new Setting(containerEl)
+			.setName('Use as the default PDF viewer')
+			.setDesc(
+				"Open every PDF in the ink view instead of Obsidian's own viewer. Turn this off to go back to the built-in viewer, and open the ink view per file from the command or the file menu.",
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.openByDefault)
+					.onChange((value) => {
+						this.plugin.settings.openByDefault = value;
+						this.save();
+					}),
+			);
 
 		new Setting(containerEl)
 			.setName('Default zoom')

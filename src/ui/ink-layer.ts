@@ -1,11 +1,6 @@
 import type { Vec2 } from 'perfect-freehand';
 import type { Component } from 'obsidian';
-import {
-	DEFAULT_PRESSURE,
-	clientToCanvasPoint,
-	normalizePressure,
-	type RectLike,
-} from '../core/coords';
+import { clientToCanvasPoint, type RectLike } from '../core/coords';
 import type { ItemRef } from '../core/history';
 import { MultiTouchTap, type TapPoint } from '../core/multitouch-tap';
 import type { PageKey } from '../core/pages';
@@ -37,6 +32,13 @@ import {
 	selectByPoint,
 	selectionBounds,
 } from '../core/lasso';
+import {
+	clampPoint,
+	clipStrokeToPage,
+	fitBoxFromAnchor,
+	pageBounds,
+	shiftInside,
+} from '../core/page-bounds';
 import { constrainShapeBox } from '../core/shapes';
 import { textHeightFor } from '../core/text-layout';
 import {
@@ -236,6 +238,22 @@ export class InkLayer {
 	private gesturePointerType: string | null = null;
 	private readonly tap = new MultiTouchTap();
 	private active: ActiveStroke | null = null;
+	/**
+	 * Set while a pen stroke is being carried on touch events after WebKit sent a
+	 * pointercancel for it. The timer commits the stroke if the touch stream goes
+	 * quiet too, so it can never be left hanging.
+	 */
+	private strokeOnTouch: number | null = null;
+	/**
+	 * Pages with a repaint queued for the next frame.
+	 *
+	 * A pencil reports 120–240 moves a second, and each repaint clears and redraws
+	 * two page-sized canvases. Painting per event did that several times a frame
+	 * for nothing the eye could see, and on a tablet it was the lag. Moves only
+	 * queue; the frame paints each dirty page once.
+	 */
+	private readonly dirty = new Set<PageRecord>();
+	private frame = 0;
 	private erasing: ActiveErase | null = null;
 	private shaping: ActiveShape | null = null;
 	private sizedErase: ActiveSizedErase | null = null;
@@ -301,6 +319,18 @@ export class InkLayer {
 	clearSelection(): void {
 		this.options.setSelection([]);
 		this.overlay.hide();
+	}
+
+	/** Abandon a loop or selection drag in flight, and drop the selection. */
+	cancelSelection(): void {
+		if (this.selectionDrag) this.finishSelectionDrag(false);
+		const lasso = this.lasso;
+		if (lasso) {
+			this.lasso = null;
+			this.releaseCapture(lasso.captureEl, lasso.pointerId);
+			this.paint(lasso.record);
+		}
+		if (this.options.selection().length > 0) this.clearSelection();
 	}
 
 	attach(): void {
@@ -387,9 +417,16 @@ export class InkLayer {
 				// Refused on every move as well: a scroll that has not started yet can
 				// still be started by a later move in the same gesture.
 				if (this.claimsTouch(evt)) evt.preventDefault();
+				this.followStylusTouch(evt, false);
 			},
 			{ passive: false },
 		);
+		this.component.registerDomEvent(this.pagesEl, 'touchend', (evt) => {
+			this.followStylusTouch(evt, true);
+		});
+		this.component.registerDomEvent(this.pagesEl, 'touchcancel', (evt) => {
+			this.followStylusTouch(evt, true);
+		});
 
 		/*
 		 * Tap detection listens on the whole scrolling area, not just the pages.
@@ -428,6 +465,9 @@ export class InkLayer {
 
 		this.component.register(() => {
 			this.cancelActive();
+			if (this.frame !== 0) this.pagesEl.win.cancelAnimationFrame(this.frame);
+			this.frame = 0;
+			this.dirty.clear();
 		});
 	}
 
@@ -511,6 +551,12 @@ export class InkLayer {
 	 * scroll, so there is nothing left to claim.
 	 */
 	private claimsTouch(evt: TouchEvent): boolean {
+		/*
+		 * A tap on the selection's buttons is never ours. Refusing a touch cancels
+		 * the click WebKit would have made from it, so claiming a pencil tap here
+		 * meant Delete, Duplicate and the rest silently did nothing.
+		 */
+		if (this.overlay.isBarTarget(evt.target)) return false;
 		for (const touch of Array.from(evt.changedTouches)) {
 			if (isStylusTouch(touch)) return true;
 		}
@@ -611,18 +657,10 @@ export class InkLayer {
 		}
 		// Left button only; middle and right are for panning and context menus.
 		if (evt.pointerType === 'mouse' && evt.button !== 0) return;
+		// A pen landing outranks whatever else is in flight. See yieldToPen.
+		if (evt.pointerType === 'pen') this.yieldToPen(evt.pointerId);
 		// A second pointer mid-gesture is a palm or a pinch.
-		if (
-			this.active ||
-			this.erasing ||
-			this.shaping ||
-			this.sizedErase ||
-			this.lasso ||
-			this.selectionDrag ||
-			this.textDrag
-		) {
-			return;
-		}
+		if (this.hasActiveGesture) return;
 
 		/*
 		 * A press anywhere off an open editor just dismisses it. Without this, the
@@ -771,9 +809,13 @@ export class InkLayer {
 			evt.preventDefault();
 			const rect = drag.record.inkCanvasEl.getBoundingClientRect();
 			const [x, y] = this.toPdf(evt, drag.record, rect);
-			drag.transform = selectionTransformFor(drag, x, y, evt.shiftKey);
+			drag.transform = keepOnPage(
+				selectionTransformFor(drag, x, y, evt.shiftKey),
+				drag.bounds,
+				boundsOf(drag.record),
+			);
 			this.overlay.show(drag.record, transformBounds(drag.bounds, drag.transform));
-			this.paint(drag.record);
+			this.schedulePaint(drag.record);
 			return;
 		}
 
@@ -781,7 +823,8 @@ export class InkLayer {
 		if (textDrag && evt.pointerId === textDrag.pointerId) {
 			evt.preventDefault();
 			const rect = textDrag.record.inkCanvasEl.getBoundingClientRect();
-			textDrag.current = this.toPdf(evt, textDrag.record, rect);
+			const [x, y] = this.toPdf(evt, textDrag.record, rect);
+			textDrag.current = clampPoint(boundsOf(textDrag.record), x, y);
 			return;
 		}
 
@@ -802,7 +845,7 @@ export class InkLayer {
 					),
 				);
 			}
-			this.paint(lasso.record);
+			this.schedulePaint(lasso.record);
 			return;
 		}
 
@@ -843,9 +886,14 @@ export class InkLayer {
 			// constraint; the triangle's lock applies either way.
 			shaping.item = {
 				...shaping.item,
-				box: constrainShapeBox(shaping.settings.kind, raw, evt.shiftKey),
+				// Constrained first, then shrunk as a whole, so a square or a snapped
+				// line keeps its shape when it reaches the edge of the page.
+				box: fitBoxFromAnchor(
+					constrainShapeBox(shaping.settings.kind, raw, evt.shiftKey),
+					boundsOf(shaping.record),
+				),
 			};
-			this.paint(shaping.record);
+			this.schedulePaint(shaping.record);
 			return;
 		}
 
@@ -857,7 +905,7 @@ export class InkLayer {
 		for (const sample of coalescedEvents(evt)) {
 			this.addSample(sample, rect);
 		}
-		this.paint(active.record);
+		this.schedulePaint(active.record);
 	}
 
 	private onPointerUp(evt: PointerEvent): void {
@@ -940,7 +988,91 @@ export class InkLayer {
 			this.commitErase();
 			return;
 		}
-		if (this.active?.pointerId === evt.pointerId) this.finishStroke(false);
+		const active = this.active;
+		if (active?.pointerId === evt.pointerId) {
+			/*
+			 * WebKit cancels a pen's pointer when it hands the touch to the scroller —
+			 * typically because a palm was already moving on the glass. The pencil is
+			 * still writing, and its touch events keep coming, so the stroke carries
+			 * on from those rather than vanishing from under the pen.
+			 */
+			if (evt.pointerType === 'pen') this.continueStrokeOnTouch();
+			else this.finishStroke(false);
+		}
+	}
+
+	/**
+	 * Clear the way for a pen that has just landed.
+	 *
+	 * Without this, anything left in flight silently blocked every later stroke:
+	 * a touch gesture (a palm drawing with palm rejection off) held the page, and
+	 * a pen contact whose lift was never delivered held it for good. A pen has one
+	 * tip, so a new pen contact means the previous one is over; it is committed,
+	 * because the user saw it drawn. Anything a touch was doing is abandoned.
+	 */
+	private yieldToPen(pointerId: number): void {
+		if (!this.hasActiveGesture) return;
+		const pen = this.gesturePointerType === 'pen';
+		if (pen && this.activePointerId() === pointerId) return;
+		this.options.traceInput('pen-preempt', {
+			stale: pen ? 'pen' : (this.gesturePointerType ?? 'unknown'),
+		});
+		if (pen && this.active) {
+			this.finishStroke(true);
+			this.gesturePointerType = null;
+		}
+		if (this.hasActiveGesture) this.cancelActive();
+	}
+
+	/** The pointer driving the gesture in flight, if any. */
+	private activePointerId(): number | null {
+		return (
+			this.active?.pointerId ??
+			this.erasing?.pointerId ??
+			this.shaping?.pointerId ??
+			this.sizedErase?.pointerId ??
+			this.lasso?.pointerId ??
+			this.selectionDrag?.pointerId ??
+			this.textDrag?.pointerId ??
+			null
+		);
+	}
+
+	/**
+	 * Keep the active pen stroke alive on touch events after a pointercancel, or
+	 * push back the deadline for committing it.
+	 */
+	private continueStrokeOnTouch(): void {
+		if (this.strokeOnTouch !== null) window.clearTimeout(this.strokeOnTouch);
+		this.strokeOnTouch = window.setTimeout(() => {
+			this.strokeOnTouch = null;
+			this.options.traceInput('stroke-on-touch', { outcome: 'quiet' });
+			this.finishStroke(true);
+		}, TOUCH_FOLLOW_QUIET_MS);
+	}
+
+	/** Feed a stylus touch into a stroke that lost its pointer. */
+	private followStylusTouch(evt: TouchEvent, ended: boolean): void {
+		const active = this.active;
+		if (this.strokeOnTouch === null || !active) return;
+		const touch = Array.from(evt.changedTouches).find(isStylusTouch);
+		if (!touch) return;
+		if (evt.cancelable) evt.preventDefault();
+		const rect = active.record.inkCanvasEl.getBoundingClientRect();
+		this.addSample(
+			{
+				clientX: touch.clientX,
+				clientY: touch.clientY,
+			},
+			rect,
+		);
+		if (ended) {
+			this.options.traceInput('stroke-on-touch', { outcome: 'lifted' });
+			this.finishStroke(true);
+			return;
+		}
+		this.continueStrokeOnTouch();
+		this.schedulePaint(active.record);
 	}
 
 	private eraseAt(evt: PointerEvent, rect: RectLike): void {
@@ -969,7 +1101,7 @@ export class InkLayer {
 				hitAny = true;
 			}
 		}
-		if (hitAny) this.paint(record);
+		if (hitAny) this.schedulePaint(record);
 	}
 
 	private commitErase(): void {
@@ -1045,8 +1177,16 @@ export class InkLayer {
 		const height = dragged
 			? Math.abs(y - drag.anchorY)
 			: textHeightFor(1, settings.fontSize);
-		const left = dragged ? Math.min(drag.anchorX, x) : drag.anchorX;
-		const top = dragged ? Math.max(drag.anchorY, y) : drag.anchorY;
+		const page = boundsOf(drag.record);
+		// A tap's default box is kept on the page by sliding it, not by letting
+		// it hang over the edge.
+		const fitWidth = Math.min(width, page.maxX - page.minX);
+		const left = dragged
+			? Math.min(drag.anchorX, x)
+			: Math.max(page.minX, Math.min(drag.anchorX, page.maxX - fitWidth));
+		const top = dragged
+			? Math.max(drag.anchorY, y)
+			: Math.min(page.maxY, Math.max(drag.anchorY, page.minY + height));
 
 		const item: TextItem = {
 			type: 'text',
@@ -1057,7 +1197,7 @@ export class InkLayer {
 			z: 0,
 			updatedAt: Date.now(),
 			// Stored with a positive height measured down from the tap point.
-			box: { x: left, y: top - height, w: width, h: height },
+			box: { x: left, y: top - height, w: fitWidth, h: height },
 			text: '',
 			fontSize: settings.fontSize,
 		};
@@ -1128,7 +1268,7 @@ export class InkLayer {
 
 		if (!sized.session.sample(x, y, candidates)) return;
 		sized.preview = sized.session.preview(createStrokeId);
-		this.paint(sized.record);
+		this.schedulePaint(sized.record);
 	}
 
 	private finishSizedErase(commit: boolean): void {
@@ -1217,15 +1357,51 @@ export class InkLayer {
 	}
 
 	private finishStroke(commit: boolean): void {
+		if (this.strokeOnTouch !== null) {
+			window.clearTimeout(this.strokeOnTouch);
+			this.strokeOnTouch = null;
+		}
 		const active = this.active;
 		if (!active) return;
 		this.active = null;
 		this.releaseCapture(active.captureEl, active.pointerId);
 
 		if (commit && active.stroke.points.length > 0) {
-			this.store.addItem(active.record.geom.key, active.stroke);
+			this.commitClipped(active.record, active.stroke);
 		}
 		this.paint(active.record);
+	}
+
+	/**
+	 * Store a finished stroke, cut to the page.
+	 *
+	 * Capture keeps samples coming when the pen runs off the edge, so a stroke can
+	 * carry points that are not on the page at all. Only the parts on the page are
+	 * kept — as separate strokes when it left and came back, in one undo step.
+	 */
+	private commitClipped(record: PageRecord, stroke: Stroke): void {
+		const pieces = clipStrokeToPage(stroke.points, boundsOf(record));
+		const [only] = pieces;
+		if (pieces.length === 1 && only && !only.cutStart && !only.cutEnd) {
+			this.store.addItem(record.geom.key, stroke);
+			return;
+		}
+		if (pieces.length === 0) return;
+		const pageKey = record.geom.key;
+		const base = this.store.itemsFor(pageKey).length;
+		const added: ItemRef[] = pieces.map((piece, offset) => ({
+			pageKey,
+			index: base + offset,
+			item: {
+				...stroke,
+				// The first piece keeps the stroke's own id.
+				id: offset === 0 ? stroke.id : createStrokeId(),
+				points: piece.points,
+				cutStart: piece.cutStart,
+				cutEnd: piece.cutEnd,
+			},
+		}));
+		this.store.replaceItems([], added);
 	}
 
 	private takeCapture(el: HTMLElement, pointerId: number): void {
@@ -1241,7 +1417,7 @@ export class InkLayer {
 		if (el.hasPointerCapture(pointerId)) el.releasePointerCapture(pointerId);
 	}
 
-	private addSample(evt: PointerEvent, rect: RectLike): void {
+	private addSample(evt: PenSample, rect: RectLike): void {
 		const active = this.active;
 		if (!active) return;
 		const { record } = active;
@@ -1253,18 +1429,7 @@ export class InkLayer {
 			record.cssWidth,
 			record.cssHeight,
 		);
-		// A highlighter is a flat chisel: its width must not track pressure.
-		const previous = active.stroke.points[active.stroke.points.length - 1];
-		const pressure =
-			active.stroke.tool === 'highlighter'
-				? FLAT_PRESSURE
-				: normalizePressure(
-						evt.pressure,
-						evt.pointerType,
-						// A dropout mid-stroke continues at the last known pressure
-						// rather than jumping to the default and beading the line.
-						previous?.[2] ?? DEFAULT_PRESSURE,
-					);
+		const pressure = FLAT_PRESSURE;
 
 		active.canvasSamples.push([cssX, cssY, pressure]);
 		// Stored in PDF user space, so the stroke is independent of zoom, device
@@ -1273,7 +1438,21 @@ export class InkLayer {
 		active.stroke.points.push([pdfX, pdfY, pressure]);
 	}
 
+	/** Queue a repaint of `record` for the next frame. */
+	private schedulePaint(record: PageRecord): void {
+		this.dirty.add(record);
+		if (this.frame !== 0) return;
+		this.frame = this.pagesEl.win.requestAnimationFrame(() => {
+			this.frame = 0;
+			const records = [...this.dirty];
+			this.dirty.clear();
+			for (const queued of records) this.paint(queued);
+		});
+	}
+
+	/** Paint `record` now, superseding any repaint queued for it. */
 	private paint(record: PageRecord): void {
+		this.dirty.delete(record);
 		const active = this.active;
 		const shaping = this.shaping;
 		const live =
@@ -1327,6 +1506,15 @@ function hiddenItems(
 	}
 	return hidden;
 }
+
+/** What a stroke sample needs, whether it came from a pointer or a touch. */
+type PenSample = Pick<PointerEvent, 'clientX' | 'clientY'>;
+
+/**
+ * How long a stroke carried on touch events waits for the next one before it is
+ * committed as finished. Touches arrive every frame while the pen moves.
+ */
+const TOUCH_FOLLOW_QUIET_MS = 400;
 
 /** How long two taps can be apart and still count as a double tap. */
 const DOUBLE_TAP_MS = 400;
@@ -1436,4 +1624,20 @@ function coalescedEvents(evt: PointerEvent): PointerEvent[] {
 		if (events.length > 0) return events;
 	}
 	return [evt];
+}
+
+/** The page's rectangle in PDF space. */
+function boundsOf(record: PageRecord): Bounds {
+	return pageBounds(record.viewport, record.cssWidth, record.cssHeight);
+}
+
+/** Adjust a selection transform so the selection stays on the page. */
+function keepOnPage(
+	t: SelectionTransform,
+	bounds: Bounds,
+	page: Bounds,
+): SelectionTransform {
+	const [dx, dy] = shiftInside(transformBounds(bounds, t), page);
+	if (dx === 0 && dy === 0) return t;
+	return { ...t, dx: t.dx + dx, dy: t.dy + dy };
 }

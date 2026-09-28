@@ -30,7 +30,9 @@ export function attachZoomGestures(
 			// ctrlKey is what a trackpad pinch emits on desktop; metaKey covers
 			// the habitual cmd+wheel. Anything else is an ordinary scroll.
 			if (!evt.ctrlKey && !evt.metaKey) return;
+			// Still swallowed when locked, or Obsidian would zoom its whole interface.
 			evt.preventDefault();
+			if (zoom.isLocked) return;
 
 			zoom.beginGesture(evt.clientX, evt.clientY);
 			const unit =
@@ -55,7 +57,8 @@ export function attachZoomGestures(
 		scrollEl,
 		'touchstart',
 		(evt) => {
-			if (evt.touches.length !== 2) {
+			// Locked, two fingers are left to the browser, which pans with them.
+			if (evt.touches.length !== 2 || zoom.isLocked) {
 				pinch = null;
 				return;
 			}

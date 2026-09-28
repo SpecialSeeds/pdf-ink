@@ -170,7 +170,11 @@ export class InkController {
 		});
 		this.layer.attach();
 
-		this.toolbar = new InkToolbar(rootEl, component, {
+		// Mounted in the body, below the navigation bar, so the palette's top corner
+		// is the top of the page area rather than the top of the view.
+		const paletteParentEl =
+			rootEl.querySelector<HTMLElement>('.pdf-ink-body') ?? rootEl;
+		this.toolbar = new InkToolbar(paletteParentEl, component, {
 			selectTool: (tool) => {
 				this.selectTool(tool);
 			},
@@ -209,7 +213,8 @@ export class InkController {
 			this.redo();
 			return false;
 		});
-		// Mod+Shift+E rather than Mod+E, which Obsidian already uses.
+		// No eraser key: the eraser is reached from the palette, the two-finger
+		// tap, or a command the user can bind themselves.
 		this.scope.register([], 'Escape', () => {
 			// The editor handles its own Escape; this is for the selection.
 			if (this.selection.length === 0) return;
@@ -217,10 +222,15 @@ export class InkController {
 			this.refresh();
 			return false;
 		});
-		this.scope.register(['Mod', 'Shift'], 'e', () => {
-			this.toggleEraser();
-			return false;
-		});
+		// Delete or Backspace removes the selection — but never while typing, where
+		// they belong to the text box or the page-number field.
+		for (const key of ['Delete', 'Backspace']) {
+			this.scope.register([], key, (evt) => {
+				if (this.selection.length === 0 || isEditable(evt.target)) return;
+				this.deleteSelection();
+				return false;
+			});
+		}
 
 		this.refresh();
 	}
@@ -272,16 +282,26 @@ export class InkController {
 	selectTool(tool: ToolKind): void {
 		// Committing first, so switching tools never loses what was typed.
 		this.textEditor.close(true);
-		this.toolState.active = tool;
+		this.activate(tool);
 		this.refresh();
 	}
 
 	/** Flip between whole-item and sized erasing, selecting the eraser too. */
 	toggleEraser(): void {
 		toggleEraserMode(this.toolState);
-		this.toolState.active = 'eraser';
+		this.activate('eraser');
 		this.persistEraser();
 		this.refresh();
+	}
+
+	/**
+	 * Make `tool` the active one. Leaving the select tool drops the selection and
+	 * any loop being drawn, so the box and its handles do not linger over a page
+	 * the user has gone back to writing on.
+	 */
+	private activate(tool: ToolKind): void {
+		if (tool !== 'lasso') this.layer.cancelSelection();
+		this.toolState.active = tool;
 	}
 
 	/** Store whichever size the active tool's slider just changed. */
@@ -319,7 +339,8 @@ export class InkController {
 	/** Choosing a shape also switches to the shape tool. */
 	selectShape(kind: ShapeKind): void {
 		this.toolState.shape.kind = kind;
-		this.toolState.active = 'shape';
+		this.textEditor.close(true);
+		this.activate('shape');
 		this.refresh();
 	}
 
@@ -520,3 +541,11 @@ export class InkController {
 	}
 }
 
+function isEditable(target: EventTarget | null): boolean {
+	return (
+		target instanceof HTMLElement &&
+		(target.isContentEditable ||
+			target.tagName === 'INPUT' ||
+			target.tagName === 'TEXTAREA')
+	);
+}

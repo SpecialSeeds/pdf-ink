@@ -16,12 +16,15 @@ Works on desktop and on mobile.
 
 ---
 
-## Why a separate view
+## Opening PDFs
 
-This plugin does **not** take over `.pdf` files. Obsidian's built-in viewer stays the
-default and the ink view is opened deliberately, per file. Nothing about your existing
-PDF reading changes, and you can keep the plain viewer open in a tab beside the
-annotated one.
+PDFs open straight into the ink view. Obsidian's built-in viewer is still there:
+**Open in Obsidian's viewer** in a tab's menu, or the **Open current PDF in Obsidian's
+viewer** command, switches the tab back to it.
+
+Prefer the built-in viewer as the default? Turn off **Use as the default PDF viewer**
+in settings and open the ink view per file instead. Disabling the plugin hands PDFs
+back to the built-in viewer too.
 
 ## Install
 
@@ -39,12 +42,12 @@ Requires Obsidian 1.7.2 or later.
 
 ## Getting started
 
-1. Open a PDF.
-2. Run **PDF ink: Annotate current PDF** from the command palette, or right-click the
-   PDF in the file explorer and choose **Annotate with ink**.
+Open a PDF. It opens in the ink view, ready to write on.
 
-The current tab becomes the ink view. `Cmd`/`Ctrl`-click the menu item to open it in a
-new tab instead; the back button returns the tab to the built-in viewer.
+With the default viewer setting off, run **PDF ink: Annotate current PDF** from the
+command palette, or right-click the PDF in the file explorer and choose **Annotate
+with ink**. The current tab becomes the ink view. `Cmd`/`Ctrl`-click the menu item to
+open it in a new tab instead; the back button returns the tab to the built-in viewer.
 
 ## Moving around
 
@@ -62,15 +65,16 @@ the right page even when you have inserted pages above it.
 
 | Tool | What it does |
 |---|---|
-| **Pen** | Pressure-sensitive freehand ink. |
+| **Pen** | Freehand ink at a constant width. |
 | **Highlighter** | Flat, translucent ink that multiplies with the page, so text reads through it. |
 | **Shapes** | Line, arrow, rectangle, ellipse, equilateral triangle, 2D and 3D axes. |
 | **Text** | A resizable text box with wrapping. |
 | **Eraser** | Whole-stroke, or a sized rubber that cuts strokes into fragments. |
 | **Select** | Lasso or click, then move, scale, rotate, recolour, duplicate or reorder. |
 
-The tool palette is a vertical column against one edge of the page, so tools are under
-the hand that is not holding the pen. Put it on the **left** or the **right** in
+The tool palette is a vertical column in the top corner of the page, so tools are under
+the hand that is not holding the pen, and stay put when a group of buttons changes
+height. Put it on the **left** or the **right** in
 settings, or run **Move tool palette to the other side** to flip it.
 
 Colours sit on the palette: four to hand, twelve more behind the chevron, and a native
@@ -80,9 +84,13 @@ in one undoable step. Stroke size is behind the button showing the current value
 
 ### Drawing
 
-A stylus reports real pressure; a mouse or trackpad draws at a constant width.
-Pressure narrows a stroke but never thins it to nothing — a line drawn as lightly as
-the pen can register is still a solid line, not a row of specks.
+Ink stays on the page. A stroke that runs off the edge is cut there, and one that
+leaves and comes back is kept as separate pieces. Shapes and text boxes stop at the
+edge, and a selection cannot be moved, scaled or rotated off it.
+
+Ink is drawn at a constant width with every input — stylus, mouse or finger. Pressure
+is ignored, so a line drawn as lightly as the pen can register is as solid as a firm
+one. Strokes made with earlier versions are drawn and exported the same way.
 
 **Palm rejection** is on by default: once a stylus has been seen, touches scroll the
 document instead of drawing, so a hand resting on the page does no harm. Whether a
@@ -91,7 +99,9 @@ tab rather than only after the pen lands. Turn it off in settings if you have no
 and want every touch to draw.
 
 On iPad, the Apple Pencil draws and never scrolls, while fingers scroll and never
-draw. A hand resting on the page no longer interrupts a stroke.
+draw. A hand resting on the page no longer interrupts a stroke, and if iPadOS hands
+the pencil's touch to the scroller mid-stroke, the stroke carries on rather than
+disappearing.
 
 ### Switching tools without putting the pen down
 
@@ -101,8 +111,10 @@ fingers' spread changing, and from a pan by their centre moving, so neither is
 affected — and finger taps are ignored entirely while the pen is on the page. The
 tool it switched to is named briefly on screen.
 
-The same thing is the **Toggle eraser** command, alongside **Toggle selection tool**,
-if you would rather bind a key.
+The same thing is the **Toggle eraser** command, alongside **Toggle selection tool**.
+Neither has a key by default; bind one in **Settings → Hotkeys** if you want it.
+
+Picking any other tool drops the current selection.
 
 > **The Apple Pencil's own double-tap cannot be used.** Squeezing or double-tapping
 > the barrel is delivered to native code through `UIPencilInteraction`. It never
@@ -146,15 +158,20 @@ never touched. Pages you add live entirely in the sidecar until you export.
 |---|---|
 | `Mod+Z` | Undo |
 | `Mod+Shift+Z` | Redo |
-| `Mod+Shift+E` | Toggle eraser mode (whole-stroke or sized) |
 | `Escape` | Deselect, or commit an open text box |
+| `Delete` / `Backspace` | Delete the selection |
 
 These are scoped to the ink view, so they never shadow Obsidian's own shortcuts
-elsewhere. Every action also has a command, so you can rebind it — including
-**Toggle eraser** and **Toggle selection tool**, which switch to a tool and back to
-whatever you were using.
+elsewhere. There is deliberately no eraser key. Every action also has a command, so
+you can bind one — including **Toggle eraser**, **Toggle eraser mode** and **Toggle
+selection tool**, which switch to a tool and back to whatever you were using.
 
 Zoom with `Ctrl`/`Cmd` and the scroll wheel, a two-finger pinch, or the toolbar.
+
+The **lock** beside the zoom buttons holds the zoom where it is: pinches, scroll-wheel
+zoom and the zoom buttons all leave it alone, and two fingers pan instead. It is
+remembered across tabs, and is also the **Toggle zoom lock** command. A fit mode still
+re-fits when the pane is resized.
 
 ## Exporting
 
@@ -218,6 +235,8 @@ it cannot read it and refuses to save over it.
 
 ## Settings
 
+- Whether the ink view is the **default PDF viewer**.
+- Whether the **zoom is locked**.
 - Default **zoom**, and how many pages to keep rendered either side of the view.
 - **Palm rejection** on or off.
 - Default **colour** and **width** per tool, and the default text size.
@@ -238,7 +257,6 @@ the log into an issue is by far the most useful thing you can send.
 
 ## Limitations
 
-- The ink view is opened explicitly; it is not the default PDF handler.
 - There is no text search yet, and no text selection or copying: the viewer draws
   pages rather than laying out a selectable text layer over them.
 - Undo history does not survive switching tabs, because Obsidian unloads backgrounded

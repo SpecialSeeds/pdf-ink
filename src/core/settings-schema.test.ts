@@ -227,3 +227,38 @@ describe('toolbarSide', () => {
 		}
 	});
 });
+
+describe('openByDefault', () => {
+	it('defaults to on', () => {
+		expect(DEFAULT_SETTINGS.openByDefault).toBe(true);
+		expect(mergeSettings({}).openByDefault).toBe(true);
+	});
+
+	it('keeps a stored choice', () => {
+		expect(mergeSettings({ openByDefault: false }).openByDefault).toBe(false);
+		expect(mergeSettings({ openByDefault: true }).openByDefault).toBe(true);
+	});
+
+	it('ignores anything that is not a boolean', () => {
+		for (const value of ['false', 0, null, {}]) {
+			expect(mergeSettings({ openByDefault: value }).openByDefault).toBe(true);
+		}
+	});
+});
+
+describe('zoomLocked', () => {
+	it('defaults to unlocked', () => {
+		expect(DEFAULT_SETTINGS.zoomLocked).toBe(false);
+		expect(mergeSettings({}).zoomLocked).toBe(false);
+	});
+
+	it('keeps a stored choice', () => {
+		expect(mergeSettings({ zoomLocked: true }).zoomLocked).toBe(true);
+	});
+
+	it('ignores anything that is not a boolean', () => {
+		for (const value of ['true', 1, null]) {
+			expect(mergeSettings({ zoomLocked: value }).zoomLocked).toBe(false);
+		}
+	});
+});

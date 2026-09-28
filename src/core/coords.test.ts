@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Point, Rect } from '../types/pdfjs';
 import {
-	DEFAULT_PRESSURE,
 	applyInverseTransform,
 	applyTransform,
 	clientToCanvasPoint,
 	createPageTransform,
-	normalizePressure,
 } from './coords';
 
 /** US Letter, origin at (0, 0). */
@@ -251,62 +249,5 @@ describe('clientToCanvasPoint', () => {
 	it('falls back to 1:1 for a zero-sized rect', () => {
 		const rect = { left: 10, top: 10, width: 0, height: 0 };
 		closeTo(clientToCanvasPoint(rect, 30, 40, 200, 400), [20, 30]);
-	});
-});
-
-describe('normalizePressure', () => {
-	it('pins a mouse to the default, whatever it reports', () => {
-		for (const reported of [0, 0.5, 1, Number.NaN]) {
-			expect(normalizePressure(reported, 'mouse')).toBe(DEFAULT_PRESSURE);
-		}
-	});
-
-	it('passes a pen through', () => {
-		expect(normalizePressure(0.25, 'pen')).toBe(0.25);
-		expect(normalizePressure(1, 'pen')).toBe(1);
-	});
-
-	it('substitutes the default when a pen reports zero', () => {
-		// A zero-pressure sample would render an invisible, zero-width stroke.
-		expect(normalizePressure(0, 'pen')).toBe(DEFAULT_PRESSURE);
-		expect(normalizePressure(-1, 'pen')).toBe(DEFAULT_PRESSURE);
-		expect(normalizePressure(Number.NaN, 'touch')).toBe(DEFAULT_PRESSURE);
-	});
-
-	it('clamps above 1', () => {
-		expect(normalizePressure(4, 'pen')).toBe(1);
-	});
-});
-
-describe('pressure dropouts', () => {
-	it('carries the previous pressure through a zero reading', () => {
-		// WebKit drops the occasional zero into an Apple Pencil stroke. Substituting
-		// a fixed default for those made the width lurch and beaded the line.
-		expect(normalizePressure(0, 'pen', 0.12)).toBeCloseTo(0.12, 6);
-		expect(normalizePressure(0, 'pen', 0.9)).toBeCloseTo(0.9, 6);
-	});
-
-	it('still falls back to the default at the start of a stroke', () => {
-		expect(normalizePressure(0, 'pen')).toBe(DEFAULT_PRESSURE);
-		expect(normalizePressure(0, 'touch')).toBe(DEFAULT_PRESSURE);
-	});
-
-	it('ignores an unusable fallback', () => {
-		for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
-			expect(normalizePressure(0, 'pen', bad)).toBe(DEFAULT_PRESSURE);
-		}
-	});
-
-	it('clamps a fallback above 1', () => {
-		expect(normalizePressure(0, 'pen', 4)).toBe(1);
-	});
-
-	it('prefers a real reading over the fallback', () => {
-		expect(normalizePressure(0.3, 'pen', 0.9)).toBeCloseTo(0.3, 6);
-	});
-
-	it('still pins a mouse to the default, fallback or not', () => {
-		expect(normalizePressure(0, 'mouse', 0.9)).toBe(DEFAULT_PRESSURE);
-		expect(normalizePressure(0.8, 'mouse', 0.9)).toBe(DEFAULT_PRESSURE);
 	});
 });

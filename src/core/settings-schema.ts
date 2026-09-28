@@ -66,6 +66,18 @@ export interface PdfInkSettings {
 	 * changed without crossing the page or looking away from what is being written.
 	 */
 	toolbarSide: ToolbarSide;
+	/**
+	 * Open PDFs in the ink view rather than Obsidian's own viewer.
+	 *
+	 * The core viewer stays installed and is handed `.pdf` back when this is turned
+	 * off or the plugin is disabled.
+	 */
+	openByDefault: boolean;
+	/**
+	 * Hold the zoom where it is: pinches, Ctrl/Cmd+scroll and the zoom buttons all
+	 * leave it alone, so a hand on the glass cannot rescale the page mid-sentence.
+	 */
+	zoomLocked: boolean;
 }
 
 /** The edge the tool palette docks to. */
@@ -114,6 +126,8 @@ export const DEFAULT_SETTINGS: PdfInkSettings = {
 	penSeen: false,
 	inputDiagnostics: false,
 	toolbarSide: 'left',
+	openByDefault: true,
+	zoomLocked: false,
 };
 
 function clampWidth(tool: SizedTool, value: number): number {
@@ -218,6 +232,12 @@ export function mergeSettings(stored: unknown): PdfInkSettings {
 
 	const side = raw['toolbarSide'];
 	if (side === 'left' || side === 'right') merged.toolbarSide = side;
+
+	const byDefault = raw['openByDefault'];
+	if (typeof byDefault === 'boolean') merged.openByDefault = byDefault;
+
+	const zoomLocked = raw['zoomLocked'];
+	if (typeof zoomLocked === 'boolean') merged.zoomLocked = zoomLocked;
 
 	return merged;
 }

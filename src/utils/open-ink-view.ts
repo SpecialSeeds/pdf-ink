@@ -49,3 +49,24 @@ export function openInInkViewSafely(
 		new Notice('Could not open this PDF for annotation.');
 	});
 }
+
+/**
+ * Swap `leaf` back to a plain PDF viewer for `file`.
+ *
+ * The way out once the ink view opens PDFs by default: without it, the only route
+ * to Obsidian's own viewer would be turning the setting off.
+ */
+export function openInPlainViewSafely(
+	app: App,
+	file: TFile,
+	leaf: WorkspaceLeaf,
+	viewType: string,
+): void {
+	leaf
+		.setViewState({ type: viewType, active: true, state: { file: file.path } })
+		.then(() => app.workspace.revealLeaf(leaf))
+		.catch((err: unknown) => {
+			console.error('pdf-ink: could not open the plain PDF viewer', err);
+			new Notice('Could not open this PDF in the built-in viewer.');
+		});
+}

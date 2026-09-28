@@ -9,6 +9,7 @@ export interface ToolbarCallbacks {
 	zoomIn(): void;
 	fitWidth(): void;
 	fitPage(): void;
+	toggleZoomLock(): void;
 	goToPage(pageNumber: number): void;
 }
 
@@ -27,8 +28,11 @@ export class PdfInkToolbar {
 	private readonly pageTotalEl: HTMLElement;
 	private readonly prevButtonEl: HTMLButtonElement;
 	private readonly nextButtonEl: HTMLButtonElement;
-	private readonly fitWidthButtonEl: HTMLElement;
-	private readonly fitPageButtonEl: HTMLElement;
+	private readonly fitWidthButtonEl: HTMLButtonElement;
+	private readonly fitPageButtonEl: HTMLButtonElement;
+	private readonly zoomLockButtonEl: HTMLButtonElement;
+	/** Every control that changes the zoom, disabled while it is locked. */
+	private readonly zoomButtonEls: HTMLButtonElement[] = [];
 	private pageCount = 0;
 	private currentPage = 1;
 
@@ -81,16 +85,29 @@ export class PdfInkToolbar {
 		});
 
 		const zoomGroupEl = toolbarEl.createDiv({ cls: 'pdf-ink-toolbar-group' });
-		this.addButton(zoomGroupEl, component, 'zoom-out', 'Zoom out', () => {
-			callbacks.zoomOut();
-		});
+		this.zoomButtonEls.push(
+			this.addButton(zoomGroupEl, component, 'zoom-out', 'Zoom out', () => {
+				callbacks.zoomOut();
+			}),
+		);
 		this.zoomLabelEl = zoomGroupEl.createSpan({
 			cls: 'pdf-ink-zoom-label',
 			text: '100%',
 		});
-		this.addButton(zoomGroupEl, component, 'zoom-in', 'Zoom in', () => {
-			callbacks.zoomIn();
-		});
+		this.zoomButtonEls.push(
+			this.addButton(zoomGroupEl, component, 'zoom-in', 'Zoom in', () => {
+				callbacks.zoomIn();
+			}),
+		);
+		this.zoomLockButtonEl = this.addButton(
+			zoomGroupEl,
+			component,
+			'lock-open',
+			'Lock zoom',
+			() => {
+				callbacks.toggleZoomLock();
+			},
+		);
 
 		const fitGroupEl = toolbarEl.createDiv({ cls: 'pdf-ink-toolbar-group' });
 		this.fitWidthButtonEl = this.addButton(
@@ -111,6 +128,8 @@ export class PdfInkToolbar {
 				callbacks.fitPage();
 			},
 		);
+
+		this.zoomButtonEls.push(this.fitWidthButtonEl, this.fitPageButtonEl);
 
 		const submitPage = (): void => {
 			const value = Number.parseInt(this.pageInputEl.value, 10);
@@ -133,6 +152,17 @@ export class PdfInkToolbar {
 		this.zoomLabelEl.setText(percent);
 		this.fitWidthButtonEl.toggleClass('is-active', mode.kind === 'fit-width');
 		this.fitPageButtonEl.toggleClass('is-active', mode.kind === 'fit-page');
+	}
+
+	setZoomLocked(locked: boolean): void {
+		setIcon(this.zoomLockButtonEl, locked ? 'lock' : 'lock-open');
+		this.zoomLockButtonEl.toggleClass('is-active', locked);
+		this.zoomLockButtonEl.setAttribute('aria-pressed', String(locked));
+		this.zoomLockButtonEl.setAttribute(
+			'aria-label',
+			locked ? 'Unlock zoom' : 'Lock zoom',
+		);
+		for (const buttonEl of this.zoomButtonEls) buttonEl.disabled = locked;
 	}
 
 	setPageCount(count: number): void {

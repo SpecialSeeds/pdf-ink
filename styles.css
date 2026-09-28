@@ -1,7 +1,6 @@
 /* ---- pdf-ink annotation view ------------------------------------------- */
 
 .pdf-ink-view {
-	/* The floating tool palette is positioned against this. */
 	position: relative;
 	display: flex;
 	flex-direction: column;
@@ -119,6 +118,9 @@
 
 /* Holds the sidebar and the scroller side by side, under the toolbar. */
 .pdf-ink-body {
+	/* The floating tool palette is positioned against this, so its top corner
+	   sits just under the navigation bar rather than behind it. */
+	position: relative;
 	flex: 1 1 auto;
 	display: flex;
 	min-height: 0;
@@ -391,7 +393,10 @@
  */
 .pdf-ink-floating {
 	position: absolute;
-	top: 50%;
+	/* Pinned to the top corner, not centred on the edge: centred, the column grew
+	   in both directions whenever a group changed height, and every button moved
+	   under the hand. Anchored at the top, only what is below a change moves. */
+	top: var(--size-4-2);
 	left: var(--size-4-2);
 	z-index: 10;
 	display: flex;
@@ -399,11 +404,8 @@
 	align-items: center;
 	gap: var(--size-4-2);
 	padding: var(--size-4-2) var(--size-4-1);
-	/* Centred on the edge rather than pinned to a corner: the middle is where a
-	   hand resting on the bezel already is. */
-	transform: translateY(-50%);
 	width: max-content;
-	max-height: calc(100% - 2 * var(--size-4-4));
+	max-height: calc(100% - 2 * var(--size-4-2));
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-l);
 	background-color: var(--background-secondary);
