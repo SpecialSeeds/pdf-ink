@@ -108,6 +108,8 @@ export interface PDFDocumentProxy {
 	getDestination(id: string): Promise<PDFDestination | null>;
 	/** 0-based index of the page a reference points at. */
 	getPageIndex(ref: PDFRef): Promise<number>;
+	/** The Info dictionary and XMP metadata. Only `info` is read here. */
+	getMetadata(): Promise<{ info: Record<string, unknown> }>;
 	destroy(): Promise<void>;
 }
 

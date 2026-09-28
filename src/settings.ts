@@ -5,6 +5,8 @@ import {
 	SIZED_TOOLS,
 } from './core/settings-schema';
 import { QUICK_COLORS, SIZED_ERASER_RANGE, WIDTH_RANGES } from './core/tools';
+import { PAGE_SIZE_LABELS, isNewPdfPageSize } from './core/new-pdf';
+import { PAGE_TEMPLATES, TEMPLATE_LABELS, isPageTemplate } from './core/templates';
 
 export {
 	type ToolbarSide,
@@ -49,6 +51,7 @@ export class PdfInkSettingTab extends PluginSettingTab {
 		this.addViewingSection();
 		this.addToolSection();
 		this.addEraserSection();
+		this.addNewPdfSection();
 		this.addExportSection();
 		this.addDiagnosticsSection();
 	}
@@ -138,6 +141,45 @@ export class PdfInkSettingTab extends PluginSettingTab {
 						this.save();
 					}),
 			);
+	}
+
+	private addNewPdfSection(): void {
+		const { containerEl } = this;
+		new Setting(containerEl).setName('Creating files').setHeading();
+
+		new Setting(containerEl)
+			.setName('Page size')
+			.setDesc('The size of a PDF made with the ribbon button or a folder\'s new PDF item.')
+			.addDropdown((dropdown) => {
+				for (const size of ['letter', 'a4'] as const) {
+					dropdown.addOption(size, PAGE_SIZE_LABELS[size]);
+				}
+				dropdown
+					.setValue(this.plugin.settings.newPdfPageSize)
+					.onChange((value) => {
+						if (isNewPdfPageSize(value)) {
+							this.plugin.settings.newPdfPageSize = value;
+							this.save();
+						}
+					});
+			});
+
+		new Setting(containerEl)
+			.setName('Ruling')
+			.setDesc('How a new PDF is ruled. Pages you add to it later take the same ruling.')
+			.addDropdown((dropdown) => {
+				for (const template of PAGE_TEMPLATES) {
+					dropdown.addOption(template, TEMPLATE_LABELS[template]);
+				}
+				dropdown
+					.setValue(this.plugin.settings.newPdfTemplate)
+					.onChange((value) => {
+						if (isPageTemplate(value)) {
+							this.plugin.settings.newPdfTemplate = value;
+							this.save();
+						}
+					});
+			});
 	}
 
 	private addDiagnosticsSection(): void {

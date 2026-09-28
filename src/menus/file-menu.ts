@@ -1,6 +1,7 @@
-import { Keymap, type Plugin, TFile } from 'obsidian';
+import { Keymap, type Plugin, TFile, TFolder } from 'obsidian';
 import { PDF_INK_ICON, VIEW_TYPE_PDF_INK } from '../constants';
 import type { PdfInkHost } from '../settings';
+import { createPdf } from '../utils/create-pdf';
 import {
 	openInInkViewSafely,
 	openInPlainViewSafely,
@@ -16,6 +17,19 @@ import {
 export function registerFileMenu(plugin: Plugin & PdfInkHost): void {
 	plugin.registerEvent(
 		plugin.app.workspace.on('file-menu', (menu, file, _source, leaf) => {
+			// A folder's menu offers a new PDF inside it.
+			if (file instanceof TFolder) {
+				menu.addItem((item) =>
+					item
+						.setTitle('New PDF')
+						.setIcon('file-plus-2')
+						.setSection('action-primary')
+						.onClick(() => {
+							void createPdf(plugin.app, plugin.settings, file);
+						}),
+				);
+				return;
+			}
 			// `file` is a TAbstractFile: narrow it, never cast. `extension` is
 			// lowercase and has no leading dot.
 			if (!(file instanceof TFile) || file.extension !== 'pdf') return;

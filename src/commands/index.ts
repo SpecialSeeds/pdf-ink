@@ -6,6 +6,7 @@ import {
 } from '../utils/open-ink-view';
 import type { PdfInkHost } from '../settings';
 import { PdfInkView } from '../ui/pdf-ink-view';
+import { createPdf } from '../utils/create-pdf';
 import { exportAnnotatedCopy } from '../utils/export-pdf';
 import { resolvePdfTarget } from '../utils/pdf-target';
 
@@ -25,6 +26,15 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 			if (checking) return true;
 			openInInkViewSafely(plugin.app, target.file, target.leaf);
 			return true;
+		},
+	});
+
+	plugin.addCommand({
+		id: 'create-pdf',
+		name: 'Create new PDF',
+		icon: 'file-plus-2',
+		callback: () => {
+			void createPdf(plugin.app, plugin.settings);
 		},
 	});
 
