@@ -99,6 +99,49 @@ export function isConflictCopy(sidecarPath: string, candidate: string): boolean 
 	return /conflict/i.test(candidate.slice(stem.length));
 }
 
+/**
+ * Whether `candidate` is a stray copy of `sidecar`, its backup or its temp file,
+ * left by a sync client.
+ *
+ * iCloud Drive names a conflicting copy by adding " 2", " 3" … before the last
+ * extension, and never says "conflict" at all: `a.pdf.ink.json` becomes
+ * `a.pdf.ink 2.json`, and its backup `a.pdf.ink.json 3.bak`. A doubled
+ * `.json.json` turns up beside those too. None of these is ever written by the
+ * plugin itself; the live sidecar, `.bak` and `.tmp` never match.
+ *
+ * Only the part after the PDF's own name is examined, so a PDF that is itself
+ * called "Homework 3.pdf" is not mistaken for a copy.
+ */
+export function isSyncLeftover(sidecarPath: string, candidate: string): boolean {
+	const pdfPath = sidecarPath.slice(0, -SIDECAR_SUFFIX.length);
+	if (!candidate.startsWith(pdfPath)) return false;
+	if (
+		candidate === sidecarPath ||
+		candidate === `${sidecarPath}${BACKUP_SUFFIX}` ||
+		candidate === `${sidecarPath}${TEMP_SUFFIX}`
+	) {
+		return false;
+	}
+	const rest = candidate.slice(pdfPath.length);
+	// Anything under a subfolder is not a sibling.
+	if (rest.includes('/')) return false;
+	const numbered = / \d+(?=\.|$)/.test(rest);
+	const plain = rest.replace(/ \d+(?=\.|$)/g, '');
+	const kinds = [
+		SIDECAR_SUFFIX,
+		`${SIDECAR_SUFFIX}${BACKUP_SUFFIX}`,
+		`${SIDECAR_SUFFIX}${TEMP_SUFFIX}`,
+		`${SIDECAR_SUFFIX}.json`,
+	];
+	if (!kinds.includes(plain)) return false;
+	return numbered || plain === `${SIDECAR_SUFFIX}.json`;
+}
+
+/** Whether a sidecar's text was written in the old indented format. */
+export function isIndented(raw: string): boolean {
+	return raw.includes('\n\t');
+}
+
 export type ParseFailure =
 	| 'invalid-json'
 	| 'not-an-object'
@@ -121,8 +164,32 @@ export type ParseResult =
 			readonly version?: number;
 		};
 
+/**
+ * The sidecar as written to disk: compact, with stroke points rounded.
+ *
+ * Indented JSON put every coordinate of every sample on its own line at full
+ * double precision, so a few pages of handwriting ran to ten megabytes — slow to
+ * hash and write on every save, and slow enough to sync that a cloud drive kept
+ * producing conflict copies of it. A hundredth of a point is about 0.004 mm,
+ * far below anything a pen or a screen can show.
+ */
 export function serializeInkData(data: InkData): string {
-	return `${JSON.stringify(data, null, '\t')}\n`;
+	return `${JSON.stringify(data, roundPoints)}\n`;
+}
+
+/** Decimal places kept for stroke samples. */
+const POINT_DECIMALS = 2;
+const POINT_FACTOR = 10 ** POINT_DECIMALS;
+
+function roundPoints(key: string, value: unknown): unknown {
+	if (key !== 'points' || !Array.isArray(value)) return value;
+	return value.map((sample: unknown) =>
+		Array.isArray(sample)
+			? sample.map((n: unknown) =>
+					typeof n === 'number' ? Math.round(n * POINT_FACTOR) / POINT_FACTOR : n,
+				)
+			: sample,
+	);
 }
 
 export function parseInkData(raw: string): ParseResult {

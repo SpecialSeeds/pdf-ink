@@ -222,18 +222,21 @@ Beside the PDF, as `<name>.pdf.ink.json`:
   number, so two devices adding a page at the same spot both keep theirs.
 - The sidecar follows the PDF when it is renamed or moved, and goes to the trash with it
   when it is deleted.
-- Saves are debounced and flushed when the view closes, so nothing is lost on a tab
-  switch.
-- Writes go through a temp file and a rename, keeping one `.bak`. If a save is
-  interrupted, the next load recovers from the `.tmp`, or from the `.bak` if the temp
-  file is incomplete.
+- The file is compact JSON, with stroke points kept to a hundredth of a point. Sidecars
+  written by earlier versions are rewritten in this form the next time they are opened.
+- Saves wait for a two-second pause in writing, and are flushed when the view closes,
+  so nothing is lost on a tab switch.
+- Writes go through a temp file and a rename. One `.bak` holds the sidecar as it was
+  when the PDF was opened. If a save is interrupted, the next load recovers from the
+  `.tmp`, or from the `.bak` if the temp file is incomplete.
 
 ### Syncing
 
 Two devices editing the same PDF are merged item by item and page by page: the newer
 edit wins, and deletions are tombstones so a stale copy cannot resurrect them.
-Sync conflict files are merged in and moved to the trash. Tombstones are dropped after
-90 days.
+Sync conflict files are merged in and moved to the trash when the PDF is opened —
+including the numbered copies iCloud Drive makes, such as `paper.pdf.ink 2.json` or
+`paper.pdf.ink.json 3.bak`. Tombstones are dropped after 90 days.
 
 A sidecar written by a newer version of the plugin is never overwritten — the view says
 it cannot read it and refuses to save over it.

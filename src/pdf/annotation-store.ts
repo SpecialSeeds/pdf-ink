@@ -14,6 +14,8 @@ import {
 	TEMP_SUFFIX,
 	hashContent,
 	isConflictCopy,
+	isIndented,
+	isSyncLeftover,
 	parseInkData,
 	serializeInkData,
 	sidecarPathFor,
@@ -64,6 +66,15 @@ export class AnnotationStore implements ItemStore {
 	 * parse would destroy annotations we simply cannot represent yet.
 	 */
 	private frozen = false;
+	/**
+	 * Whether this document's `.bak` has been taken since it was opened.
+	 *
+	 * The backup is the sidecar as it was when the file was opened, not as it was
+	 * half a second ago. Rotating it on every save doubled the file operations a
+	 * sync client had to follow, and a backup that tracks every stroke is no
+	 * protection against a bad session anyway.
+	 */
+	private backedUp = false;
 
 	/** Revision last written to disk, so a clean store does no I/O. */
 	private savedRevision: number;
@@ -306,6 +317,7 @@ export class AnnotationStore implements ItemStore {
 		this.ink.clear();
 		this.history.clear();
 		this.frozen = false;
+		this.backedUp = false;
 		this.file = file;
 		this.savedRevision = this.ink.version;
 
@@ -357,6 +369,10 @@ export class AnnotationStore implements ItemStore {
 			console.warn(
 				`pdf-ink: migrated ${path} from schema version ${String(result.sourceVersion)} to ${String(INK_DATA_VERSION)}`,
 			);
+			this.saveSoon();
+		} else if (isIndented(raw)) {
+			// Written by an earlier version in the bulky indented format. Rewrite it
+			// once, compact, rather than waiting for the next stroke.
 			this.saveSoon();
 		} else {
 			this.savedRevision = this.ink.version;
@@ -434,11 +450,16 @@ export class AnnotationStore implements ItemStore {
 		else await vault.create(tempPath, payload);
 
 		const current = vault.getFileByPath(path);
-		if (current) {
+		if (current && !this.backedUp) {
 			const oldBackup = vault.getFileByPath(backupPath);
 			// Only one backup is kept, so the previous one goes first.
 			if (oldBackup) await vault.delete(oldBackup);
 			await vault.rename(current, backupPath);
+			this.backedUp = true;
+		} else if (current) {
+			// The temp file is complete before this, so a crash here still leaves a
+			// full copy for recover() to pick up.
+			await vault.delete(current);
 		}
 
 		const temp = vault.getFileByPath(tempPath);
@@ -517,7 +538,11 @@ export class AnnotationStore implements ItemStore {
 	): Promise<{ data: InkData; changed: boolean }> {
 		const copies = this.app.vault
 			.getFiles()
-			.filter((candidate) => isConflictCopy(path, candidate.path));
+			.filter(
+				(candidate) =>
+					isConflictCopy(path, candidate.path) ||
+					isSyncLeftover(path, candidate.path),
+			);
 		if (copies.length === 0) return { data: ours, changed: false };
 
 		let data = ours;
@@ -550,7 +575,7 @@ export class AnnotationStore implements ItemStore {
 		}
 		if (absorbed.length > 0) {
 			new Notice(
-				`Merged ${String(absorbed.length)} conflicting annotation file(s).`,
+				`Merged and cleaned up ${String(absorbed.length)} leftover annotation file(s).`,
 			);
 		}
 		return { data, changed };
