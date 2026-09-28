@@ -35,5 +35,12 @@ export const PAGE_CLEANUP_DELAY_MS = 5000;
 /** Debounce for re-rasterising after a resize or a zoom gesture settles. */
 export const SETTLE_DELAY_MS = 140;
 
-/** Quiet period after the last stroke before the sidecar is written. */
-export const SAVE_DEBOUNCE_MS = 500;
+/**
+ * Quiet period after the last stroke before the sidecar is written.
+ *
+ * Long enough that a run of handwriting is one write rather than one per word:
+ * each write is several file operations a sync client has to follow, and those
+ * racing each other is what produced its conflict copies. Closing the view or
+ * switching file still writes at once.
+ */
+export const SAVE_DEBOUNCE_MS = 2000;

@@ -951,7 +951,7 @@ export class InkLayer {
 		const active = this.active;
 		if (!active || evt.pointerId !== active.pointerId) return;
 		evt.preventDefault();
-		this.addSample(evt, active.record.inkCanvasEl.getBoundingClientRect());
+		this.addSample(evt, active.record.inkCanvasEl.getBoundingClientRect(), true);
 		this.finishStroke(true);
 	}
 
@@ -1065,6 +1065,7 @@ export class InkLayer {
 				clientY: touch.clientY,
 			},
 			rect,
+			ended,
 		);
 		if (ended) {
 			this.options.traceInput('stroke-on-touch', { outcome: 'lifted' });
@@ -1417,7 +1418,15 @@ export class InkLayer {
 		if (el.hasPointerCapture(pointerId)) el.releasePointerCapture(pointerId);
 	}
 
-	private addSample(evt: PenSample, rect: RectLike): void {
+	/**
+	 * Record one sample of the stroke in flight.
+	 *
+	 * A sample closer than MIN_SAMPLE_SPACING to the last one kept is dropped —
+	 * except the one the pen lifts at, which always ends the stroke exactly where
+	 * it stopped. A 240 Hz pencil moving slowly reports many points a hair apart,
+	 * which added nothing visible but was most of the weight of a sidecar.
+	 */
+	private addSample(evt: PenSample, rect: RectLike, final = false): void {
 		const active = this.active;
 		if (!active) return;
 		const { record } = active;
@@ -1430,11 +1439,19 @@ export class InkLayer {
 			record.cssHeight,
 		);
 		const pressure = FLAT_PRESSURE;
-
-		active.canvasSamples.push([cssX, cssY, pressure]);
 		// Stored in PDF user space, so the stroke is independent of zoom, device
 		// pixel ratio and page rotation.
 		const [pdfX, pdfY] = record.viewport.convertToPdfPoint(cssX, cssY);
+
+		const last = active.stroke.points[active.stroke.points.length - 1];
+		if (
+			last &&
+			!final &&
+			Math.hypot(pdfX - last[0], pdfY - last[1]) < MIN_SAMPLE_SPACING
+		) {
+			return;
+		}
+		active.canvasSamples.push([cssX, cssY, pressure]);
 		active.stroke.points.push([pdfX, pdfY, pressure]);
 	}
 
@@ -1515,6 +1532,12 @@ type PenSample = Pick<PointerEvent, 'clientX' | 'clientY'>;
  * committed as finished. Touches arrive every frame while the pen moves.
  */
 const TOUCH_FOLLOW_QUIET_MS = 400;
+
+/**
+ * Samples closer together than this, in PDF points (about 0.07 mm), are not
+ * worth storing: the outline is smoothed anyway, so nobody can see them.
+ */
+const MIN_SAMPLE_SPACING = 0.2;
 
 /** How long two taps can be apart and still count as a double tap. */
 const DOUBLE_TAP_MS = 400;

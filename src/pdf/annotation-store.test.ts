@@ -675,6 +675,28 @@ describe('atomic writes', () => {
 		expect(backups).toEqual([`${SIDECAR}.bak`]);
 	});
 
+	it('takes the .bak once per open, not on every save', async () => {
+		const { store, vault } = setup();
+		await store.load(pdfFile(vault));
+		store.addItem('pdf:0', stroke('first'));
+		await store.flush();
+		const afterFirst = vault.files.get(SIDECAR)?.data ?? '';
+		for (const id of ['second', 'third', 'fourth']) {
+			store.addItem('pdf:0', stroke(id));
+			await store.flush();
+		}
+		expect(vault.files.get(`${SIDECAR}.bak`)?.data).toBe(afterFirst);
+		expect(vault.files.get(SIDECAR)?.data).toContain('fourth');
+		expect(vault.files.has(`${SIDECAR}.tmp`)).toBe(false);
+
+		// Reopening takes a fresh one.
+		await store.load(pdfFile(vault));
+		const onReopen = vault.files.get(SIDECAR)?.data ?? '';
+		store.addItem('pdf:0', stroke('fifth'));
+		await store.flush();
+		expect(vault.files.get(`${SIDECAR}.bak`)?.data).toBe(onReopen);
+	});
+
 	it('the first save makes no .bak, because there was nothing to back up', async () => {
 		const { store, vault } = setup();
 		await store.load(pdfFile(vault));
@@ -837,6 +859,46 @@ describe('sync conflict copies', () => {
 		// Trashed, not deleted: a bad merge has to be recoverable.
 		expect(fileManager.trashed).toEqual([conflictPath]);
 		expect(vault.files.has(conflictPath)).toBe(false);
+	});
+
+	it('merges and removes the numbered copies iCloud Drive leaves', async () => {
+		const { store, vault, fileManager } = setup();
+		const file = pdfFile(vault);
+		vault.writeExternally(SIDECAR, conflictBody('ours'));
+		const copies = [
+			`${PDF_PATH}.ink 2.json`,
+			`${PDF_PATH}.ink.json 3.bak`,
+			`${PDF_PATH}.ink.json.json`,
+		];
+		copies.forEach((path, index) => {
+			vault.writeExternally(path, conflictBody(`copy${String(index)}`));
+		});
+
+		await store.load(file);
+
+		expect(store.itemsFor('pdf:0').map((item) => item.id).sort()).toEqual([
+			'copy0',
+			'copy1',
+			'copy2',
+			'ours',
+		]);
+		expect([...fileManager.trashed].sort()).toEqual([...copies].sort());
+	});
+
+	it('rewrites an indented sidecar compactly on open', async () => {
+		const { store, vault } = setup();
+		const file = pdfFile(vault);
+		vault.writeExternally(
+			SIDECAR,
+			JSON.stringify(JSON.parse(conflictBody('ours')), null, '\t'),
+		);
+
+		await store.load(file);
+		await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
+
+		const written = vault.files.get(SIDECAR)?.data ?? '';
+		expect(written).not.toContain('\t');
+		expect(written).toContain('"ours"');
 	});
 
 	it('writes the merged result back to the sidecar', async () => {

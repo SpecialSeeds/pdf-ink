@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	isSyncLeftover,
 	isSidecarPath,
 	parseInkData,
 	serializeInkData,
@@ -276,7 +277,7 @@ describe('serialize / parse round-trip', () => {
 		expect(reloaded.toData()).toEqual(store.toData());
 	});
 
-	it('preserves sub-point coordinate precision', () => {
+	it('keeps stroke points to a hundredth of a point', () => {
 		const store = new InkStore();
 		const stroke = createStroke(DEFAULT_PEN, 'p');
 		stroke.points.push([53.183456, 702.284321, 0.123456]);
@@ -284,9 +285,26 @@ describe('serialize / parse round-trip', () => {
 		const result = parseInkData(serializeInkData(store.toData()));
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
-		expect(strokeAt(result.data, 0)?.points[0]).toEqual([
-			53.183456, 702.284321, 0.123456,
-		]);
+		expect(strokeAt(result.data, 0)?.points[0]).toEqual([53.18, 702.28, 0.12]);
+	});
+
+	it('writes compact JSON, one line plus a newline', () => {
+		const store = new InkStore();
+		const stroke = createStroke(DEFAULT_PEN, 'p');
+		stroke.points.push([1, 2, 1], [3, 4, 1]);
+		store.add('pdf:0', stroke);
+		const text = serializeInkData(store.toData());
+		expect(text.trimEnd()).not.toContain('\n');
+		expect(text).not.toContain('\t');
+	});
+
+	it('leaves everything but stroke points untouched', () => {
+		const store = new InkStore();
+		const stroke = createStroke({ ...DEFAULT_PEN, width: 1.23456 }, 'p');
+		stroke.points.push([1, 2, 1]);
+		store.add('pdf:0', stroke);
+		const result = parseInkData(serializeInkData(store.toData()));
+		expect(result.ok && strokeAt(result.data, 0)?.width).toBe(1.23456);
 	});
 
 	it('writes a trailing newline and declares its version', () => {
@@ -719,5 +737,59 @@ describe('inserted page records', () => {
 		const second = parseInkData(serializeInkData(first.data));
 		expect(second.ok).toBe(true);
 		if (second.ok) expect(second.data).toEqual(first.data);
+	});
+});
+
+describe('isSyncLeftover', () => {
+	const sidecar = 'Worksheets/Wkst 9-28.pdf.ink.json';
+
+	it('recognises the copies iCloud Drive leaves behind', () => {
+		for (const name of [
+			'Worksheets/Wkst 9-28.pdf.ink 2.json',
+			'Worksheets/Wkst 9-28.pdf.ink.json 3.bak',
+			'Worksheets/Wkst 9-28.pdf.ink.json 2.bak',
+			'Worksheets/Wkst 9-28.pdf.ink.json 4.json',
+			'Worksheets/Wkst 9-28.pdf.ink.json.json',
+			'Worksheets/Wkst 9-28.pdf.ink.json 2.tmp',
+		]) {
+			expect(isSyncLeftover(sidecar, name), name).toBe(true);
+		}
+	});
+
+	it('never matches the live sidecar, its backup or its temp file', () => {
+		for (const name of [
+			sidecar,
+			`${sidecar}.bak`,
+			`${sidecar}.tmp`,
+		]) {
+			expect(isSyncLeftover(sidecar, name), name).toBe(false);
+		}
+	});
+
+	it('leaves other files alone', () => {
+		for (const name of [
+			'Worksheets/Wkst 9-28.pdf',
+			'Worksheets/Wkst 9-28 2.pdf',
+			'Worksheets/Wkst 9-28.pdf.ink.json.notes.json',
+			'Worksheets/other.pdf.ink 2.json',
+			'Worksheets/Wkst 9-28.pdf.ink 2.json/inside.json',
+		]) {
+			expect(isSyncLeftover(sidecar, name), name).toBe(false);
+		}
+	});
+
+	it('is not fooled by a PDF whose own name ends in a number', () => {
+		const numbered = 'Worksheets/Homework_5_split 3.pdf.ink.json';
+		expect(isSyncLeftover(numbered, numbered)).toBe(false);
+		expect(
+			isSyncLeftover(numbered, 'Worksheets/Homework_5_split 3.pdf.ink 2.json'),
+		).toBe(true);
+		// The sidecar of a different PDF, "Homework_5_split.pdf", is not ours.
+		expect(
+			isSyncLeftover(
+				'Worksheets/Homework_5_split.pdf.ink.json',
+				'Worksheets/Homework_5_split 3.pdf.ink.json',
+			),
+		).toBe(false);
 	});
 });
