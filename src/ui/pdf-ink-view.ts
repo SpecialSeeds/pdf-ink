@@ -21,6 +21,7 @@ import { readInkViewState, writeInkViewState } from '../core/view-state';
 import { AnnotationStore } from '../pdf/annotation-store';
 import { type PdfInkDocument, openPdfDocument } from '../pdf/document';
 import { getPdfJs } from '../pdf/pdfjs';
+import { exportAnnotatedCopy } from '../utils/export-pdf';
 import { type PdfInkHost } from '../settings';
 import type { ToolKind } from '../core/tools';
 import type { PageGeometry, ZoomMode } from '../types/view';
@@ -200,6 +201,18 @@ export class PdfInkView extends FileView implements ZoomHost {
 			},
 			toggleZoomLock: () => {
 				this.toggleZoomLock();
+			},
+			insertPageAbove: () => {
+				this.insertPageAboveCurrent();
+			},
+			insertPageBelow: () => {
+				this.insertPageBelowCurrent();
+			},
+			pageOptions: (at) => {
+				this.openPageMenu(at);
+			},
+			exportPdf: () => {
+				void this.exportAnnotated();
 			},
 			goToPage: (pageNumber) => {
 				this.goToPage(pageNumber);
@@ -525,13 +538,33 @@ export class PdfInkView extends FileView implements ZoomHost {
 	 * command can be run from the palette or from a mobile toolbar where there is no
 	 * pointer to anchor to.
 	 */
-	openPageMenu(): void {
+	openPageMenu(at?: { x: number; y: number }): void {
 		const key = this.currentPageKey();
 		if (key === null) return;
 		const box = this.scrollEl.getBoundingClientRect();
-		this.pageEditor?.showMenuFor(key, {
-			x: box.left + box.width / 2,
-			y: box.top + Math.min(box.height / 2, 200),
+		this.pageEditor?.showMenuFor(
+			key,
+			at ?? {
+				x: box.left + box.width / 2,
+				y: box.top + Math.min(box.height / 2, 200),
+			},
+		);
+	}
+
+	/**
+	 * Export this PDF with its annotations.
+	 *
+	 * Flushes first: saves are debounced, and the export reads the sidecar on
+	 * disk, so the last half-second of writing would otherwise be left out.
+	 */
+	async exportAnnotated(): Promise<void> {
+		const file = this.file;
+		if (!file) return;
+		this.ink?.flushText();
+		await this.annotations.flush();
+		await exportAnnotatedCopy(this.app, file, {
+			suffix: this.host.settings.exportSuffix,
+			mode: this.host.settings.exportMode,
 		});
 	}
 

@@ -125,16 +125,18 @@ Picking any other tool drops the current selection.
 
 ## Adding pages
 
-Three ways in, because the first two need a pointer:
+Four ways in:
 
 - **Hover between two pages** and a **+** appears in the gap. Click it to slip a new
   sheet in there.
 - **Right-click a page** for **Insert page above**, **Insert page below**, the ruling
   and **Delete page**.
+- **Use the toolbar** — the buttons at the right-hand end of the top bar insert a page
+  above or below the one in view, open **Page options** (the same menu as a
+  right-click), and export. This is the easy way in on a tablet, where there is no
+  hover and no reliable long-press menu.
 - **Run a command** — **Insert page below**, **Insert page above**, or **Page
-  options**, which opens the same menu as a right-click. These are the way in on a
-  tablet, where there is no hover and no reliable long-press menu; put them on the
-  mobile toolbar in **Settings → Mobile** to have them to hand.
+  options**.
 
 A new page takes the size of the page above it, and its ruling too when that page is one
 you added — so extending a PDF into a notebook is one click per sheet. Right-click a page
@@ -175,7 +177,8 @@ re-fits when the pane is resized.
 
 ## Exporting
 
-Run **PDF ink: Export annotated PDF**. The result is written beside the original with a
+Press the export button at the end of the top bar, or run **PDF ink: Export
+annotated PDF**. Anything you have just drawn is saved first, so it is included. The result is written beside the original with a
 configurable suffix, and you are asked before an earlier export is replaced. The source
 PDF is only ever read.
 

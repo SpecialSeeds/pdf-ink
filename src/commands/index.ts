@@ -188,7 +188,12 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 		checkCallback: (checking: boolean): boolean => {
 			const target = resolvePdfTarget(plugin.app);
 			if (!target) return false;
-			if (!checking) {
+			if (checking) return true;
+			// From the ink view, go through it so unsaved ink is flushed first.
+			const view = target.leaf.view;
+			if (view instanceof PdfInkView && view.file === target.file) {
+				void view.exportAnnotated();
+			} else {
 				void exportAnnotatedCopy(plugin.app, target.file, {
 					suffix: plugin.settings.exportSuffix,
 					mode: plugin.settings.exportMode,
