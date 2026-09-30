@@ -1,6 +1,6 @@
 import type { InsertedPage } from '../core/pages';
 import { templateGeometry } from '../core/templates';
-import type { PageViewport } from '../types/pdfjs';
+import type { Matrix, PageViewport } from '../types/pdfjs';
 
 /**
  * The paper colour of an inserted page.
@@ -20,8 +20,9 @@ const MIN_SCREEN_WIDTH = 0.4;
 /**
  * Draw an inserted page: paper, then its ruling.
  *
- * Works in CSS pixels, like every other drawing path here, with the device pixel
- * ratio applied as a context transform. Geometry comes from
+ * Works in CSS pixels, like every other drawing path here, with `transform`
+ * mapping them to the bitmap: the device pixel ratio, plus an offset when only
+ * part of the page is being drawn. Geometry comes from
  * {@link templateGeometry} in PDF space and is projected through the page's
  * viewport, so the screen and the export agree by construction rather than by two
  * implementations happening to match.
@@ -32,10 +33,10 @@ export function paintInsertedPage(
 	page: InsertedPage,
 	cssWidth: number,
 	cssHeight: number,
-	dpr: number,
+	transform: Matrix,
 ): void {
 	// Resizing the canvas reset the transform, so it has to be re-applied here.
-	ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+	ctx.setTransform(...transform);
 	ctx.fillStyle = PAGE_COLOR;
 	ctx.fillRect(0, 0, cssWidth, cssHeight);
 
