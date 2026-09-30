@@ -1,8 +1,10 @@
 import { PAGE_CLEANUP_DELAY_MS } from '../constants';
 import { type CanvasBudget, effectiveDpr } from '../core/canvas-budget';
+import type { CssRect } from '../core/detail-region';
 import { isRenderCancelled } from '../types/pdfjs';
 import type { PageBox, PageRecord } from '../types/view';
-import { paintInsertedPage } from './template-painter';
+import { DetailRenderer } from './detail-renderer';
+import { adoptRaster, rasterise, releaseCanvas } from './rasterise';
 
 /**
  * Renders and tears down a single page's canvases.
@@ -13,8 +15,14 @@ import { paintInsertedPage } from './template-painter';
  * canvas during multiple render() operations" if you render into one again, or
  * zero its width, before the previous task has *settled*. `cancel()` is
  * synchronous; settling is not. Awaiting it is mandatory.
+ *
+ * Renders land in a scratch canvas and are copied onto the page only once
+ * complete, so after a zoom the previous bitmap stays on screen, stretched to the
+ * new box, until its replacement is ready.
  */
 export class PageRenderer {
+	private readonly details: DetailRenderer;
+
 	constructor(
 		private readonly budget: CanvasBudget,
 		/** Bumped by the view on close and on file switch. */
@@ -24,7 +32,22 @@ export class PageRenderer {
 		 * already-committed strokes can be repainted.
 		 */
 		private readonly onInkCanvasReset: (rec: PageRecord) => void,
-	) {}
+	) {
+		this.details = new DetailRenderer(budget, currentViewEpoch, onInkCanvasReset);
+	}
+
+	/**
+	 * Bring a page's sharp drawing of its visible part up to date, or drop it.
+	 * `visible` is in page CSS px at `box.scale`, null when out of view.
+	 */
+	updateDetail(
+		rec: PageRecord,
+		box: PageBox,
+		dpr: number,
+		visible: CssRect | null,
+	): void {
+		this.details.update(rec, box, dpr, visible);
+	}
 
 	/** Idempotent: a no-op when the bitmaps already match `box` and `dpr`. */
 	ensure(rec: PageRecord, box: PageBox, dpr: number): void {
@@ -52,6 +75,7 @@ export class PageRenderer {
 
 	/** Free a page's bitmaps, keeping its wrapper and its viewport. */
 	teardown(rec: PageRecord): void {
+		this.details.drop(rec);
 		if (rec.state === 'blank' && rec.task === null && rec.bitmapScale === 0) {
 			return;
 		}
@@ -64,7 +88,7 @@ export class PageRenderer {
 	/** Resolves once the record has no work in flight. Never rejects. */
 	async quiesce(rec: PageRecord): Promise<void> {
 		this.cancelCleanup(rec);
-		await (rec.settled ?? Promise.resolve());
+		await Promise.all([rec.settled, rec.detailSettled]);
 	}
 
 	private cancelCleanup(rec: PageRecord): void {
@@ -95,16 +119,11 @@ export class PageRenderer {
 
 		const bitmapWidth = Math.round(box.cssWidth * effDpr);
 		const bitmapHeight = Math.round(box.cssHeight * effDpr);
-		rec.renderCanvasEl.width = bitmapWidth;
-		rec.renderCanvasEl.height = bitmapHeight;
 		for (const canvasEl of [rec.highlightCanvasEl, rec.inkCanvasEl]) {
+			// Resizing clears these, and they are repainted synchronously below, so
+			// unlike the page bitmap they can move to the new size straight away.
 			canvasEl.width = bitmapWidth;
 			canvasEl.height = bitmapHeight;
-			// Assigning .width resets the context transform, so the dpr transform
-			// has to be re-applied after every resize. With it, the drawing pass
-			// works in CSS px — the same space as pointer coordinates and
-			// rec.viewport.
-			canvasEl.getContext('2d')?.setTransform(effDpr, 0, 0, effDpr, 0, 0);
 		}
 
 		// Published before the first await: the ink layer must never observe a
@@ -115,54 +134,48 @@ export class PageRenderer {
 		rec.cssHeight = box.cssHeight;
 		rec.bitmapScale = box.scale;
 		rec.bitmapDpr = effDpr;
+		// The detail keeps showing its last bitmap, scaled into the new box, until
+		// the view settles and a sharper one replaces it.
+		this.details.reposition(rec);
 
 		// After the viewport and box above are published, so the repaint projects
 		// stored PDF-space strokes through the new scale.
 		this.onInkCanvasReset(rec);
 
-		// Deliberately NOT { alpha: false }: resizing a canvas clears it, and an
-		// opaque context clears to black. Transparent lets the wrapper's white
-		// page colour show through for the frame or two before pixels land.
-		const ctx = rec.renderCanvasEl.getContext('2d');
-		if (!ctx) {
+		// A page held down by the canvas budget gets the same bitmap at every zoom:
+		// its dpr shrinks exactly as its box grows. Rendering it again would spend
+		// a full content-stream replay to reproduce the pixels already there.
+		const density = box.scale * effDpr;
+		if (
+			rec.renderedDensity > 0 &&
+			Math.abs(rec.renderedDensity - density) <= density * 1e-3 &&
+			rec.renderCanvasEl.width === bitmapWidth &&
+			rec.renderCanvasEl.height === bitmapHeight
+		) {
+			this.markReady(rec);
+			return;
+		}
+
+		const raster = rasterise(
+			rec.wrapperEl.doc,
+			rec.geom.source,
+			rec.viewport,
+			bitmapWidth,
+			bitmapHeight,
+			[effDpr, 0, 0, effDpr, 0, 0],
+		);
+		if (!raster) {
 			this.markEmpty(rec);
 			return;
 		}
 
-		const source = rec.geom.source;
-		if (source.kind === 'inserted') {
-			// Nothing to decode and no worker involved, so this needs no task, no
-			// cancellation and no out-of-order guard: it is done before it returns.
-			paintInsertedPage(
-				ctx,
-				rec.viewport,
-				source.page,
-				box.cssWidth,
-				box.cssHeight,
-				effDpr,
-			);
-			rec.state = 'ready';
-			rec.wrapperEl.removeClass('is-empty');
-			return;
-		}
-
 		rec.state = 'rendering';
-		const task = source.page.render({
-			canvasContext: ctx,
-			// CSS-pixel scale. devicePixelRatio is supplied separately, via
-			// `transform`, so that rec.viewport stays in CSS px for
-			// convertToPdfPoint.
-			viewport: rec.viewport,
-			transform:
-				effDpr === 1 ? null : [effDpr, 0, 0, effDpr, 0, 0],
-			background: '#ffffff',
-			intent: 'display',
-		});
-		rec.task = task;
+		rec.task = raster.task;
 
 		try {
-			await task.promise;
+			await raster.task.promise;
 		} catch (err) {
+			releaseCanvas(raster.canvas);
 			if (rec.epoch === epoch) rec.task = null;
 			if (isRenderCancelled(err)) {
 				// Normal during scrolling and zooming — never log it. Leave the
@@ -181,12 +194,15 @@ export class PageRenderer {
 		// Out-of-order completion guards. Per-record epoch catches "this page was
 		// re-rendered at a new zoom while the old render was still running";
 		// view epoch catches "the file switched while it was running".
-		if (rec.epoch !== epoch) return;
-		if (viewEpoch !== this.currentViewEpoch()) return;
+		if (rec.epoch !== epoch || viewEpoch !== this.currentViewEpoch()) {
+			releaseCanvas(raster.canvas);
+			return;
+		}
 
 		rec.task = null;
-		rec.state = 'ready';
-		rec.wrapperEl.removeClass('is-empty');
+		adoptRaster(rec.renderCanvasEl, raster.canvas);
+		rec.renderedDensity = density;
+		this.markReady(rec);
 	}
 
 	private async runTeardown(rec: PageRecord): Promise<void> {
@@ -225,10 +241,16 @@ export class PageRenderer {
 		}, PAGE_CLEANUP_DELAY_MS);
 	}
 
+	private markReady(rec: PageRecord): void {
+		rec.state = 'ready';
+		rec.wrapperEl.removeClass('is-empty');
+	}
+
 	private markEmpty(rec: PageRecord): void {
 		rec.state = 'blank';
 		rec.bitmapScale = 0;
 		rec.bitmapDpr = 0;
+		rec.renderedDensity = 0;
 		rec.wrapperEl.addClass('is-empty');
 	}
 }

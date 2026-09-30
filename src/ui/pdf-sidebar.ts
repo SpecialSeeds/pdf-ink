@@ -322,7 +322,7 @@ export class PdfSidebar {
 					geom.source.page,
 					cssWidth,
 					cssHeight,
-					dpr,
+					[dpr, 0, 0, dpr, 0, 0],
 				);
 			} else {
 				await geom.source.page.render({

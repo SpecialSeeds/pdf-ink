@@ -1,3 +1,4 @@
+import type { CssRect } from '../core/detail-region';
 import type { InsertedPage, PageKey } from '../core/pages';
 import type { PDFPageProxy, PageViewport, RenderTask } from './pdfjs';
 
@@ -43,6 +44,36 @@ export interface PageGeometry {
 
 export type PageRenderState = 'blank' | 'rendering' | 'ready';
 
+/** A detail region: which part of the page, at what scale and density. */
+export interface DetailTarget {
+	/** Page CSS px at `scale`. */
+	readonly rect: CssRect;
+	readonly scale: number;
+	readonly dpr: number;
+}
+
+/**
+ * The sharp drawing of the visible part of a page too large to draw whole at the
+ * display's density. See src/core/detail-region.ts.
+ *
+ * Its canvases sit directly above their whole-page counterparts, positioned over
+ * `shown.rect`. pdf.js never renders into them — it renders into a scratch canvas
+ * that is copied in once complete — so they can be resized or removed at any time
+ * without waiting for a task to settle.
+ */
+export interface PageDetail {
+	readonly renderCanvasEl: HTMLCanvasElement;
+	readonly highlightCanvasEl: HTMLCanvasElement;
+	readonly inkCanvasEl: HTMLCanvasElement;
+	/** What the canvases currently hold, or null before the first render lands. */
+	shown: DetailTarget | null;
+	/** What is being rendered now, or null when nothing is in flight. */
+	target: DetailTarget | null;
+	task: RenderTask | null;
+	/** Monotonic. A render result is discarded unless this still matches. */
+	epoch: number;
+}
+
 /**
  * One page's live DOM and render state.
  *
@@ -74,9 +105,15 @@ export interface PageRecord {
 	cssWidth: number;
 	cssHeight: number;
 
-	/** Scale and dpr actually baked into the bitmaps. 0 means "no bitmap". */
+	/** Scale and dpr the ink canvases are sized for. 0 means "no bitmap". */
 	bitmapScale: number;
 	bitmapDpr: number;
+	/**
+	 * Device px per PDF-space unit actually baked into the render canvas, 0 when it
+	 * holds nothing. A page clamped by the canvas budget keeps the same bitmap at
+	 * every zoom, and this is how a re-render that would change nothing is skipped.
+	 */
+	renderedDensity: number;
 
 	state: PageRenderState;
 	/** Monotonic. A render result is discarded unless this still matches. */
@@ -91,6 +128,11 @@ export interface PageRecord {
 	settled: Promise<void> | null;
 	/** Deferred page.cleanup() after eviction; cancelled if the page returns. */
 	cleanupTimer: number | null;
+
+	/** Present only while the page is in view and too large to draw sharply whole. */
+	detail: PageDetail | null;
+	/** The detail's own single-flight chain; outlives any one PageDetail. */
+	detailSettled: Promise<void> | null;
 }
 
 export type ZoomMode =

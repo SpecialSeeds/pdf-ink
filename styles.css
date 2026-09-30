@@ -373,8 +373,26 @@
 	touch-action: pan-x pan-y;
 }
 
-/* A page with no bitmap: show the blank paper rather than a stale or empty canvas. */
-.pdf-ink-page.is-empty > .pdf-ink-render {
+/*
+ * The sharp drawing of the visible part of a page too large to draw whole at
+ * full density. Each sits directly after its whole-page layer, sharing its
+ * z-index, so it stacks above that layer and below the next. Placed from script
+ * in page CSS px; never a pointer target, so strokes still land on the
+ * whole-page ink canvas beneath and use its coordinates.
+ */
+.pdf-ink-page > canvas.pdf-ink-detail {
+	inset: auto;
+	left: var(--pdf-ink-detail-x, 0);
+	top: var(--pdf-ink-detail-y, 0);
+	width: var(--pdf-ink-detail-w, 0);
+	height: var(--pdf-ink-detail-h, 0);
+	pointer-events: none;
+	touch-action: auto;
+}
+
+/* A page with no bitmap: show the blank paper rather than a stale or empty
+   canvas. A detail that landed first is complete in itself, so it stays. */
+.pdf-ink-page.is-empty > .pdf-ink-render:not(.pdf-ink-detail) {
 	visibility: hidden;
 }
 

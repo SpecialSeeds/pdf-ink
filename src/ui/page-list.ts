@@ -1,4 +1,5 @@
-import { MAX_RETAINED_PAGES, PAGE_GAP } from '../constants';
+import { MAX_RETAINED_PAGES, PAGE_GAP, SETTLE_DELAY_MS } from '../constants';
+import type { CssRect } from '../core/detail-region';
 import { computeLayout, visibleIndices } from '../core/layout';
 import type { PageKey } from '../core/pages';
 import type { LayoutResult, PageGeometry, PageRecord } from '../types/view';
@@ -36,6 +37,11 @@ export class PageList {
 	private layout: LayoutResult;
 	private dpr = 1;
 	private zoom = 1;
+	/** Pending detail update; see {@link PageList.scheduleDetails}. */
+	private detailTimer = 0;
+	private readonly onScroll = (): void => {
+		this.scheduleDetails();
+	};
 
 	constructor(
 		private readonly sizerEl: HTMLElement,
@@ -193,11 +199,77 @@ export class PageList {
 		});
 
 		this.reportFirstVisible();
+		this.scheduleDetails();
+	}
+
+	/**
+	 * Refresh the sharp drawings of oversized pages once scrolling and zooming
+	 * have stopped.
+	 *
+	 * Debounced rather than per scroll event: a detail of a heavy page can take a
+	 * second or more to render, and one started mid-fling is thrown away a frame
+	 * later. Until it lands, the whole-page bitmap shows through.
+	 */
+	private scheduleDetails(): void {
+		const win = this.scrollEl.win;
+		if (this.detailTimer !== 0) win.clearTimeout(this.detailTimer);
+		this.detailTimer = win.setTimeout(() => {
+			this.detailTimer = 0;
+			this.updateDetails();
+		}, SETTLE_DELAY_MS);
+	}
+
+	private updateDetails(): void {
+		// Measured with getBoundingClientRect, which a preview transform distorts.
+		// The zoom commit relayouts, and that schedules another pass.
+		if (this.pagesEl.hasClass('is-zooming')) {
+			this.scheduleDetails();
+			return;
+		}
+
+		const inView = new Set<PageRecord>(this.visible);
+		if (inView.size === 0) {
+			const { first, last } = visibleIndices(
+				this.layout,
+				this.scrollEl.scrollTop,
+				this.scrollEl.clientHeight,
+			);
+			for (let i = first; i <= last; i++) {
+				const record = this.records[i];
+				if (record) inView.add(record);
+			}
+		}
+
+		const bounds = this.scrollEl.getBoundingClientRect();
+		const viewLeft = bounds.left + this.scrollEl.clientLeft;
+		const viewTop = bounds.top + this.scrollEl.clientTop;
+
+		for (const record of this.records) {
+			const box = this.layout.pages[record.index];
+			if (!box) continue;
+			if (!inView.has(record)) {
+				if (record.detail) this.renderer.updateDetail(record, box, this.dpr, null);
+				continue;
+			}
+			const page = record.wrapperEl.getBoundingClientRect();
+			const visible: CssRect = {
+				x: viewLeft - page.left,
+				y: viewTop - page.top,
+				w: this.scrollEl.clientWidth,
+				h: this.scrollEl.clientHeight,
+			};
+			this.renderer.updateDetail(record, box, this.dpr, visible);
+		}
 	}
 
 	async dispose(): Promise<void> {
 		this.observer?.disconnect();
 		this.observer = null;
+		this.scrollEl.removeEventListener('scroll', this.onScroll);
+		if (this.detailTimer !== 0) {
+			this.scrollEl.win.clearTimeout(this.detailTimer);
+			this.detailTimer = 0;
+		}
 		this.visible.clear();
 
 		for (const record of this.records) this.renderer.teardown(record);
@@ -246,11 +318,14 @@ export class PageList {
 			cssHeight: 0,
 			bitmapScale: 0,
 			bitmapDpr: 0,
+			renderedDensity: 0,
 			state: 'blank',
 			epoch: 0,
 			task: null,
 			settled: null,
 			cleanupTimer: null,
+			detail: null,
+			detailSettled: null,
 		};
 		this.byEl.set(wrapperEl, record);
 		this.observer?.observe(wrapperEl);
@@ -341,6 +416,9 @@ export class PageList {
 			},
 			{ root: this.scrollEl, rootMargin: '0px', threshold: 0 },
 		);
+		// The observer reports pages entering and leaving view, but a detail also
+		// has to follow a pan within one page.
+		this.scrollEl.addEventListener('scroll', this.onScroll, { passive: true });
 	}
 
 	private onIntersect(entries: IntersectionObserverEntry[]): void {
