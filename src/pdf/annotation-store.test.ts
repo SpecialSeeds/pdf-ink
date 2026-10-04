@@ -10,9 +10,13 @@ import {
 	SIDECAR_SUFFIX,
 	TEMP_SUFFIX,
 	hashContent,
+	parseInkData,
+	serializeInkData,
 	sidecarPathFor,
 } from '../core/ink-serialization';
-import type { InkData } from '../core/items';
+import { grownBoardPage, newBoardData } from '../core/board';
+import { itemBounds } from '../core/hit-test';
+import type { InkData, Stroke } from '../core/items';
 import { INK_DATA_VERSION } from '../core/items';
 import { type InsertedPage, insertedPageKey } from '../core/pages';
 import { TOMBSTONE_MAX_AGE_MS } from '../core/merge';
@@ -1648,5 +1652,79 @@ describe('numbered sync copies of a notebook', () => {
 		await harness.store.flush();
 		const saved = JSON.parse(harness.vault.files.get(COPY)?.data ?? 'null') as InkData;
 		expect(saved.docId).toBe('doc-new');
+	});
+});
+
+describe('boards', () => {
+	const BOARD = 'class/Board.inknote';
+	const PAGE = insertedPageKey('b1');
+
+	function boardFile(vault: FakeVault): TFile {
+		vault.writeExternally(BOARD, serializeInkData(newBoardData(1000, 'b1', 'doc-b')));
+		const found = vault.getFileByPath(BOARD);
+		if (!found) throw new Error('unreachable');
+		return found;
+	}
+
+	/** A short stroke at (x, y). */
+	function strokeAt(id: string, x: number, y: number): Stroke {
+		const item = createStroke(DEFAULT_PEN, id);
+		item.points.push([x, y, 0.5], [x + 4, y + 1, 0.5]);
+		return item;
+	}
+
+	it('reads as a board', async () => {
+		const { store, vault } = setup();
+		await store.load(boardFile(vault));
+		expect(store.layout).toBe('board');
+	});
+
+	it('undoes edge growth together with the ink that caused it', async () => {
+		const { store, vault } = setup();
+		await store.load(boardFile(vault));
+		const page = store.insertedPages()[0];
+		if (!page) throw new Error('no page');
+
+		// Near the right edge and the bottom edge at once.
+		const ink = strokeAt('edge', page.size.width - 20, 10);
+		store.addItem(PAGE, ink);
+		const grown = grownBoardPage(page, itemBounds(ink) ?? { minX: 0, minY: 0, maxX: 0, maxY: 0 }, 2000);
+		expect(grown).not.toBeNull();
+		if (!grown) return;
+		store.resizePageJoined(grown);
+		const after = store.insertedPages()[0];
+		expect(after?.size.width).toBeGreaterThan(page.size.width);
+		expect(after?.size.height).toBeGreaterThan(page.size.height);
+		expect(after?.origin?.y).toBeLessThan(0);
+
+		expect(store.undo()).toBe(true);
+		expect(store.itemsFor(PAGE)).toEqual([]);
+		expect(store.insertedPages()[0]?.size).toEqual(page.size);
+		expect(store.insertedPages()[0]?.origin).toBeUndefined();
+		expect(store.canUndo).toBe(false);
+
+		expect(store.redo()).toBe(true);
+		expect(store.itemsFor(PAGE).map((item) => item.id)).toEqual(['edge']);
+		expect(store.insertedPages()[0]?.size).toEqual(grown.size);
+		expect(store.insertedPages()[0]?.origin).toEqual(grown.origin);
+	});
+
+	it('saves its layout and its grown page', async () => {
+		const { store, vault } = setup();
+		await store.load(boardFile(vault));
+		const page = store.insertedPages()[0];
+		if (!page) throw new Error('no page');
+		const ink = strokeAt('low', 100, 5);
+		store.addItem(PAGE, ink);
+		const grown = grownBoardPage(page, itemBounds(ink) ?? { minX: 0, minY: 0, maxX: 0, maxY: 0 }, 2000);
+		if (grown) store.resizePageJoined(grown);
+		await store.flush();
+
+		const parsed = parseInkData(vault.files.get(BOARD)?.data ?? '');
+		expect(parsed.ok).toBe(true);
+		if (!parsed.ok) return;
+		expect(parsed.data.layout).toBe('board');
+		expect(parsed.data.docId).toBe('doc-b');
+		expect(parsed.data.insertedPages[0]?.origin).toEqual(grown?.origin);
 	});
 });

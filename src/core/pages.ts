@@ -74,6 +74,16 @@ export interface PageSize {
  * same spot mergeable: both records keep their own key and both pages survive,
  * where absolute indices would collide and one would have to be rewritten.
  */
+export interface PageOrigin {
+	readonly x: number;
+	readonly y: number;
+}
+
+/** An inserted page's bottom-left corner, (0, 0) unless it has grown downward. */
+export function pageOrigin(page: InsertedPage): PageOrigin {
+	return page.origin ?? { x: 0, y: 0 };
+}
+
 export interface InsertedPage {
 	readonly id: string;
 	/** 0-based original page this sits after; {@link BEFORE_FIRST_PAGE} for the top. */
@@ -82,6 +92,12 @@ export interface InsertedPage {
 	readonly sortKey: string;
 	readonly template: PageTemplate;
 	readonly size: PageSize;
+	/**
+	 * The page's bottom-left corner in PDF user space; (0, 0) when absent. A board
+	 * that grows downward lowers its origin instead of moving everything on it, so
+	 * no item's stored coordinates ever change because the page grew.
+	 */
+	readonly origin?: PageOrigin;
 	readonly updatedAt: number;
 	/** Epoch ms when deleted, or undefined while it lives. A tombstone, as for items. */
 	readonly deletedAt?: number;

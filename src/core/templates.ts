@@ -101,6 +101,31 @@ const EMPTY: TemplateGeometry = {
 };
 
 /**
+ * The distance between rules or grid lines, in points; 0 for a blank page.
+ *
+ * A board grows by whole multiples of this, which is what keeps its existing
+ * ruling exactly where it was: the grid is centred, so growing by a whole number
+ * of cells adds cells without shifting any, and ruled lines hang from the top.
+ */
+export function templateSpacing(template: PageTemplate): number {
+	return (SPACING_MM[template] ?? 0) * MM;
+}
+
+/** `geometry` moved by (dx, dy): the ruling of a page whose origin is not (0, 0). */
+export function translateTemplate(
+	geometry: TemplateGeometry,
+	dx: number,
+	dy: number,
+): TemplateGeometry {
+	if (dx === 0 && dy === 0) return geometry;
+	return {
+		...geometry,
+		lines: geometry.lines.map((l) => ({ x1: l.x1 + dx, y1: l.y1 + dy, x2: l.x2 + dx, y2: l.y2 + dy })),
+		dots: geometry.dots.map((d) => ({ x: d.x + dx, y: d.y + dy })),
+	};
+}
+
+/**
  * The ruling for one page, in PDF user space.
  *
  * Total rather than throwing: an unknown template — from a sidecar written by a

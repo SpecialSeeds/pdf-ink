@@ -1,6 +1,7 @@
 import type { ItemChange, ItemRef, PageChange } from './history';
 import {
 	type Clock,
+	type DocumentLayout,
 	INK_DATA_VERSION,
 	type InkData,
 	type Item,
@@ -51,6 +52,8 @@ export class InkStore {
 	private revision = 0;
 	/** A notebook's identity; see {@link InkData.docId}. */
 	private docIdValue: string | undefined;
+	/** See {@link InkData.layout}. */
+	private layoutValue: DocumentLayout | undefined;
 
 	constructor(private readonly now: Clock = systemClock) {}
 
@@ -60,6 +63,10 @@ export class InkStore {
 
 	get docId(): string | undefined {
 		return this.docIdValue;
+	}
+
+	get layout(): DocumentLayout | undefined {
+		return this.layoutValue;
 	}
 
 	/** Give the document an identity, or a new one. Marks the store changed. */
@@ -241,6 +248,7 @@ export class InkStore {
 		}
 		for (const page of data.insertedPages) this.inserted.set(page.id, page);
 		this.docIdValue = data.docId;
+		this.layoutValue = data.layout;
 		this.revision += 1;
 	}
 
@@ -248,6 +256,7 @@ export class InkStore {
 		this.pages.clear();
 		this.inserted.clear();
 		this.docIdValue = undefined;
+		this.layoutValue = undefined;
 		this.revision += 1;
 	}
 
@@ -262,6 +271,7 @@ export class InkStore {
 			pages,
 			insertedPages: [...this.inserted.values()],
 			...(this.docIdValue === undefined ? {} : { docId: this.docIdValue }),
+			...(this.layoutValue === undefined ? {} : { layout: this.layoutValue }),
 		};
 	}
 }

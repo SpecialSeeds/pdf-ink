@@ -153,7 +153,15 @@ export interface InkData {
 	 * name. Absent from PDF sidecars, which are identified by their PDF.
 	 */
 	readonly docId?: string;
+	/**
+	 * `"board"` for a notebook that is one wide canvas rather than a stack of
+	 * pages: its page grows as it is written on, and it never appends another.
+	 * Absent for an ordinary notebook and for every PDF sidecar.
+	 */
+	readonly layout?: DocumentLayout;
 }
+
+export type DocumentLayout = 'board';
 
 /** Epoch milliseconds. Injectable so tests and merges are deterministic. */
 export type Clock = () => number;

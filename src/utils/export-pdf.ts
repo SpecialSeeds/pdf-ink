@@ -2,7 +2,7 @@ import { type App, Notice, type TFile } from 'obsidian';
 import type { ExportMode } from '../core/settings-schema';
 import { confirm } from '../ui/confirm-modal';
 import { parseInkData, sidecarPathFor } from '../core/ink-serialization';
-import { exportAnnotatedPdf } from '../pdf/export';
+import { exportAnnotatedPdfWithReport, scaledNote } from '../pdf/export';
 import { exportPathFor, parentFolder } from '../core/export-path';
 import { isNotebookPath } from '../core/new-notebook';
 import type { PageThemes, ThemeName } from '../core/theme';
@@ -49,7 +49,7 @@ export async function exportAnnotatedCopy(
 		const pdfBytes = notebook
 			? undefined
 			: new Uint8Array(await app.vault.readBinary(file));
-		const flattened = await exportAnnotatedPdf({
+		const { bytes: flattened, scaledPages } = await exportAnnotatedPdfWithReport({
 			pdfBytes,
 			pages: parsed.data.pages,
 			insertedPages: parsed.data.insertedPages,
@@ -89,7 +89,7 @@ export async function exportAnnotatedCopy(
 			await app.vault.createBinary(target, buffer);
 		}
 
-		new Notice(`Exported to ${target}`);
+		new Notice(`Exported to ${target}${scaledNote(scaledPages)}`);
 	} catch (err) {
 		console.error('pdf-ink: export failed', err);
 		new Notice(`Could not export this ${notebook ? 'notebook' : 'PDF'}.`);

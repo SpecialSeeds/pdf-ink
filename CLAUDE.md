@@ -19,7 +19,8 @@ TypeScript, esbuild (sample plugin config), pdf-lib, perfect-freehand.
   other account name or email into the repo, including one picked up from the git
   config or the environment.
 ## Data schema (version 5)
-{ version: 5, pages: { [pageKey]: Item[] }, insertedPages: InsertedPage[] }
+{ version: 5, pages: { [pageKey]: Item[] }, insertedPages: InsertedPage[],
+  docId?, layout?: "board" }
 PageKey = "pdf:<0-based index>" for a page of the source PDF
         | "ins:<uuid>"          for an inserted page
 Item = Stroke | Shape | TextBox | Path, all coordinates in PDF user space
@@ -32,7 +33,8 @@ TextBox = Base & { type: "text", box: {x,y,w,h}, text, fontSize }
 Path    = Base & { type: "path", d, strokeWidth?, highlight? }
   d = SVG-style path data, absolute M, L, C, Z only, in PDF user space
 InsertedPage = { id, afterPdfPage, sortKey, template, size: {width,height},
-                 updatedAt, deletedAt? }
+                 origin?: {x,y}, updatedAt, deletedAt? }
+  origin = the page's bottom-left corner in PDF space, (0, 0) when absent
 PageTemplate = "blank" | "lined" | "lined7.5" | "lined10" | "grid5" | "dot"
 - Items are keyed by page identity, never by position. An index cannot survive an
   insertion: putting a page before page 3 would re-home every annotation after it.
@@ -101,6 +103,21 @@ PageTemplate = "blank" | "lined" | "lined7.5" | "lined10" | "grid5" | "dot"
   merging in a modal (Merge: merge then trash; Keep separate: new docId on the
   copy). Never merge a numbered copy silently; a different or missing docId is
   never asked about.
+
+## Boards
+- A board is a notebook with `layout: "board"` and ONE inserted page, as wide as
+  it needs to be. It never appends a page. Ink committed within 10% of the right
+  or bottom edge grows that page (src/core/board.ts) in the SAME undo step as the
+  ink (`resizePageJoined`, a joined `page-transform`).
+- Growing down lowers the page's `origin`; it never moves items. Moving every item
+  would rewrite thousands of imported paths and misplace another device's ink on
+  merge. Everything that maps a page (the synthetic viewport, ruling, export
+  MediaBox) honours the origin.
+- Growth comes in whole multiples of the template's spacing, so the ruling under
+  existing ink never shifts.
+- A board opens at fit-height and pans both ways. Two fingers pan while pinching.
+- Export: a board is one PDF page at its size. A side over 14,400 pt (PDF's limit)
+  is scaled uniformly to fit, and the export notice says so.
 
 ## Page themes
 - Theme is render-time only: never rewrite a stored colour. Only base ink (near

@@ -19,6 +19,7 @@ import {
 	FALLBACK_PAGE_SIZE,
 	type InsertedPage,
 	type PageKey,
+	type PageOrigin,
 	type PageSize,
 	parsePageKey,
 	pdfPageKey,
@@ -307,6 +308,8 @@ export function parseInkData(raw: string): ParseResult {
 	}
 
 	const docId = root['docId'];
+	// Only a value this build knows is kept: an unknown layout reads as pages.
+	const layout = root['layout'] === 'board' ? ('board' as const) : undefined;
 	return {
 		ok: true,
 		data: {
@@ -314,6 +317,7 @@ export function parseInkData(raw: string): ParseResult {
 			pages,
 			insertedPages,
 			...(typeof docId === 'string' && docId.length > 0 ? { docId } : {}),
+			...(layout === undefined ? {} : { layout }),
 		},
 		dropped,
 		sourceVersion: version,
@@ -368,15 +372,27 @@ function parseInsertedPage(value: unknown, stamp: number): InsertedPage | null {
 	const deletedAt =
 		isFiniteNumber(rawDeleted) && rawDeleted > 0 ? rawDeleted : undefined;
 
+	const origin = parseOrigin(raw['origin']);
 	const page: InsertedPage = {
 		id,
 		afterPdfPage,
 		sortKey,
 		template,
 		size: parsePageSize(raw['size']),
+		...(origin ? { origin } : {}),
 		updatedAt,
 	};
 	return deletedAt === undefined ? page : { ...page, deletedAt };
+}
+
+/** A page origin, or null for the default (0, 0) or anything unreadable. */
+function parseOrigin(value: unknown): PageOrigin | null {
+	if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+	const raw = value as Record<string, unknown>;
+	const x = raw['x'];
+	const y = raw['y'];
+	if (!isFiniteNumber(x) || !isFiniteNumber(y)) return null;
+	return x === 0 && y === 0 ? null : { x, y };
 }
 
 function parsePageSize(value: unknown): PageSize {

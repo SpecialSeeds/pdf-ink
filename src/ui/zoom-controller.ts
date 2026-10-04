@@ -3,6 +3,7 @@ import { FIT_WIDTH_GUTTER, SETTLE_DELAY_MS } from '../constants';
 import {
 	anchoredScroll,
 	clampZoom,
+	fitHeightZoom,
 	fitPageZoom,
 	fitWidthZoom,
 	nextZoom,
@@ -56,6 +57,12 @@ export class ZoomController {
 
 	private anchor: Anchor | null = null;
 	private pending: number | null = null;
+	/**
+	 * How far the gesture has carried its anchor across the viewport, in CSS px:
+	 * two fingers that move together pan, as well as zoom, so the point first
+	 * under them stays under them.
+	 */
+	private drift = { x: 0, y: 0 };
 	private frame = 0;
 	private settleTimer = 0;
 	private pinch: Pinch | null = null;
@@ -141,9 +148,15 @@ export class ZoomController {
 	}
 
 	private computeFit(mode: ZoomMode): number {
-		return mode.kind === 'fit-page'
-			? this.computeFitPage()
-			: this.computeFitWidth();
+		if (mode.kind === 'fit-page') return this.computeFitPage();
+		if (mode.kind === 'fit-height') {
+			return fitHeightZoom(
+				this.host.scrollEl.clientHeight,
+				FIT_WIDTH_GUTTER,
+				this.host.maxBaseHeight(),
+			);
+		}
+		return this.computeFitWidth();
 	}
 
 	private computeFitWidth(): number {
@@ -225,6 +238,7 @@ export class ZoomController {
 	beginGesture(clientX: number, clientY: number): void {
 		if (this.anchor || this.locked) return;
 		this.anchor = this.captureAnchor(clientX, clientY);
+		this.drift = { x: 0, y: 0 };
 		this.host.pagesEl.addClass('is-zooming');
 	}
 
@@ -235,9 +249,10 @@ export class ZoomController {
 	 * per frame, and a transform keeps scrollHeight exactly proportional, which is
 	 * what makes the anchor formula exact rather than approximate.
 	 */
-	preview(zoom: number): void {
+	preview(zoom: number, drift?: { x: number; y: number }): void {
 		if (this.locked) return;
 		this.pending = clampZoom(zoom);
+		if (drift) this.drift = drift;
 		if (this.frame !== 0) return;
 		this.frame = this.host.scrollEl.win.requestAnimationFrame(() => {
 			this.frame = 0;
@@ -266,14 +281,14 @@ export class ZoomController {
 		const margin = Math.max(0, (scrollEl.clientWidth - width) / 2);
 		scrollEl.scrollLeft = anchoredScroll(
 			anchor.contentX,
-			anchor.viewportX,
+			anchor.viewportX + this.drift.x,
 			factor,
 			margin,
 			width + 2 * margin - scrollEl.clientWidth,
 		);
 		scrollEl.scrollTop = anchoredScroll(
 			anchor.contentY,
-			anchor.viewportY,
+			anchor.viewportY + this.drift.y,
 			factor,
 			0,
 			height - scrollEl.clientHeight,
@@ -287,10 +302,14 @@ export class ZoomController {
 		this.cancelSettle();
 		this.cancelFrame();
 
-		const anchor = this.anchor;
+		const moved = this.anchor
+			? { ...this.anchor, viewportX: this.anchor.viewportX + this.drift.x, viewportY: this.anchor.viewportY + this.drift.y }
+			: null;
 		const zoom = this.pending;
 		this.anchor = null;
 		this.pending = null;
+		this.drift = { x: 0, y: 0 };
+		const anchor = moved;
 
 		const { pagesEl } = this.host;
 		pagesEl.removeClass('is-zooming');

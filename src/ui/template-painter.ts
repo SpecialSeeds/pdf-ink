@@ -1,5 +1,5 @@
-import type { InsertedPage } from '../core/pages';
-import { templateGeometry } from '../core/templates';
+import { type InsertedPage, pageOrigin } from '../core/pages';
+import { templateGeometry, translateTemplate } from '../core/templates';
 import type { PageTheme } from '../core/theme';
 import type { Matrix, PageViewport } from '../types/pdfjs';
 
@@ -33,10 +33,11 @@ export function paintInsertedPage(
 	ctx.fillStyle = theme.paper;
 	ctx.fillRect(0, 0, cssWidth, cssHeight);
 
-	const geometry = templateGeometry(
-		page.template,
-		page.size.width,
-		page.size.height,
+	const origin = pageOrigin(page);
+	const geometry = translateTemplate(
+		templateGeometry(page.template, page.size.width, page.size.height),
+		origin.x,
+		origin.y,
 	);
 	if (geometry.lines.length === 0 && geometry.dots.length === 0) return;
 

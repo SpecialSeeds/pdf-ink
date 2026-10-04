@@ -1,5 +1,5 @@
 import type { Plugin } from 'obsidian';
-import { NOTEBOOK_ICON, PDF_INK_ICON } from '../constants';
+import { BOARD_ICON, NOTEBOOK_ICON, PDF_INK_ICON } from '../constants';
 import {
 	openInInkViewSafely,
 	openInPlainViewSafely,
@@ -8,7 +8,7 @@ import type { PdfInkHost } from '../settings';
 import { PdfInkView } from '../ui/pdf-ink-view';
 import { effectiveThemes } from '../core/theme';
 import { resolveExportTheme } from '../ui/export-theme-modal';
-import { createNotebook } from '../utils/create-notebook';
+import { createBoard, createNotebook } from '../utils/create-notebook';
 import { createPdf } from '../utils/create-pdf';
 import { exportAnnotatedCopy } from '../utils/export-pdf';
 import { resolvePdfTarget } from '../utils/pdf-target';
@@ -47,6 +47,15 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 		icon: NOTEBOOK_ICON,
 		callback: () => {
 			void createNotebook(plugin.app);
+		},
+	});
+
+	plugin.addCommand({
+		id: 'create-board',
+		name: 'New board',
+		icon: BOARD_ICON,
+		callback: () => {
+			void createBoard(plugin.app);
 		},
 	});
 

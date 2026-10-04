@@ -74,6 +74,20 @@ export function maxBaseHeight(pages: readonly PageBase[]): number {
 }
 
 /**
+ * Zoom at which the tallest page's height fits the pane, whatever its width.
+ *
+ * What a board opens at: its whole height in view, and its width to pan along.
+ */
+export function fitHeightZoom(
+	clientHeight: number,
+	gutter: number,
+	tallest: number,
+): number {
+	if (tallest <= 0) return 1;
+	return clampZoom((clientHeight - 2 * gutter) / tallest / PDF_TO_CSS_UNITS);
+}
+
+/**
  * Zoom at which the largest page fits entirely within the pane.
  *
  * The smaller of the two fits, so the constraining axis wins and nothing is cut

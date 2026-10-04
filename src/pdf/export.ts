@@ -17,9 +17,9 @@ import {
 	inZOrder,
 } from '../core/items';
 import { pathGeometry } from '../core/path';
-import { type InsertedPage, type PageKey, orderPages } from '../core/pages';
+import { type InsertedPage, type PageKey, orderPages, pageOrigin } from '../core/pages';
 import { type PathSegment, shapeGeometry } from '../core/shapes';
-import { type PageTemplate, templateGeometry } from '../core/templates';
+import { type PageTemplate, templateGeometry, translateTemplate } from '../core/templates';
 import { outlineToPathData, strokeOutline } from '../core/stroke';
 import { layoutTextLines } from '../core/text-layout';
 import { normalizeHex, parseHex } from '../core/color';
@@ -260,22 +260,30 @@ function drawItem(
 /** An inserted page's paper and ruling, in its theme, under whatever is on it. */
 function drawTemplate(page: PDFPage, inserted: InsertedPage, theme: PageTheme): void {
 	const { width, height } = inserted.size;
+	const origin = pageOrigin(inserted);
 	// A PDF page is white already, so white paper costs nothing to draw.
 	if (normalizeHex(theme.paper) !== '#ffffff') {
 		page.drawRectangle({
-			x: 0,
-			y: 0,
+			x: origin.x,
+			y: origin.y,
 			width,
 			height,
 			color: toRgb(theme.paper),
 			borderWidth: 0,
 		});
 	}
-	drawRuling(page, inserted.template, width, height, theme.grid);
+	drawRuling(page, inserted.template, width, height, theme.grid, origin.x, origin.y);
 }
 
 /**
- * Draw a template's ruling onto a page whose MediaBox starts at (0, 0).
+ * The longest side a PDF page may have: 200 inches, the limit PDF readers
+ * enforce. A board larger than this is scaled down to fit when exported.
+ */
+export const MAX_PDF_PAGE_SIDE = 14_400;
+
+/**
+ * Draw a template's ruling onto a page whose MediaBox starts at the origin given,
+ * (0, 0) unless the page is a board that has grown downward.
  *
  * Shared by export and by creating a new PDF, so a ruled page looks the same
  * whichever way it came to exist.
@@ -286,8 +294,10 @@ export function drawRuling(
 	width: number,
 	height: number,
 	gridColor: string,
+	originX = 0,
+	originY = 0,
 ): void {
-	const geometry = templateGeometry(template, width, height);
+	const geometry = translateTemplate(templateGeometry(template, width, height), originX, originY);
 	const color = toRgb(gridColor);
 	// Not drawSvgPath: these are page-space primitives with no y-flip to undo, and
 	// an inserted page's MediaBox origin is (0, 0) by construction.
@@ -342,6 +352,41 @@ export interface ExportOptions {
 export async function exportAnnotatedPdf(
 	options: ExportOptions,
 ): Promise<Uint8Array> {
+	return (await exportAnnotatedPdfWithReport(options)).bytes;
+}
+
+/** A page the export had to shrink to fit {@link MAX_PDF_PAGE_SIDE}. */
+export interface ScaledPage {
+	/** 0-based position in the exported document. */
+	readonly index: number;
+	/** The uniform factor applied, below 1. */
+	readonly factor: number;
+}
+
+/**
+ * What the export notice says about pages too large for a PDF, or nothing.
+ * A board can outgrow the 200 inch limit; the user should know it was shrunk.
+ */
+export function scaledNote(scaled: readonly ScaledPage[]): string {
+	if (scaled.length === 0) return '';
+	const percent = (factor: number): string => `${String(Math.floor(factor * 100))}%`;
+	const limit = MAX_PDF_PAGE_SIDE.toLocaleString('en-US');
+	if (scaled.length === 1) {
+		const [only] = scaled;
+		return `. Page ${String((only?.index ?? 0) + 1)} was larger than PDF's ${limit} pt limit and was scaled to ${percent(only?.factor ?? 1)} to fit.`;
+	}
+	return `. ${String(scaled.length)} pages were larger than PDF's ${limit} pt limit and were scaled down to fit.`;
+}
+
+export interface ExportReport {
+	readonly bytes: Uint8Array;
+	readonly scaledPages: readonly ScaledPage[];
+}
+
+/** {@link exportAnnotatedPdf}, also saying which pages had to be scaled down. */
+export async function exportAnnotatedPdfWithReport(
+	options: ExportOptions,
+): Promise<ExportReport> {
 	const doc = options.pdfBytes
 		? await PDFDocument.load(options.pdfBytes)
 		: await PDFDocument.create();
@@ -363,11 +408,12 @@ export async function exportAnnotatedPdf(
 	for (const slot of order) {
 		if (slot.kind !== 'inserted') continue;
 		const { width, height } = slot.page.size;
-		drawTemplate(
-			doc.insertPage(slot.index, [width, height]),
-			slot.page,
-			themeFor('inserted'),
-		);
+		const origin = pageOrigin(slot.page);
+		const page = doc.insertPage(slot.index, [width, height]);
+		// A board that grew downward has its corner below (0, 0); its items are
+		// stored in that same space, so the MediaBox moves rather than the ink.
+		if (origin.x !== 0 || origin.y !== 0) page.setMediaBox(origin.x, origin.y, width, height);
+		drawTemplate(page, slot.page, themeFor('inserted'));
 	}
 
 	const indexByKey = new Map<PageKey, number>();
@@ -388,5 +434,17 @@ export async function exportAnnotatedPdf(
 			drawItem(doc, page, item, font, options.mode ?? 'flatten', theme);
 		}
 	}
-	return doc.save();
+
+	// Last, once everything is drawn: pdf-lib scales the page box, its content
+	// and its annotations together, so the page looks the same, only smaller.
+	const scaledPages: ScaledPage[] = [];
+	for (const slot of order) {
+		if (slot.kind !== 'inserted') continue;
+		const longest = Math.max(slot.page.size.width, slot.page.size.height);
+		if (longest <= MAX_PDF_PAGE_SIDE) continue;
+		const factor = MAX_PDF_PAGE_SIDE / longest;
+		doc.getPage(slot.index).scale(factor, factor);
+		scaledPages.push({ index: slot.index, factor });
+	}
+	return { bytes: await doc.save(), scaledPages };
 }

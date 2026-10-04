@@ -32,7 +32,7 @@ import {
 	isLivePage,
 } from '../core/pages';
 import type { PageTemplate } from '../core/templates';
-import type { InkData } from '../core/items';
+import type { DocumentLayout, InkData } from '../core/items';
 import type { PageKey } from '../core/pages';
 import { InkStore, type ItemStore } from '../core/ink-store';
 import {
@@ -259,6 +259,23 @@ export class AnnotationStore implements ItemStore {
 	}
 
 	/** Change an inserted page's ruling as one undoable operation. */
+	/** `"board"` for a board notebook; see {@link InkData.layout}. */
+	get layout(): DocumentLayout | undefined {
+		return this.ink.layout;
+	}
+
+	/**
+	 * Replace a page record in place — a board growing — as part of the newest
+	 * undo step, so one undo takes back the ink and the growth it caused.
+	 */
+	resizePageJoined(next: InsertedPage): void {
+		const change = this.ink.pageChangeFor(next.id, () => next);
+		if (!change) return;
+		this.ink.replacePage(change.after);
+		this.history.pushJoined({ kind: 'page-transform', changes: [change] });
+		this.afterMutation();
+	}
+
 	setPageTemplate(id: string, template: PageTemplate): void {
 		const change = this.ink.pageChangeFor(id, (page) => ({ ...page, template }));
 		if (!change) return;

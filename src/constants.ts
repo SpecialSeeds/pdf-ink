@@ -5,6 +5,8 @@ export const PDF_INK_ICON = 'pen-tool';
 
 /** For a new notebook: the ribbon, the command and a folder's menu. */
 export const NOTEBOOK_ICON = 'notebook-pen';
+/** A board: one wide canvas. Lucide's whiteboard-like presentation icon. */
+export const BOARD_ICON = 'presentation';
 
 /**
  * 96 CSS px/in over 72 pt/in. Zoom 1.0 means "100%" — physical size at 96 dpi,

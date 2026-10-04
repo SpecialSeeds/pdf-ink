@@ -9,7 +9,13 @@ import type { InsertedPage } from '../core/pages';
 import type { PageTemplate } from '../core/templates';
 import { layoutTextLines, wrapText } from '../core/text-layout';
 import { createStroke } from '../core/stroke';
-import { exportAnnotatedPdf, parseColor } from './export';
+import {
+	MAX_PDF_PAGE_SIDE,
+	exportAnnotatedPdf,
+	exportAnnotatedPdfWithReport,
+	parseColor,
+	scaledNote,
+} from './export';
 import { embeddedFontBytes } from './font';
 
 /** A two-page A4 document to annotate. */
@@ -878,5 +884,73 @@ describe('path export', () => {
 		const flat = await (await PDFDocument.load(bytes)).save({ useObjectStreams: false });
 		// Over dark paper a highlighter screens rather than multiplies.
 		expect(new TextDecoder('latin1').decode(flat)).toContain('/Screen');
+	});
+});
+
+describe('board export', () => {
+	function boardPage(over: Partial<InsertedPage> = {}): InsertedPage {
+		return {
+			id: 'b',
+			afterPdfPage: -1,
+			sortKey: 'a0',
+			template: 'grid5',
+			size: { width: 2000, height: 900 },
+			updatedAt: 0,
+			...over,
+		};
+	}
+
+	it('exports a board as one page at its own size, its origin included', async () => {
+		const report = await exportAnnotatedPdfWithReport({
+			pages: { 'ins:b': [] },
+			insertedPages: [boardPage({ origin: { x: 0, y: -300 } })],
+		});
+		expect(report.scaledPages).toEqual([]);
+		const doc = await PDFDocument.load(report.bytes);
+		expect(doc.getPageCount()).toBe(1);
+		const box = doc.getPage(0).getMediaBox();
+		expect(box).toEqual({ x: 0, y: -300, width: 2000, height: 900 });
+	});
+
+	it('draws a path on a grown board where it is stored', async () => {
+		const path: PathItem = {
+			type: 'path',
+			id: 'low',
+			color: '#000000',
+			opacity: 1,
+			rotation: 0,
+			z: 0,
+			updatedAt: 0,
+			d: 'M100 -250L200 -250L200 -200Z',
+		};
+		const bytes = await exportAnnotatedPdf({
+			pages: { 'ins:b': [path] },
+			insertedPages: [boardPage({ template: 'blank', origin: { x: 0, y: -300 } })],
+		});
+		const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+		const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+		const page = await doc.getPage(1);
+		const view: number[] = page.view;
+		expect(view[1]).toBe(-300);
+		const viewport = page.getViewport({ scale: 1 });
+		// pdf.js places (100, -250) 50 pt above the bottom-left corner.
+		const [x, y] = viewport.convertToViewportPoint(100, -250) as [number, number];
+		expect(x).toBeCloseTo(100, 6);
+		expect(y).toBeCloseTo(900 - 50, 6);
+	});
+
+	it('scales a board with a side over 14,400 pt uniformly to fit, and reports it', async () => {
+		const report = await exportAnnotatedPdfWithReport({
+			pages: {},
+			insertedPages: [boardPage({ template: 'blank', size: { width: 28_800, height: 3_000 } })],
+		});
+		expect(report.scaledPages).toEqual([{ index: 0, factor: 0.5 }]);
+		const box = (await PDFDocument.load(report.bytes)).getPage(0).getMediaBox();
+		expect(box.width).toBeCloseTo(MAX_PDF_PAGE_SIDE, 6);
+		expect(box.height).toBeCloseTo(1_500, 6);
+		expect(scaledNote(report.scaledPages)).toBe(
+			". Page 1 was larger than PDF's 14,400 pt limit and was scaled to 50% to fit.",
+		);
+		expect(scaledNote([])).toBe('');
 	});
 });
