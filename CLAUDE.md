@@ -57,6 +57,9 @@ PageTemplate = "blank" | "lined" | "lined7.5" | "lined10" | "grid5" | "dot"
   and there is no record that could represent a missing original page.
 - Every template has ONE geometry function in src/core/templates.ts returning lines
   and dots in PDF space. Canvas rendering and pdf-lib export both consume it.
+- Grid level of detail is screen only: below 8 px spacing only every 5th grid line
+  or dot (counted from the left and top, which a growing board never moves) is
+  drawn, and minor lines fade in by 16 px. Export always draws the full grid.
 - An inserted page has no pdf.js page, so it gets a synthetic PageViewport
   (src/core/page-viewport.ts) that behaves exactly like pdf.js's for an unrotated
   page. Everything downstream converts coordinates through a viewport as usual.

@@ -93,6 +93,15 @@ describe('the exported ruling matches the shared geometry', () => {
 		expect(content).toContain(`${String(6 * MM)} ${String(y)} m`);
 	});
 
+	it('draws every grid line, minor ones included, whatever the screen shows', async () => {
+		const content = await insertedContent('grid5');
+		const { lines } = templateGeometry('grid5', W, H);
+		expect(lines.some((line) => line.major === false)).toBe(true);
+		for (const line of lines) {
+			expect(content).toContain(`${String(line.x1)} ${String(line.y1)} m`);
+		}
+	});
+
 	it('draws a grid on both axes', async () => {
 		const content = await insertedContent('grid5');
 		const { lines } = templateGeometry('grid5', W, H);

@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest';
+import { grownBoardPage } from './board';
+import { type InsertedPage, pageOrigin } from './pages';
 import {
+	MAJOR_EVERY,
+	MINOR_HIDDEN_BELOW_PX,
+	MINOR_SOLID_ABOVE_PX,
 	MM,
 	PAGE_TEMPLATES,
 	TEMPLATE_LABELS,
 	isPageTemplate,
+	minorGridAlpha,
 	templateGeometry,
+	translateTemplate,
 } from './templates';
 
 /** A4 in points, the size pdf.js reports for the fixtures. */
@@ -147,5 +154,58 @@ describe('the template list', () => {
 		expect(isPageTemplate('squared')).toBe(false);
 		expect(isPageTemplate(5)).toBe(false);
 		expect(isPageTemplate(null)).toBe(false);
+	});
+});
+
+describe('grid level of detail', () => {
+	it('marks every fifth grid line major, counted from the left and from the top', () => {
+		const g = templateGeometry('grid5', 612, 792);
+		const verticals = g.lines.filter((l) => l.x1 === l.x2).sort((a, b) => a.x1 - b.x1);
+		const horizontals = g.lines.filter((l) => l.y1 === l.y2).sort((a, b) => b.y1 - a.y1);
+		expect(verticals.map((l) => l.major)).toEqual(verticals.map((_, i) => i % MAJOR_EVERY === 0));
+		expect(horizontals.map((l) => l.major)).toEqual(horizontals.map((_, i) => i % MAJOR_EVERY === 0));
+	});
+
+	it('marks a dot major only where major lines cross', () => {
+		const g = templateGeometry('dot', 612, 792);
+		const majors = g.dots.filter((d) => d.major);
+		expect(majors.length).toBeGreaterThan(0);
+		expect(majors.length).toBeLessThan(g.dots.length / 20);
+	});
+
+	it('does not grade ruled lines', () => {
+		expect(templateGeometry('lined', 612, 792).lines.every((l) => l.major === undefined)).toBe(true);
+	});
+
+	it('hides minor lines at 8 px apart or less and fades them in up to 16 px', () => {
+		expect(minorGridAlpha(4)).toBe(0);
+		expect(minorGridAlpha(MINOR_HIDDEN_BELOW_PX)).toBe(0);
+		expect(minorGridAlpha(12)).toBeCloseTo(0.5, 9);
+		expect(minorGridAlpha(MINOR_SOLID_ABOVE_PX)).toBe(1);
+		expect(minorGridAlpha(40)).toBe(1);
+		expect(minorGridAlpha(Number.NaN)).toBe(0);
+	});
+
+	it('keeps every major line where it was when a board grows', () => {
+		const page: InsertedPage = {
+			id: 'b',
+			afterPdfPage: -1,
+			sortKey: 'a0',
+			template: 'grid5',
+			size: { width: 1000, height: 600 },
+			updatedAt: 0,
+		};
+		const grown = grownBoardPage(page, { minX: 950, minY: 10, maxX: 960, maxY: 20 }, 1);
+		if (!grown) throw new Error('did not grow');
+		const majors = (p: InsertedPage): Set<string> => {
+			const o = pageOrigin(p);
+			const g = translateTemplate(templateGeometry(p.template, p.size.width, p.size.height), o.x, o.y);
+			return new Set(
+				g.lines.filter((l) => l.major).map((l) => (l.x1 === l.x2 ? `x${l.x1.toFixed(6)}` : `y${l.y1.toFixed(6)}`)),
+			);
+		};
+		const before = majors(page);
+		const after = majors(grown);
+		for (const line of before) expect(after.has(line)).toBe(true);
 	});
 });

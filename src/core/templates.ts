@@ -78,11 +78,34 @@ export interface TemplateLine {
 	readonly y1: number;
 	readonly x2: number;
 	readonly y2: number;
+	/** A grid's every {@link MAJOR_EVERY}th line, kept when the rest are too dense to draw. */
+	readonly major?: boolean;
 }
 
 export interface TemplateDot {
 	readonly x: number;
 	readonly y: number;
+	/** On a major line both ways. */
+	readonly major?: boolean;
+}
+
+/** Every this-many grid lines is a major one. */
+export const MAJOR_EVERY = 5;
+
+/** Grid spacing on screen, in CSS px, at or below which minor lines are not drawn. */
+export const MINOR_HIDDEN_BELOW_PX = 8;
+/** ...and at or above which they are drawn in full. Between the two they fade in. */
+export const MINOR_SOLID_ABOVE_PX = 16;
+
+/**
+ * How strongly to draw a grid's minor lines when they are `spacingPx` CSS px
+ * apart on screen: none when dense enough to turn the page grey, fading in as
+ * the page is zoomed. Screen only; an export always draws the full grid.
+ */
+export function minorGridAlpha(spacingPx: number): number {
+	if (!(spacingPx > MINOR_HIDDEN_BELOW_PX)) return 0;
+	if (spacingPx >= MINOR_SOLID_ABOVE_PX) return 1;
+	return (spacingPx - MINOR_HIDDEN_BELOW_PX) / (MINOR_SOLID_ABOVE_PX - MINOR_HIDDEN_BELOW_PX);
 }
 
 export interface TemplateGeometry {
@@ -120,8 +143,8 @@ export function translateTemplate(
 	if (dx === 0 && dy === 0) return geometry;
 	return {
 		...geometry,
-		lines: geometry.lines.map((l) => ({ x1: l.x1 + dx, y1: l.y1 + dy, x2: l.x2 + dx, y2: l.y2 + dy })),
-		dots: geometry.dots.map((d) => ({ x: d.x + dx, y: d.y + dy })),
+		lines: geometry.lines.map((l) => ({ ...l, x1: l.x1 + dx, y1: l.y1 + dy, x2: l.x2 + dx, y2: l.y2 + dy })),
+		dots: geometry.dots.map((d) => ({ ...d, x: d.x + dx, y: d.y + dy })),
 	};
 }
 
@@ -208,9 +231,25 @@ function gridLines(
 	const right = xs[xs.length - 1] ?? 0;
 
 	const lines: TemplateLine[] = [];
-	for (const x of xs) lines.push({ x1: x, y1: bottom, x2: x, y2: top });
-	for (const y of ys) lines.push({ x1: left, y1: y, x2: right, y2: y });
+	xs.forEach((x, i) => {
+		lines.push({ x1: x, y1: bottom, x2: x, y2: top, major: isMajorFromLeft(i) });
+	});
+	ys.forEach((y, j) => {
+		lines.push({ x1: left, y1: y, x2: right, y2: y, major: isMajorFromTop(j, ys.length) });
+	});
 	return lines;
+}
+
+/*
+ * Major lines are counted from the left and the top: the edges a board never
+ * moves when it grows, so growing it never turns a major line minor.
+ */
+function isMajorFromLeft(i: number): boolean {
+	return i % MAJOR_EVERY === 0;
+}
+
+function isMajorFromTop(j: number, count: number): boolean {
+	return (count - 1 - j) % MAJOR_EVERY === 0;
 }
 
 function gridDots(
@@ -222,8 +261,10 @@ function gridDots(
 	const xs = centredTicks(width, margin, spacing);
 	const ys = centredTicks(height, margin, spacing);
 	const dots: TemplateDot[] = [];
-	for (const y of ys) {
-		for (const x of xs) dots.push({ x, y });
-	}
+	ys.forEach((y, j) => {
+		xs.forEach((x, i) => {
+			dots.push({ x, y, major: isMajorFromLeft(i) && isMajorFromTop(j, ys.length) });
+		});
+	});
 	return dots;
 }
