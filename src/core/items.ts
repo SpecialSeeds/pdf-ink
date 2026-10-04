@@ -25,6 +25,7 @@ export const INK_DATA_VERSION = 5;
 /** The oldest schema this build can read and migrate. */
 export const OLDEST_SUPPORTED_VERSION = 1;
 
+import type { BaseRef } from './base-layer';
 import type { InsertedPage, PageKey } from './pages';
 
 /** Axis-aligned box in PDF user space. */
@@ -159,6 +160,11 @@ export interface InkData {
 	 * Absent for an ordinary notebook and for every PDF sidecar.
 	 */
 	readonly layout?: DocumentLayout;
+	/**
+	 * The notebook's base layer: imported ink kept in a sibling file and named
+	 * here by content hash. See src/core/base-layer.ts.
+	 */
+	readonly base?: BaseRef;
 }
 
 export type DocumentLayout = 'board';

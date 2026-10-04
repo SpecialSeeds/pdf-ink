@@ -12,6 +12,7 @@
  * also orphan every annotation on it. Only a missing id — the merge key — is fatal.
  */
 
+import type { BaseRef } from './base-layer';
 import { DEFAULT_PRESSURE } from './coords';
 import { FIRST_KEY, isValidKey } from './fracindex';
 import {
@@ -310,6 +311,7 @@ export function parseInkData(raw: string): ParseResult {
 	const docId = root['docId'];
 	// Only a value this build knows is kept: an unknown layout reads as pages.
 	const layout = root['layout'] === 'board' ? ('board' as const) : undefined;
+	const base = parseBaseRef(root['base']);
 	return {
 		ok: true,
 		data: {
@@ -318,6 +320,7 @@ export function parseInkData(raw: string): ParseResult {
 			insertedPages,
 			...(typeof docId === 'string' && docId.length > 0 ? { docId } : {}),
 			...(layout === undefined ? {} : { layout }),
+			...(base ? { base } : {}),
 		},
 		dropped,
 		sourceVersion: version,
@@ -383,6 +386,13 @@ function parseInsertedPage(value: unknown, stamp: number): InsertedPage | null {
 		updatedAt,
 	};
 	return deletedAt === undefined ? page : { ...page, deletedAt };
+}
+
+/** A base layer reference, or null when absent or not a SHA-256 hex digest. */
+function parseBaseRef(value: unknown): BaseRef | null {
+	if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+	const hash = (value as Record<string, unknown>)['hash'];
+	return typeof hash === 'string' && /^[0-9a-f]{64}$/.test(hash) ? { hash } : null;
 }
 
 /** A page origin, or null for the default (0, 0) or anything unreadable. */

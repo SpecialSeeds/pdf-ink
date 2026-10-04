@@ -28,6 +28,11 @@ page at the canvas's size. Anything else is split into Letter pages.
 Ink becomes `path` items in its exact exported colours. Typed text (the title and
 date included) becomes text boxes where it was.
 
+Everything imported goes into `<name>.inknote.gz`, a gzipped base layer written
+once and never again. The `.inknote` beside it names the base by its SHA-256 and
+holds only what you change afterwards, so the file the plugin saves on every
+stroke stays small.
+
 ## Known Mac export losses
 
 Compared against an iOS export of the same note, the Mac export:

@@ -203,12 +203,15 @@ export function mergeInkData(ours: InkData, theirs: InkData): MergeResult {
 	const docId = ours.docId ?? theirs.docId;
 	// Nor is layout: a notebook does not stop being a board by merging.
 	const layout = ours.layout ?? theirs.layout;
+	// The base layer is fixed at import, so both sides name the same one.
+	const base = ours.base ?? theirs.base;
 	const data: InkData = {
 		version: INK_DATA_VERSION,
 		pages,
 		insertedPages: pageMerge.pages,
 		...(docId === undefined ? {} : { docId }),
 		...(layout === undefined ? {} : { layout }),
+		...(base === undefined ? {} : { base }),
 	};
 	return {
 		data,
@@ -266,11 +269,18 @@ export function pruneTombstones(
 	data: InkData,
 	now: number,
 	maxAge: number,
+	/**
+	 * Tombstones this says to keep are kept at any age: one over a base item is
+	 * the only thing hiding it, and the base never changes, so pruning it would
+	 * bring the item back.
+	 */
+	keepForever: (id: string) => boolean = () => false,
 ): InkData {
 	const pages: Record<PageKey, Item[]> = {};
 	for (const [key, items] of Object.entries(data.pages)) {
 		const kept = items.filter(
-			(item) => isLive(item) || now - (item.deletedAt ?? 0) < maxAge,
+			(item) =>
+				isLive(item) || now - (item.deletedAt ?? 0) < maxAge || keepForever(item.id),
 		);
 		if (kept.length > 0) pages[key] = kept;
 	}
@@ -283,6 +293,7 @@ export function pruneTombstones(
 		insertedPages,
 		...(data.docId === undefined ? {} : { docId: data.docId }),
 		...(data.layout === undefined ? {} : { layout: data.layout }),
+		...(data.base === undefined ? {} : { base: data.base }),
 	};
 }
 

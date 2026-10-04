@@ -21,6 +21,7 @@ import {
 	setFillingRgbColor,
 } from 'pdf-lib';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { unpackBase } from '../../../src/core/base-layer';
 import { parseInkData } from '../../../src/core/ink-serialization';
 import { pathBounds } from '../../../src/core/path';
 import { buildNotebook, classify } from '../src/build';
@@ -316,9 +317,11 @@ describe('running an import', () => {
 		const lines: string[] = [];
 		const results = await runImport({ input: dir, output: dir, now: 1, log: (l) => lines.push(l) });
 		expect(results.map((r) => r.status)).toEqual(['written', 'written']);
-		expect((await readdir(dir)).filter((f) => f.endsWith('.inknote')).sort()).toEqual([
+		expect((await readdir(dir)).filter((f) => f.includes('.inknote')).sort()).toEqual([
 			'Board note.inknote',
+			'Board note.inknote.gz',
 			'Tall note.inknote',
+			'Tall note.inknote.gz',
 		]);
 		const parsed = parseInkData(await readFile(join(dir, 'Board note.inknote'), 'utf8'));
 		expect(parsed.ok).toBe(true);
@@ -326,6 +329,12 @@ describe('running an import', () => {
 		expect(parsed.data.version).toBe(5);
 		expect(parsed.data.layout).toBe('board');
 		expect(typeof parsed.data.docId).toBe('string');
+		// The imported ink is all in the base layer the notebook names.
+		expect(parsed.data.pages).toEqual({});
+		const ref = parsed.data.base;
+		if (!ref) throw new Error('no base reference');
+		const unpacked = await unpackBase(new Uint8Array(await readFile(join(dir, 'Board note.inknote.gz'))), ref);
+		expect(unpacked.ok && Object.values(unpacked.pages).flat().filter((i) => i.type === 'path')).toHaveLength(1);
 	});
 
 	it('skips notes already written when it is run again', async () => {

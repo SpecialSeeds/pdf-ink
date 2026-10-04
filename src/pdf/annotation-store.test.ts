@@ -15,12 +15,14 @@ import {
 	sidecarPathFor,
 } from '../core/ink-serialization';
 import { grownBoardPage, newBoardData } from '../core/board';
+import { STUB_PATH, basePathFor, packBase } from '../core/base-layer';
+import { transformItem, translation } from '../core/transform';
 import { itemBounds } from '../core/hit-test';
-import type { InkData, Stroke } from '../core/items';
+import type { InkData, PathItem, Stroke } from '../core/items';
 import { INK_DATA_VERSION } from '../core/items';
 import { type InsertedPage, insertedPageKey } from '../core/pages';
-import { TOMBSTONE_MAX_AGE_MS } from '../core/merge';
-import { newNotebookText } from '../core/new-notebook';
+import { TOMBSTONE_MAX_AGE_MS, pruneTombstones } from '../core/merge';
+import { newNotebookData, newNotebookText } from '../core/new-notebook';
 import type { AskAboutCopy, CopyDecision } from './annotation-store';
 import { DEFAULT_PEN, createStroke } from '../core/stroke';
 import { AnnotationStore } from './annotation-store';
@@ -105,6 +107,20 @@ class FakeVault {
 	/** Simulate another device writing the file behind our back. */
 	writeExternally(path: string, data: string): void {
 		this.files.set(path, { data, mtime: this.tick() });
+	}
+
+	/** Binary files, such as a notebook's base layer, by path. */
+	readonly binaries = new Map<string, Uint8Array>();
+
+	writeBinaryExternally(path: string, bytes: Uint8Array): void {
+		this.binaries.set(path, bytes);
+		this.files.set(path, { data: '', mtime: this.tick() });
+	}
+
+	readBinary(file: TFile): Promise<ArrayBuffer> {
+		const bytes = this.binaries.get(file.path);
+		if (!bytes) return Promise.reject(new Error('missing'));
+		return Promise.resolve(bytes.slice().buffer);
 	}
 }
 
@@ -1726,5 +1742,153 @@ describe('boards', () => {
 		expect(parsed.data.layout).toBe('board');
 		expect(parsed.data.docId).toBe('doc-b');
 		expect(parsed.data.insertedPages[0]?.origin).toEqual(grown?.origin);
+	});
+});
+
+describe('notebooks with a base layer', () => {
+	const NOTEBOOK = 'class/Imported.inknote';
+	const BASE = basePathFor(NOTEBOOK);
+	const PAGE = insertedPageKey('p1');
+
+	function basePath(id: string, x: number): PathItem {
+		return {
+			type: 'path',
+			id,
+			color: '#000000',
+			opacity: 1,
+			rotation: 0,
+			z: 0,
+			updatedAt: 1,
+			d: `M${String(x)} 100L${String(x + 10)} 100L${String(x + 10)} 110Z`,
+		};
+	}
+
+	/** An imported notebook: two base paths, and an `.inknote` holding none. */
+	async function imported(vault: FakeVault, withBase = true): Promise<TFile> {
+		const { bytes, ref } = await packBase({ [PAGE]: [basePath('b1', 100), basePath('b2', 300)] });
+		const notebook = newNotebookData(1000, 'p1', 'doc');
+		if (withBase) vault.writeBinaryExternally(BASE, bytes);
+		vault.writeExternally(NOTEBOOK, serializeInkData({ ...notebook, base: ref }));
+		const found = vault.getFileByPath(NOTEBOOK);
+		if (!found) throw new Error('unreachable');
+		return found;
+	}
+
+	function saved(vault: FakeVault): InkData {
+		const parsed = parseInkData(vault.files.get(NOTEBOOK)?.data ?? '');
+		if (!parsed.ok) throw new Error('unreadable save');
+		return parsed.data;
+	}
+
+	// Compression and hashing run on real timers.
+	beforeEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('shows the base layer, and saves none of it', async () => {
+		const { store, vault } = setup();
+		await store.load(await imported(vault));
+		expect(store.itemsFor(PAGE).map((i) => i.id)).toEqual(['b1', 'b2']);
+
+		store.addItem(PAGE, stroke('mine'));
+		await store.flush();
+		expect(saved(vault).pages[PAGE]?.map((i) => i.id)).toEqual(['mine']);
+		expect(saved(vault).base?.hash).toMatch(/^[0-9a-f]{64}$/);
+		// Written once at import, never again.
+		expect(vault.ops.some((op) => op.includes(BASE))).toBe(false);
+	});
+
+	it('copies a base item into the notebook when it is edited, and only that one', async () => {
+		const { store, vault } = setup();
+		await store.load(await imported(vault));
+		const [b1] = store.itemsFor(PAGE);
+		if (!b1) throw new Error('no base item');
+		const shown = (): string | undefined => {
+			const item = store.itemsFor(PAGE).find((i) => i.id === 'b1');
+			return item?.type === 'path' ? item.d : undefined;
+		};
+		const moved = transformItem(b1, translation(5, 0));
+		store.transformItems([{ pageKey: PAGE, before: b1, after: moved }]);
+		expect(shown()).toBe('M105 100L115 100L115 110Z');
+
+		await store.flush();
+		expect(saved(vault).pages[PAGE]?.map((i) => i.id)).toEqual(['b1']);
+
+		// Undo puts the base item back as it was.
+		expect(store.undo()).toBe(true);
+		expect(shown()).toBe(basePath('b1', 100).d);
+	});
+
+	it('erases a base item with a tombstone that does not copy its outline', async () => {
+		const { store, vault } = setup();
+		await store.load(await imported(vault));
+		const [b1] = store.itemsFor(PAGE);
+		if (!b1) throw new Error('no base item');
+		store.removeItems([{ pageKey: PAGE, index: 0, item: b1 }]);
+		expect(store.itemsFor(PAGE).map((i) => i.id)).toEqual(['b2']);
+
+		await store.flush();
+		const records = saved(vault).pages[PAGE] ?? [];
+		expect(records).toHaveLength(1);
+		expect(records[0]?.deletedAt).toBeGreaterThan(0);
+		expect(records[0]?.type === 'path' && records[0].d).toBe(STUB_PATH);
+
+		// Reopened, the tombstone still hides it.
+		const again = setup();
+		again.vault.files.clear();
+		for (const [path, entry] of vault.files) again.vault.files.set(path, entry);
+		for (const [path, bytes] of vault.binaries) again.vault.binaries.set(path, bytes);
+		const file = again.vault.getFileByPath(NOTEBOOK);
+		if (!file) throw new Error('unreachable');
+		await again.store.load(file);
+		expect(again.store.itemsFor(PAGE).map((i) => i.id)).toEqual(['b2']);
+	});
+
+	it('never prunes a tombstone that hides a base item', () => {
+		const old = { ...basePath('b1', 100), deletedAt: 1, updatedAt: 1 };
+		const data: InkData = { version: INK_DATA_VERSION, pages: { [PAGE]: [old] }, insertedPages: [] };
+		const now = TOMBSTONE_MAX_AGE_MS * 2;
+		expect(pruneTombstones(data, now, TOMBSTONE_MAX_AGE_MS).pages[PAGE]).toBeUndefined();
+		expect(pruneTombstones(data, now, TOMBSTONE_MAX_AGE_MS, (id) => id === 'b1').pages[PAGE]).toHaveLength(1);
+	});
+
+	it('opens with only the user layer when the base is missing, and reads it when it arrives', async () => {
+		const { store, vault } = setup();
+		const file = await imported(vault, false);
+		await store.load(file);
+		expect(store.itemsFor(PAGE)).toEqual([]);
+		expect(Notice.messages.some((m) => m.includes('missing'))).toBe(true);
+
+		const { bytes } = await packBase({ [PAGE]: [basePath('b1', 100), basePath('b2', 300)] });
+		vault.writeBinaryExternally(BASE, bytes);
+		const arrived = vault.getFileByPath(BASE);
+		if (!arrived) throw new Error('unreachable');
+		store.handleBaseAppeared(arrived);
+		await vi.waitFor(() => {
+			expect(store.itemsFor(PAGE).map((i) => i.id)).toEqual(['b1', 'b2']);
+		});
+	});
+
+	it('refuses a base file whose hash is not the one the notebook names', async () => {
+		const { store, vault } = setup();
+		const file = await imported(vault);
+		vault.writeBinaryExternally(BASE, (await packBase({ [PAGE]: [basePath('other', 50)] })).bytes);
+		await store.load(file);
+		expect(store.itemsFor(PAGE)).toEqual([]);
+		expect(Notice.messages.some((m) => m.includes('unreadable'))).toBe(true);
+	});
+
+	it('finds the base of a renamed notebook by its hash', async () => {
+		const { store, vault } = setup();
+		await imported(vault);
+		const renamed = 'class/Renamed.inknote';
+		const entry = vault.files.get(NOTEBOOK);
+		if (!entry) throw new Error('unreachable');
+		vault.files.delete(NOTEBOOK);
+		vault.files.set(renamed, entry);
+		const file = vault.getFileByPath(renamed);
+		if (!file) throw new Error('unreachable');
+		await store.load(file);
+		expect(store.itemsFor(PAGE).map((i) => i.id)).toEqual(['b1', 'b2']);
 	});
 });
