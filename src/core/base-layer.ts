@@ -15,6 +15,7 @@
  * Obsidian has on desktop and mobile, and Node has too.
  */
 
+import { isPackedPath, packPath, unpackPath } from './base-encoding';
 import { parseInkData } from './ink-serialization';
 import { INK_DATA_VERSION, type Item, isLive } from './items';
 import type { PageKey } from './pages';
@@ -37,15 +38,37 @@ export interface BaseRef {
 	readonly hash: string;
 }
 
-/** Marks the file as ours, and its layout version. */
+/**
+ * Marks the file as ours, and its layout version. Version 2 packs paths (see
+ * src/core/base-encoding.ts); version 1 kept their data as text, and still reads.
+ */
 export const BASE_FORMAT = 'pdf-ink-base';
-export const BASE_FORMAT_VERSION = 1;
+export const BASE_FORMAT_VERSION = 2;
 
 export type BasePages = Record<PageKey, Item[]>;
 
-/** The base file's uncompressed text. */
+/** The base file's uncompressed text, with every path packed. */
 export function encodeBase(pages: BasePages): string {
-	return JSON.stringify({ format: BASE_FORMAT, version: BASE_FORMAT_VERSION, pages });
+	const packed: Record<PageKey, unknown[]> = {};
+	for (const [key, items] of Object.entries(pages)) {
+		packed[key] = items.map((item) => (item.type === 'path' ? packPath(item) : item));
+	}
+	return JSON.stringify({ format: BASE_FORMAT, version: BASE_FORMAT_VERSION, pages: packed });
+}
+
+/** A base file's pages with paths unpacked to path data, ready to validate. */
+function unpackPages(pages: unknown): unknown {
+	if (pages === null || typeof pages !== 'object' || Array.isArray(pages)) return pages;
+	const out: Record<string, unknown> = {};
+	for (const [key, items] of Object.entries(pages as Record<string, unknown>)) {
+		// A path whose letters and numbers disagree is dropped by validation.
+		out[key] = Array.isArray(items)
+			? (items as unknown[]).map((item: unknown): unknown =>
+					isPackedPath(item) ? (unpackPath(item) ?? { type: 'path' }) : item,
+				)
+			: items;
+	}
+	return out;
 }
 
 /**
@@ -66,7 +89,7 @@ export function decodeBase(text: string): BasePages | null {
 	const version = root['version'];
 	if (typeof version !== 'number' || version > BASE_FORMAT_VERSION) return null;
 	const result = parseInkData(
-		JSON.stringify({ version: INK_DATA_VERSION, pages: root['pages'], insertedPages: [] }),
+		JSON.stringify({ version: INK_DATA_VERSION, pages: unpackPages(root['pages']), insertedPages: [] }),
 	);
 	return result.ok ? result.data.pages : null;
 }
