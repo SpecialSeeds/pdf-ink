@@ -62,7 +62,11 @@ describe('readInkViewState', () => {
 
 	it('degrades to defaults for anything unrecognisable', () => {
 		for (const state of [null, undefined, 'nonsense', 42, {}, []]) {
-			expect(readInkViewState(state)).toEqual({ zoomMode: null, pageKey: null });
+			expect(readInkViewState(state)).toEqual({
+				zoomMode: null,
+				pageKey: null,
+				theme: null,
+			});
 		}
 	});
 
@@ -70,6 +74,21 @@ describe('readInkViewState', () => {
 		for (const page of [0, -3, 1.5, '2', null]) {
 			expect(readInkViewState({ page }).pageKey).toBeNull();
 		}
+	});
+});
+
+describe('the page theme', () => {
+	it('round-trips per tab', () => {
+		for (const theme of ['light', 'dark'] as const) {
+			const written = writeInkViewState({ kind: 'fit-width' }, 1, 1, null, theme);
+			expect(readInkViewState(written).theme).toBe(theme);
+		}
+	});
+
+	it('is null when absent or unrecognised, so the tab follows Obsidian', () => {
+		expect(readInkViewState({}).theme).toBeNull();
+		expect(readInkViewState({ theme: 'sepia' }).theme).toBeNull();
+		expect('theme' in writeInkViewState({ kind: 'fit-width' }, 1, 1, null)).toBe(false);
 	});
 });
 

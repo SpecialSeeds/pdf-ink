@@ -199,10 +199,13 @@ export function mergeInkData(ours: InkData, theirs: InkData): MergeResult {
 
 	const pageMerge = mergePages(ours.insertedPages, theirs.insertedPages);
 
+	// Identity is not merged: ours stands, and theirs only fills a gap.
+	const docId = ours.docId ?? theirs.docId;
 	const data: InkData = {
 		version: INK_DATA_VERSION,
 		pages,
 		insertedPages: pageMerge.pages,
+		...(docId === undefined ? {} : { docId }),
 	};
 	return {
 		data,
@@ -271,7 +274,12 @@ export function pruneTombstones(
 	const insertedPages = data.insertedPages.filter(
 		(page) => isLivePage(page) || now - (page.deletedAt ?? 0) < maxAge,
 	);
-	return { version: INK_DATA_VERSION, pages, insertedPages };
+	return {
+		version: INK_DATA_VERSION,
+		pages,
+		insertedPages,
+		...(data.docId === undefined ? {} : { docId: data.docId }),
+	};
 }
 
 /**

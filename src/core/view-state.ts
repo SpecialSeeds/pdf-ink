@@ -1,4 +1,5 @@
 import { type PageKey, parsePageKey, pdfPageKey } from './pages';
+import { type ThemeName, isThemeName } from './theme';
 import type { ZoomMode } from '../types/view';
 
 /** What a saved workspace can tell us about how to reopen a PDF. */
@@ -11,9 +12,11 @@ export interface RestoredInkState {
 	 * the page the user was reading, and a link to it would silently drift.
 	 */
 	readonly pageKey: PageKey | null;
+	/** The page theme this tab was showing, or null to follow Obsidian's. */
+	readonly theme: ThemeName | null;
 }
 
-const EMPTY: RestoredInkState = { zoomMode: null, pageKey: null };
+const EMPTY: RestoredInkState = { zoomMode: null, pageKey: null, theme: null };
 
 /**
  * Parse the keys this view adds to its workspace state.
@@ -54,7 +57,9 @@ export function readInkViewState(state: unknown): RestoredInkState {
 		}
 	}
 
-	return { zoomMode, pageKey };
+	const theme = isThemeName(raw['theme']) ? raw['theme'] : null;
+
+	return { zoomMode, pageKey, theme };
 }
 
 /**
@@ -69,11 +74,13 @@ export function writeInkViewState(
 	zoom: number,
 	pageNumber: number,
 	pageKey: PageKey | null,
+	theme: ThemeName | null = null,
 ): Record<string, unknown> {
 	return {
 		zoomMode: mode.kind,
 		zoom,
 		page: pageNumber,
 		...(pageKey === null ? {} : { pageKey }),
+		...(theme === null ? {} : { theme }),
 	};
 }

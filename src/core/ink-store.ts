@@ -49,11 +49,24 @@ export class InkStore {
 	/** Inserted page records by id, tombstones included. */
 	private readonly inserted = new Map<string, InsertedPage>();
 	private revision = 0;
+	/** A notebook's identity; see {@link InkData.docId}. */
+	private docIdValue: string | undefined;
 
 	constructor(private readonly now: Clock = systemClock) {}
 
 	get version(): number {
 		return this.revision;
+	}
+
+	get docId(): string | undefined {
+		return this.docIdValue;
+	}
+
+	/** Give the document an identity, or a new one. Marks the store changed. */
+	setDocId(docId: string): void {
+		if (docId === this.docIdValue) return;
+		this.docIdValue = docId;
+		this.revision += 1;
 	}
 
 	get isEmpty(): boolean {
@@ -227,12 +240,14 @@ export class InkStore {
 			if (items.length > 0) this.pages.set(key, [...items]);
 		}
 		for (const page of data.insertedPages) this.inserted.set(page.id, page);
+		this.docIdValue = data.docId;
 		this.revision += 1;
 	}
 
 	clear(): void {
 		this.pages.clear();
 		this.inserted.clear();
+		this.docIdValue = undefined;
 		this.revision += 1;
 	}
 
@@ -246,6 +261,7 @@ export class InkStore {
 			version: INK_DATA_VERSION,
 			pages,
 			insertedPages: [...this.inserted.values()],
+			...(this.docIdValue === undefined ? {} : { docId: this.docIdValue }),
 		};
 	}
 }

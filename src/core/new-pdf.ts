@@ -48,19 +48,28 @@ export function rulingFromKeywords(keywords: unknown): PageTemplate | null {
 }
 
 /**
- * `folder/Untitled.pdf`, or the first `folder/Untitled N.pdf` that is free.
+ * `folder/Untitled.<extension>`, or the first `folder/Untitled N.<extension>`
+ * that is free.
  *
  * `folder` is a vault path, '' or '/' for the root.
  */
-export function untitledPdfPath(
+export function untitledPath(
 	folder: string,
+	extension: string,
 	exists: (path: string) => boolean,
 ): string {
 	const prefix = folder === '' || folder === '/' ? '' : `${folder}/`;
 	const base = `${prefix}Untitled`;
-	if (!exists(`${base}.pdf`)) return `${base}.pdf`;
+	if (!exists(`${base}.${extension}`)) return `${base}.${extension}`;
 	for (let n = 1; ; n++) {
-		const candidate = `${base} ${String(n)}.pdf`;
+		const candidate = `${base} ${String(n)}.${extension}`;
 		if (!exists(candidate)) return candidate;
 	}
+}
+
+export function untitledPdfPath(
+	folder: string,
+	exists: (path: string) => boolean,
+): string {
+	return untitledPath(folder, 'pdf', exists);
 }

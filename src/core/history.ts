@@ -10,6 +10,9 @@
  * both the page records and the items that go with them, so deleting a page and
  * tombstoning everything on it is one operation and one undo — a page that came
  * back empty would be worse than no undo at all.
+ *
+ * `group` joins several operations into one step — a stroke near the bottom of a
+ * notebook and the page it appended, so one undo takes back both.
  */
 
 import type { Item } from './items';
@@ -64,7 +67,9 @@ export type InkOperation =
 			readonly refs: readonly ItemRef[];
 		}
 	/** A page record edited in place — a template or size change. */
-	| { readonly kind: 'page-transform'; readonly changes: readonly PageChange[] };
+	| { readonly kind: 'page-transform'; readonly changes: readonly PageChange[] }
+	/** Several operations as one step, applied in order. */
+	| { readonly kind: 'group'; readonly operations: readonly InkOperation[] };
 
 /** Enough to cover a long session without growing without bound. */
 export const HISTORY_LIMIT = 200;
@@ -86,6 +91,20 @@ export class InkHistory {
 		this.past.push(operation);
 		if (this.past.length > HISTORY_LIMIT) this.past.shift();
 		this.future.length = 0;
+	}
+
+	/**
+	 * Record an operation as part of the newest step, so one undo reverses both.
+	 * With nothing to join, it is recorded on its own.
+	 */
+	pushJoined(operation: InkOperation): void {
+		const last = this.past.pop();
+		if (!last) {
+			this.push(operation);
+			return;
+		}
+		const earlier = last.kind === 'group' ? last.operations : [last];
+		this.push({ kind: 'group', operations: [...earlier, operation] });
 	}
 
 	/** Move the newest operation onto the redo stack and hand it back. */
@@ -145,6 +164,12 @@ export function invert(operation: InkOperation): InkOperation {
 					before: change.after,
 					after: change.before,
 				})),
+			};
+		case 'group':
+			// Undone last-first, so each step sees the state it was recorded against.
+			return {
+				kind: 'group',
+				operations: [...operation.operations].reverse().map(invert),
 			};
 	}
 }

@@ -25,7 +25,11 @@ function ref(page: number, index: number, id = `s${String(index)}`): ItemRef {
 /** First ref's id, for operations that carry refs. */
 function refIdOf(operation: InkOperation | undefined): string | undefined {
 	if (!operation) return undefined;
-	if (operation.kind === 'transform' || operation.kind === 'page-transform') {
+	if (
+		operation.kind === 'transform' ||
+		operation.kind === 'page-transform' ||
+		operation.kind === 'group'
+	) {
 		return undefined;
 	}
 	if (operation.kind === 'replace') return operation.removed[0]?.item.id;
@@ -167,6 +171,42 @@ describe('invert', () => {
 	it('is its own inverse', () => {
 		const op = add(ref(1, 2, 'z'));
 		expect(invert(invert(op))).toEqual(op);
+	});
+});
+
+describe('grouped operations', () => {
+	const page: InsertedPage = {
+		id: 'p',
+		afterPdfPage: -1,
+		sortKey: 'a1',
+		template: 'grid5',
+		size: { width: 612, height: 792 },
+		updatedAt: 1,
+	};
+	const pageAdd: InkOperation = { kind: 'page-add', pages: [page], refs: [] };
+
+	it('joins an operation onto the newest step', () => {
+		const history = new InkHistory();
+		history.push(add(ref(0, 0, 'a')));
+		history.pushJoined(pageAdd);
+		const undone = history.undo();
+		expect(undone).toEqual({ kind: 'group', operations: [add(ref(0, 0, 'a')), pageAdd] });
+		expect(history.canUndo).toBe(false);
+	});
+
+	it('records on its own when there is nothing to join', () => {
+		const history = new InkHistory();
+		history.pushJoined(pageAdd);
+		expect(history.undo()).toEqual(pageAdd);
+	});
+
+	it('inverts last-first', () => {
+		const first = add(ref(0, 0, 'a'));
+		const inverted = invert({ kind: 'group', operations: [first, pageAdd] });
+		expect(inverted).toEqual({
+			kind: 'group',
+			operations: [invert(pageAdd), invert(first)],
+		});
 	});
 });
 
