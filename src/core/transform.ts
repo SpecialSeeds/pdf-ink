@@ -8,6 +8,7 @@
 
 import type { ItemChange, ItemRef } from './history';
 import type { Box, Item } from './items';
+import { mapPath } from './path';
 import { selectionBounds } from './lasso';
 import type { Vec2 } from 'perfect-freehand';
 
@@ -117,6 +118,11 @@ export function transformItem(item: Item, t: SelectionTransform): Item {
 			// A stroke's turn is baked into its points, so its angle stays 0.
 			rotation: item.rotation,
 		};
+	}
+	if (item.type === 'path') {
+		// Like a stroke, the turn is baked into the geometry; the outline width of
+		// a stroked path is kept, as a shape's is.
+		return mapPath(item, (x, y) => mapPoint(x, y, t));
 	}
 	const transformed = {
 		...item,

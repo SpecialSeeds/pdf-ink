@@ -1,5 +1,6 @@
 import {
 	BlendMode,
+	LineCapStyle,
 	PDFDocument,
 	type PDFFont,
 	type PDFPage,
@@ -7,7 +8,15 @@ import {
 	rgb,
 } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
-import { type Item, type ShapeItem, type Stroke, type TextItem, inZOrder } from '../core/items';
+import {
+	type Item,
+	type PathItem,
+	type ShapeItem,
+	type Stroke,
+	type TextItem,
+	inZOrder,
+} from '../core/items';
+import { pathGeometry } from '../core/path';
 import { type InsertedPage, type PageKey, orderPages } from '../core/pages';
 import { type PathSegment, shapeGeometry } from '../core/shapes';
 import { type PageTemplate, templateGeometry } from '../core/templates';
@@ -128,6 +137,40 @@ function drawShape(page: PDFPage, shape: ShapeItem): void {
 	}
 }
 
+/** A path, from the same geometry the screen draws. */
+function drawPath(page: PDFPage, item: PathItem, blend: HighlighterBlend): void {
+	const blendMode =
+		item.highlight !== true
+			? BlendMode.Normal
+			: blend === 'screen'
+				? BlendMode.Screen
+				: BlendMode.Multiply;
+	for (const segment of pathGeometry(item).segments) {
+		const pathData = toSvgSpace(segmentPathData(segment));
+		if (pathData.length === 0) continue;
+		if (segment.fill === true) {
+			page.drawSvgPath(pathData, {
+				x: 0,
+				y: 0,
+				color: toRgb(item.color),
+				opacity: item.opacity,
+				borderWidth: 0,
+				blendMode,
+			});
+		} else {
+			page.drawSvgPath(pathData, {
+				x: 0,
+				y: 0,
+				borderColor: toRgb(item.color),
+				borderWidth: item.strokeWidth ?? 1,
+				borderOpacity: item.opacity,
+				borderLineCap: LineCapStyle.Round,
+				blendMode,
+			});
+		}
+	}
+}
+
 function drawText(page: PDFPage, item: TextItem, font: PDFFont): void {
 	// Measured with the embedded font, so the wrapping is the same as on screen.
 	const lines = layoutTextLines(item.text, item.box, item.fontSize, (text) =>
@@ -207,6 +250,9 @@ function drawItem(
 			break;
 		case 'text':
 			drawText(page, item, font);
+			break;
+		case 'path':
+			drawPath(page, item, blend);
 			break;
 	}
 }

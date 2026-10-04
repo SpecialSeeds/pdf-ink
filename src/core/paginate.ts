@@ -8,7 +8,7 @@
  * A page break is chosen from the ink, not from the page height: within the
  * bottom 35% of the page the widest empty horizontal band wins, and only when
  * there is none does the break fall on the row with the least ink. Strokes trace
- * their path into that profile; shapes and text boxes fill their bounding box.
+ * their path into that profile; shapes, text boxes and paths fill their bounding box.
  * No item is ever cut; one crossing the break moves whole to the next page.
  *
  * A board is first split into columns, at long vertical divider strokes and at
@@ -17,6 +17,7 @@
 
 import type { Bounds } from './hit-test';
 import { type Item, type Stroke, isLive } from './items';
+import { pathBounds } from './path';
 import { scaleAbout, transformItem } from './transform';
 
 export interface PaginateOptions {
@@ -85,6 +86,7 @@ export interface Pagination {
 
 /** An item's extent, including a stroke's nib or a shape's outline. */
 export function itemExtent(item: Item): Bounds | null {
+	if (item.type === 'path') return pathBounds(item);
 	if (item.type !== 'stroke') {
 		// The box turns about its centre, so take the turned box's bounds.
 		const { box } = item;
@@ -332,6 +334,11 @@ export function splitColumns(
 function mapItem(item: Item, scale: number, dx: number, dy: number): Item {
 	const moved = transformItem(item, { ...scaleAbout(0, 0, scale, scale), dx, dy });
 	if (moved.type === 'text') return moved;
+	if (moved.type === 'path') {
+		return moved.strokeWidth === undefined
+			? moved
+			: { ...moved, strokeWidth: moved.strokeWidth * scale };
+	}
 	return { ...moved, width: moved.width * scale };
 }
 

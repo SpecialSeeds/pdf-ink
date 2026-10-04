@@ -12,6 +12,7 @@ import { type Item, type ShapeItem, type Stroke, type StrokeSample, systemClock 
 // Re-exported: these live in hit-test.ts but the eraser is their busiest caller.
 export { boundsIntersect, itemBounds, polylineBounds } from './hit-test';
 import { type PathSegment, shapeGeometry } from './shapes';
+import { flattenPath, pathCommands } from './path';
 
 /** The swept segment between two consecutive pointer samples. */
 export interface Capsule {
@@ -273,8 +274,23 @@ export function itemToPolylines(item: Item, spacing: number): StrokeSample[][] {
 			.map((line) => resamplePolyline(line, spacing))
 			.filter((line) => line.length >= 2);
 	}
+	if (item.type === 'path') {
+		// Only to find what the eraser touches: a path is removed whole, never cut,
+		// because a cut outline would leave a ragged sliver of fill.
+		return flattenPath(pathCommands(item), spacing).map((ring) =>
+			resamplePolyline(
+				ring.map(([x, y]): StrokeSample => [x, y, 1]),
+				spacing,
+			),
+		);
+	}
 	// Text boxes are ignored in sized mode.
 	return [];
+}
+
+/** Whether a sized erase removes this item whole instead of cutting it. */
+export function erasesWhole(item: Item): boolean {
+	return item.type === 'path';
 }
 
 /** The width a fragment of this item inherits. */

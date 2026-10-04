@@ -15,6 +15,7 @@ import {
 	pointInPolygon,
 } from './hit-test';
 import type { Item, StrokeSample } from './items';
+import { flattenPath, pathCommands } from './path';
 import type { Vec2 } from 'perfect-freehand';
 
 /**
@@ -51,7 +52,8 @@ export function itemCenter(item: Item): Vec2 | null {
 /**
  * Whether the loop selects this item.
  *
- * Strokes go by how much of their length is enclosed; shapes and text boxes go by
+ * Strokes and paths go by how much of their length is enclosed (a path is
+ * usually imported handwriting, so it should lasso like a stroke); shapes and text boxes go by
  * their centre, because their outline is mostly empty space and requiring the
  * whole box would make a big shape unselectable.
  */
@@ -59,6 +61,12 @@ export function selectsItem(item: Item, polygon: readonly Vec2[]): boolean {
 	if (polygon.length < 3) return false;
 	if (item.type === 'stroke') {
 		return fractionInside(item.points, polygon) >= LASSO_STROKE_THRESHOLD;
+	}
+	if (item.type === 'path') {
+		const vertices = flattenPath(pathCommands(item), 1)
+			.flat()
+			.map(([x, y]): StrokeSample => [x, y, 1]);
+		return fractionInside(vertices, polygon) >= LASSO_STROKE_THRESHOLD;
 	}
 	const centre = itemCenter(item);
 	return centre ? pointInPolygon(centre[0], centre[1], polygon) : false;

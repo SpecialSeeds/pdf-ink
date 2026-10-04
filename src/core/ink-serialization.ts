@@ -2,9 +2,10 @@
  * Reading and writing the `<file>.ink.json` sidecar. Pure — no vault, no DOM.
  *
  * Older sidecars are migrated on load: v1 held strokes only, v2 and v3 filed items
- * under a numeric page index. A version newer than this build understands is
- * refused rather than rewritten, and individual malformed items are dropped so one
- * bad record cannot cost the user a whole page.
+ * under a numeric page index, and v4 had no path items but is otherwise read as
+ * it is. A version newer than this build understands is refused rather than
+ * rewritten, and individual malformed items are dropped so one bad record cannot
+ * cost the user a whole page.
  *
  * Page records are more forgiving than items: a page whose template or size cannot
  * be read is repaired with a default rather than dropped, because dropping it would
@@ -22,6 +23,7 @@ import {
 	parsePageKey,
 	pdfPageKey,
 } from './pages';
+import { parsePathData } from './path';
 import { type PageTemplate, isPageTemplate } from './templates';
 import {
 	type Box,
@@ -29,6 +31,7 @@ import {
 	type InkData,
 	type Item,
 	OLDEST_SUPPORTED_VERSION,
+	type PathItem,
 	type ShapeItem,
 	type Stroke,
 	type StrokeSample,
@@ -439,6 +442,8 @@ function parseItem(
 			return parseShape(raw, { id, color, opacity, rotation, z, ...timestamps });
 		case 'text':
 			return parseText(raw, { id, color, opacity, rotation, z, ...timestamps });
+		case 'path':
+			return parsePath(raw, { id, color, opacity, rotation, z, ...timestamps });
 		default:
 			return null;
 	}
@@ -530,6 +535,21 @@ function parseText(
 	if (!isFiniteNumber(fontSize) || fontSize <= 0) return null;
 	if (!box) return null;
 	return { ...base, type: 'text', box, text, fontSize };
+}
+
+function parsePath(
+	raw: Record<string, unknown>,
+	base: BaseFields,
+): PathItem | null {
+	const d = raw['d'];
+	if (typeof d !== 'string') return null;
+	const commands = parsePathData(d);
+	if (!commands || commands.length === 0) return null;
+	const path: PathItem = { ...base, type: 'path', d };
+	const strokeWidth = raw['strokeWidth'];
+	if (isFiniteNumber(strokeWidth) && strokeWidth > 0) path.strokeWidth = strokeWidth;
+	if (raw['highlight'] === true) path.highlight = true;
+	return path;
 }
 
 function parseBox(value: unknown): Box | null {

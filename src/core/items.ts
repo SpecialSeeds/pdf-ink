@@ -1,5 +1,5 @@
 /**
- * The annotation data model, schema version 4. Pure.
+ * The annotation data model, schema version 5. Pure.
  *
  * Every coordinate here is in PDF user space (points, y up), per the project
  * invariant, which is what lets items survive zoom, rotation and re-rendering.
@@ -14,9 +14,13 @@
  * and adds the records for pages that are not in the source PDF. An index cannot
  * survive an insertion — putting a page before page 3 would re-home every
  * annotation after it — so the key is the page's identity instead of its position.
+ *
+ * Version 5 adds the `path` item: a vector outline, such as ink imported from
+ * another app, drawn exactly as stored rather than through the pen's outline.
+ * A v4 file needs no rewriting to be read as v5; only its version changes.
  */
 
-export const INK_DATA_VERSION = 4;
+export const INK_DATA_VERSION = 5;
 
 /** The oldest schema this build can read and migrate. */
 export const OLDEST_SUPPORTED_VERSION = 1;
@@ -112,10 +116,29 @@ export interface TextItem extends ItemBase {
 	fontSize: number;
 }
 
-export type Item = Stroke | ShapeItem | TextItem;
+/**
+ * A vector outline in PDF user space, filled with `color` at `opacity`.
+ *
+ * Its geometry is final: unlike a stroke, nothing is generated from it, so it
+ * looks exactly as it did in the app it came from.
+ */
+export interface PathItem extends ItemBase {
+	type: 'path';
+	/**
+	 * SVG-style path data in PDF user space: absolute `M`, `L`, `C` and `Z`
+	 * only. Parsed through src/core/path.ts, never by hand.
+	 */
+	d: string;
+	/** Drawn as an outline of this width, in PDF points, instead of filled. */
+	strokeWidth?: number;
+	/** Highlighter ink: drawn on the highlight layer and blended like one. */
+	highlight?: boolean;
+}
+
+export type Item = Stroke | ShapeItem | TextItem | PathItem;
 export type ItemType = Item['type'];
 
-export const ITEM_TYPES: readonly ItemType[] = ['stroke', 'shape', 'text'];
+export const ITEM_TYPES: readonly ItemType[] = ['stroke', 'shape', 'text', 'path'];
 
 /** The `<file>.ink.json` shape. Page keys are {@link PageKey}, never indices. */
 export interface InkData {
@@ -177,6 +200,10 @@ export function isShape(item: Item): item is ShapeItem {
 
 export function isText(item: Item): item is TextItem {
 	return item.type === 'text';
+}
+
+export function isPath(item: Item): item is PathItem {
+	return item.type === 'path';
 }
 
 export function isShapeKind(value: unknown): value is ShapeKind {

@@ -86,11 +86,11 @@ describe('schema version validation', () => {
 	});
 
 	it('rejects a newer version and reports it', () => {
-		const result = parseInkData(doc({}, 5));
+		const result = parseInkData(doc({}, 6));
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('unsupported-version');
-		expect(result.version).toBe(5);
+		expect(result.version).toBe(6);
 	});
 
 	it('rejects a version below the oldest it can migrate', () => {
@@ -99,12 +99,34 @@ describe('schema version validation', () => {
 		if (!result.ok) expect(result.reason).toBe('unsupported-version');
 	});
 
-	it('reports version 4 as current, needing no migration', () => {
-		const result = parseInkData(doc({ '0': [validStroke()] }));
+	it('reports version 5 as current, needing no migration', () => {
+		const result = parseInkData(doc({ 'pdf:0': [validStroke()] }, 5));
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.sourceVersion).toBe(5);
+		expect(result.migrated).toBe(false);
+	});
+
+	it('migrates a version 4 file to version 5 with its items intact', () => {
+		const stroke = validStroke();
+		const result = parseInkData(
+			JSON.stringify({
+				version: 4,
+				pages: { 'pdf:0': [stroke] },
+				insertedPages: [],
+				docId: 'doc-1',
+			}),
+		);
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
 		expect(result.sourceVersion).toBe(4);
-		expect(result.migrated).toBe(false);
+		expect(result.migrated).toBe(true);
+		expect(result.data.version).toBe(5);
+		expect(result.data.docId).toBe('doc-1');
+		expect(result.data.pages['pdf:0']).toEqual([
+			expect.objectContaining({ id: stroke.id, type: 'stroke', points: stroke.points }),
+		]);
+		expect((JSON.parse(serializeInkData(result.data)) as { version: number }).version).toBe(5);
 	});
 
 	it('migrates a version 2 file', () => {
@@ -317,7 +339,7 @@ describe('serialize / parse round-trip', () => {
 		const text = serializeInkData(data);
 		expect(text.endsWith('\n')).toBe(true);
 		expect(JSON.parse(text)).toEqual({
-			version: 4,
+			version: 5,
 			pages: {},
 			insertedPages: [],
 		});
