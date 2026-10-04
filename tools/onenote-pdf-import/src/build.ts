@@ -9,6 +9,7 @@
 import { FIRST_KEY, keysBetween } from '../../../src/core/fracindex';
 import { INK_DATA_VERSION, type InkData, type Item, type PathItem, type TextItem } from '../../../src/core/items';
 import { createDocId } from '../../../src/core/new-notebook';
+import { HEADER_CONTENT_TOP, type NotebookHeader, detectTitleHeader } from '../../../src/core/header';
 import { LETTER_HEIGHT, LETTER_WIDTH, paginate } from '../../../src/core/paginate';
 import { serializePathData } from '../../../src/core/path';
 import { BEFORE_FIRST_PAGE, type InsertedPage, createPageId, insertedPageKey } from '../../../src/core/pages';
@@ -33,10 +34,17 @@ export interface BuildOptions {
 	/** Injectable for deterministic tests. */
 	readonly newId?: () => string;
 	readonly docId?: string;
+	/**
+	 * The note's name. When the canvas opens with this title and a date line,
+	 * they become the notebook's header rather than text boxes.
+	 */
+	readonly title?: string;
 }
 
 export interface Built {
 	readonly data: InkData;
+	/** The header made from the note's own title and date, if it had them. */
+	readonly header?: NotebookHeader;
 	readonly layout: Layout;
 	readonly pageCount: number;
 	readonly pathCount: number;
@@ -94,7 +102,17 @@ export function buildNotebook(canvas: Canvas, options: BuildOptions): Built {
 	const newId = options.newId ?? createPageId;
 	const docId = options.docId ?? createDocId();
 	const layout = classify(canvas.width, canvas.height);
-	const items = canvasItems(canvas, now, newId);
+	let items = canvasItems(canvas, now, newId);
+
+	// OneNote's page title and date become the header, which draws them itself.
+	const detected =
+		options.title === undefined ? null : detectTitleHeader(items, options.title, canvas.height);
+	const header: NotebookHeader | undefined = detected ? { createdAt: detected.createdAt } : undefined;
+	if (detected) {
+		const dropped = new Set(detected.ids);
+		items = items.filter((item) => !dropped.has(item.id));
+	}
+	const withHeader = header ? { header } : {};
 
 	if (layout === 'board') {
 		const page: InsertedPage = {
@@ -112,7 +130,9 @@ export function buildNotebook(canvas: Canvas, options: BuildOptions): Built {
 				insertedPages: [page],
 				docId,
 				layout: 'board',
+				...withHeader,
 			},
+			...withHeader,
 			layout,
 			pageCount: 1,
 			pathCount: canvas.paths.length,
@@ -120,7 +140,12 @@ export function buildNotebook(canvas: Canvas, options: BuildOptions): Built {
 		};
 	}
 
-	const pagination = paginate(items, { canvasWidth: canvas.width, columns: false });
+	const pagination = paginate(items, {
+		canvasWidth: canvas.width,
+		columns: false,
+		// Page 1 starts under the header's band.
+		...(header ? { firstPageInset: HEADER_CONTENT_TOP } : {}),
+	});
 	// An empty note still gets its one page.
 	const count = Math.max(1, pagination.pages.length);
 	const keys = keysBetween(null, null, count);
@@ -140,7 +165,8 @@ export function buildNotebook(canvas: Canvas, options: BuildOptions): Built {
 		if (onPage.length > 0) pages[insertedPageKey(page.id)] = onPage;
 	}
 	return {
-		data: { version: INK_DATA_VERSION, pages, insertedPages, docId },
+		data: { version: INK_DATA_VERSION, pages, insertedPages, docId, ...withHeader },
+		...withHeader,
 		layout,
 		pageCount: count,
 		pathCount: canvas.paths.length,

@@ -383,3 +383,13 @@ describe('paginate with columns', () => {
 		expectOnPage(result);
 	});
 });
+
+describe('a first page that starts lower', () => {
+	it('starts only the first page at the inset, and keeps it inside the page', () => {
+		const result = paginate(paragraph('a', 3000, 40, 18), { firstPageInset: 72 });
+		const tops = result.pages.map((page) => Math.max(...page.items.map((i) => itemExtent(i)?.maxY ?? 0)));
+		expect(tops[0]).toBeCloseTo(792 - 72, 6);
+		for (const top of tops.slice(1)) expect(top).toBeCloseTo(792 - 36, 6);
+		expectOnPage(result);
+	});
+});
