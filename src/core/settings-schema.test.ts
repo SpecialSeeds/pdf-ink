@@ -281,3 +281,29 @@ describe('new PDF settings', () => {
 		expect(merged.newPdfTemplate).toBe('lined');
 	});
 });
+
+describe('page theme settings', () => {
+	it('stores no overrides by default', () => {
+		expect(mergeSettings({}).pageThemes).toEqual({ light: {}, dark: {} });
+	});
+
+	it('keeps a partial override and drops an invalid one', () => {
+		const merged = mergeSettings({
+			pageThemes: { dark: { paper: '#101010', grid: 'blue' } },
+		});
+		expect(merged.pageThemes).toEqual({ light: {}, dark: { paper: '#101010' } });
+	});
+
+	it('does not alias the default overrides', () => {
+		const merged = mergeSettings({});
+		merged.pageThemes.light.paper = '#000000';
+		expect(DEFAULT_SETTINGS.pageThemes.light).toEqual({});
+	});
+
+	it('remembers the export theme and whether to ask', () => {
+		const merged = mergeSettings({ exportTheme: 'dark', askExportTheme: false });
+		expect(merged.exportTheme).toBe('dark');
+		expect(merged.askExportTheme).toBe(false);
+		expect(mergeSettings({ exportTheme: 'sepia' }).exportTheme).toBe('light');
+	});
+});

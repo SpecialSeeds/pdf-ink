@@ -137,6 +137,48 @@ export function isSyncLeftover(sidecarPath: string, candidate: string): boolean 
 	return numbered || plain === `${SIDECAR_SUFFIX}.json`;
 }
 
+/** A notebook's extension, with its dot. The notebook file is its own ink data. */
+export const NOTEBOOK_SUFFIX = '.inknote';
+
+/**
+ * Whether `candidate` is a sync client's leftover copy of the notebook at
+ * `notebookPath`: a conflict copy that says so (`Notes (conflict).inknote`,
+ * `Notes.inknote (conflict 2024-01-01)`), or a numbered copy of its `.bak` or
+ * `.tmp` (`Notes.inknote 2.bak`).
+ *
+ * Deliberately narrower than {@link isSyncLeftover}: iCloud's numbered copy of the
+ * notebook itself, `Notes 2.inknote`, cannot be told apart from a notebook the
+ * user named that way, and merging then trashing someone's separate notebook is
+ * far worse than leaving a stray copy for them to open.
+ */
+export function isNotebookLeftover(notebookPath: string, candidate: string): boolean {
+	if (!notebookPath.endsWith(NOTEBOOK_SUFFIX)) return false;
+	if (
+		candidate === notebookPath ||
+		candidate === `${notebookPath}${BACKUP_SUFFIX}` ||
+		candidate === `${notebookPath}${TEMP_SUFFIX}`
+	) {
+		return false;
+	}
+	const stem = notebookPath.slice(0, -NOTEBOOK_SUFFIX.length);
+	if (!candidate.startsWith(stem)) return false;
+	const rest = candidate.slice(stem.length);
+	if (rest.includes('/')) return false;
+
+	// "Notes (conflict).inknote", "Notes.inknote (conflict …)". Only a bracketed
+	// suffix counts, so a notebook called "Notes on conflict" is not a copy.
+	if (/\(.*conflict.*\)/i.test(rest)) {
+		return (
+			(rest.startsWith(' (') && rest.endsWith(NOTEBOOK_SUFFIX)) ||
+			rest.startsWith(`${NOTEBOOK_SUFFIX} (`)
+		);
+	}
+
+	// "Notes.inknote 2.bak", "Notes.inknote 3.tmp".
+	if (!rest.startsWith(NOTEBOOK_SUFFIX)) return false;
+	return /^ \d+\.(bak|tmp)$/.test(rest.slice(NOTEBOOK_SUFFIX.length));
+}
+
 /** Whether a sidecar's text was written in the old indented format. */
 export function isIndented(raw: string): boolean {
 	return raw.includes('\n\t');
@@ -261,9 +303,15 @@ export function parseInkData(raw: string): ParseResult {
 		}
 	}
 
+	const docId = root['docId'];
 	return {
 		ok: true,
-		data: { version: INK_DATA_VERSION, pages, insertedPages },
+		data: {
+			version: INK_DATA_VERSION,
+			pages,
+			insertedPages,
+			...(typeof docId === 'string' && docId.length > 0 ? { docId } : {}),
+		},
 		dropped,
 		sourceVersion: version,
 		migrated: version !== INK_DATA_VERSION,

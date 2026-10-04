@@ -124,6 +124,12 @@ export interface InkData {
 	readonly pages: Record<PageKey, Item[]>;
 	/** Records for pages that are not in the source PDF. Tombstones included. */
 	readonly insertedPages: readonly InsertedPage[];
+	/**
+	 * A notebook's identity, a UUID, so a sync client's numbered copy
+	 * (`Notes 2.inknote`) can be told from a notebook that merely has a similar
+	 * name. Absent from PDF sidecars, which are identified by their PDF.
+	 */
+	readonly docId?: string;
 }
 
 /** Epoch milliseconds. Injectable so tests and merges are deterministic. */

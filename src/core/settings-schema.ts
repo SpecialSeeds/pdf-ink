@@ -8,6 +8,13 @@ import { BUFFER_PAGES } from '../constants';
 import { type NewPdfPageSize, isNewPdfPageSize } from './new-pdf';
 import { type PageTemplate, isPageTemplate } from './templates';
 import {
+	type PageThemeOverrides,
+	type ThemeName,
+	emptyThemeOverrides,
+	isThemeName,
+	readThemeOverrides,
+} from './theme';
+import {
 	COLOURED_TOOLS,
 	type ColouredTool,
 	type EraserMode,
@@ -84,6 +91,16 @@ export interface PdfInkSettings {
 	newPdfPageSize: NewPdfPageSize;
 	/** Ruling of a new PDF, and of pages later inserted into it. */
 	newPdfTemplate: PageTemplate;
+	/**
+	 * Colours the user changed in the page themes, laid over the defaults in
+	 * src/core/theme.ts. Only what was changed is stored, so a later change to a
+	 * default still reaches everyone who left that colour alone.
+	 */
+	pageThemes: PageThemeOverrides;
+	/** The theme last chosen for export, preselected next time. */
+	exportTheme: ThemeName;
+	/** Ask which theme to export in; off exports in {@link exportTheme} directly. */
+	askExportTheme: boolean;
 }
 
 /** The edge the tool palette docks to. */
@@ -136,6 +153,9 @@ export const DEFAULT_SETTINGS: PdfInkSettings = {
 	zoomLocked: false,
 	newPdfPageSize: 'letter',
 	newPdfTemplate: 'lined',
+	pageThemes: emptyThemeOverrides(),
+	exportTheme: 'light',
+	askExportTheme: true,
 };
 
 function clampWidth(tool: SizedTool, value: number): number {
@@ -155,6 +175,7 @@ export function mergeSettings(stored: unknown): PdfInkSettings {
 		...DEFAULT_SETTINGS,
 		toolColors: defaultToolColors(),
 		toolWidths: defaultToolWidths(),
+		pageThemes: emptyThemeOverrides(),
 	};
 	if (stored === null || typeof stored !== 'object') return merged;
 	const raw = stored as Record<string, unknown>;
@@ -252,6 +273,14 @@ export function mergeSettings(stored: unknown): PdfInkSettings {
 
 	const template = raw['newPdfTemplate'];
 	if (isPageTemplate(template)) merged.newPdfTemplate = template;
+
+	merged.pageThemes = readThemeOverrides(raw['pageThemes']);
+
+	const exportTheme = raw['exportTheme'];
+	if (isThemeName(exportTheme)) merged.exportTheme = exportTheme;
+
+	const askExportTheme = raw['askExportTheme'];
+	if (typeof askExportTheme === 'boolean') merged.askExportTheme = askExportTheme;
 
 	return merged;
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	isNotebookLeftover,
 	isSyncLeftover,
 	isSidecarPath,
 	parseInkData,
@@ -791,5 +792,39 @@ describe('isSyncLeftover', () => {
 				'Worksheets/Homework_5_split 3.pdf.ink.json',
 			),
 		).toBe(false);
+	});
+});
+
+describe('isNotebookLeftover', () => {
+	const notebook = 'Class/Notes.inknote';
+
+	it('recognises conflict copies and numbered backups', () => {
+		for (const name of [
+			'Class/Notes (conflict).inknote',
+			'Class/Notes (Conflict 2026-10-03 12.00.00).inknote',
+			'Class/Notes.inknote (conflict)',
+			'Class/Notes.inknote 2.bak',
+			'Class/Notes.inknote 3.tmp',
+		]) {
+			expect(isNotebookLeftover(notebook, name), name).toBe(true);
+		}
+	});
+
+	it('never matches the notebook, its backup or its temp file', () => {
+		for (const name of [notebook, `${notebook}.bak`, `${notebook}.tmp`]) {
+			expect(isNotebookLeftover(notebook, name), name).toBe(false);
+		}
+	});
+
+	it('leaves notebooks the user named alike alone', () => {
+		for (const name of [
+			'Class/Notes 2.inknote',
+			'Class/Notes on conflict.inknote',
+			'Class/Notes.pdf.ink.json',
+			'Class/Notes (conflict).inknote/inside.inknote',
+			'Other/Notes (conflict).inknote',
+		]) {
+			expect(isNotebookLeftover(notebook, name), name).toBe(false);
+		}
 	});
 });
