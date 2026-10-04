@@ -1,5 +1,10 @@
 import { type InsertedPage, pageOrigin } from '../core/pages';
-import { templateGeometry, translateTemplate } from '../core/templates';
+import {
+	minorGridAlpha,
+	templateGeometry,
+	templateSpacing,
+	translateTemplate,
+} from '../core/templates';
 import type { PageTheme } from '../core/theme';
 import type { Matrix, PageViewport } from '../types/pdfjs';
 
@@ -47,28 +52,44 @@ export function paintInsertedPage(
 	ctx.fillStyle = theme.grid;
 	ctx.lineWidth = Math.max(MIN_SCREEN_WIDTH, geometry.lineWidth * scale);
 
-	if (geometry.lines.length > 0) {
-		ctx.beginPath();
-		for (const line of geometry.lines) {
-			const [x1, y1] = viewport.convertToViewportPoint(line.x1, line.y1);
-			const [x2, y2] = viewport.convertToViewportPoint(line.x2, line.y2);
-			ctx.moveTo(x1, y1);
-			ctx.lineTo(x2, y2);
-		}
-		ctx.stroke();
-	}
+	// Level of detail: a grid packed tighter than the eye can use turns the page
+	// grey, so its minor lines fade out as it is zoomed out and only every fifth
+	// line stays. Ruled lines are not graded and always draw.
+	const minorAlpha = minorGridAlpha(templateSpacing(page.template) * scale);
+	for (const [pass, alpha] of [
+		['major', 1],
+		['minor', minorAlpha],
+	] as const) {
+		if (alpha <= 0) continue;
+		const wanted = (major: boolean | undefined): boolean =>
+			pass === 'major' ? major !== false : major === false;
+		ctx.globalAlpha = alpha;
 
-	if (geometry.dots.length > 0) {
-		const radius = Math.max(MIN_SCREEN_WIDTH, geometry.dotRadius * scale);
-		// One path for every dot: thousands of separate fill() calls on a dot grid
-		// is the difference between a smooth zoom and a visible stall.
-		ctx.beginPath();
-		for (const dot of geometry.dots) {
-			const [x, y] = viewport.convertToViewportPoint(dot.x, dot.y);
-			ctx.moveTo(x + radius, y);
-			ctx.arc(x, y, radius, 0, Math.PI * 2);
+		const lines = geometry.lines.filter((line) => wanted(line.major));
+		if (lines.length > 0) {
+			ctx.beginPath();
+			for (const line of lines) {
+				const [x1, y1] = viewport.convertToViewportPoint(line.x1, line.y1);
+				const [x2, y2] = viewport.convertToViewportPoint(line.x2, line.y2);
+				ctx.moveTo(x1, y1);
+				ctx.lineTo(x2, y2);
+			}
+			ctx.stroke();
 		}
-		ctx.fill();
+
+		const dots = geometry.dots.filter((dot) => wanted(dot.major));
+		if (dots.length > 0) {
+			const radius = Math.max(MIN_SCREEN_WIDTH, geometry.dotRadius * scale);
+			// One path for every dot: thousands of separate fill() calls on a dot
+			// grid is the difference between a smooth zoom and a visible stall.
+			ctx.beginPath();
+			for (const dot of dots) {
+				const [x, y] = viewport.convertToViewportPoint(dot.x, dot.y);
+				ctx.moveTo(x + radius, y);
+				ctx.arc(x, y, radius, 0, Math.PI * 2);
+			}
+			ctx.fill();
+		}
 	}
 
 	ctx.restore();
