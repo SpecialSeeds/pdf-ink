@@ -7,6 +7,18 @@ import {
 import { QUICK_COLORS, SIZED_ERASER_RANGE, WIDTH_RANGES } from './core/tools';
 import { PAGE_SIZE_LABELS, isNewPdfPageSize } from './core/new-pdf';
 import { PAGE_TEMPLATES, TEMPLATE_LABELS, isPageTemplate } from './core/templates';
+import { contrastRatio } from './core/color';
+import {
+	DEFAULT_PAGE_THEMES,
+	MIN_BASE_INK_CONTRAST,
+	PAGE_THEME_KEYS,
+	type PageThemeKey,
+	THEME_NAMES,
+	type ThemeName,
+	effectiveThemes,
+	emptyThemeOverrides,
+	hasLowContrast,
+} from './core/theme';
 
 export {
 	type ToolbarSide,
@@ -28,6 +40,20 @@ export interface PdfInkHost {
 	/** The view type that shows a PDF without ink, for leaving the ink view. */
 	readonly plainPdfViewType: string;
 }
+
+const THEME_LABELS: Record<ThemeName, string> = {
+	light: 'Light pages',
+	dark: 'Dark pages',
+};
+
+const THEME_KEY_LABELS: Record<PageThemeKey, { name: string; desc: string }> = {
+	paper: { name: 'Paper', desc: 'The page background.' },
+	grid: { name: 'Grid', desc: 'Template lines and dots.' },
+	baseInk: {
+		name: 'Base ink',
+		desc: 'What black and white ink are drawn in. Every other colour shows as you chose it.',
+	},
+};
 
 const TOOL_LABELS: Record<string, string> = {
 	pen: 'Pen',
@@ -52,6 +78,7 @@ export class PdfInkSettingTab extends PluginSettingTab {
 		this.addToolSection();
 		this.addEraserSection();
 		this.addNewPdfSection();
+		this.addPageThemeSection();
 		this.addExportSection();
 		this.addDiagnosticsSection();
 	}
@@ -324,9 +351,107 @@ export class PdfInkSettingTab extends PluginSettingTab {
 			);
 	}
 
+	/**
+	 * Colours of notebook and inserted pages in each theme. Only what the user
+	 * changes is stored, so each value can go back to its default on its own.
+	 */
+	private addPageThemeSection(): void {
+		const { containerEl } = this;
+		new Setting(containerEl)
+			.setName('Page themes')
+			.setDesc(
+				'Notebook and inserted pages, in the light and dark page theme. Pages of a PDF always stay as the PDF has them. Changes show in open tabs at once and are used for export.',
+			)
+			.setHeading();
+
+		for (const name of THEME_NAMES) {
+			new Setting(containerEl).setName(THEME_LABELS[name]).setHeading();
+			const warningEl = containerEl.createDiv({
+				cls: 'setting-item-description mod-warning pdf-ink-contrast-warning',
+			});
+			const updateWarning = (): void => {
+				const theme = effectiveThemes(this.plugin.settings.pageThemes)[name];
+				const ratio = contrastRatio(theme.baseInk, theme.paper) ?? 0;
+				warningEl.setText(
+					hasLowContrast(theme)
+						? `Base ink on this paper has a contrast of ${ratio.toFixed(1)}:1, below the ${String(MIN_BASE_INK_CONTRAST)}:1 that keeps writing easy to read.`
+						: '',
+				);
+				warningEl.toggle(hasLowContrast(theme));
+			};
+
+			for (const key of PAGE_THEME_KEYS) {
+				const label = THEME_KEY_LABELS[key];
+				new Setting(containerEl)
+					.setName(label.name)
+					.setDesc(label.desc)
+					.addColorPicker((picker) =>
+						picker
+							.setValue(effectiveThemes(this.plugin.settings.pageThemes)[name][key])
+							.onChange((value) => {
+								this.plugin.settings.pageThemes[name][key] = value;
+								updateWarning();
+								this.save();
+							}),
+					)
+					.addExtraButton((button) =>
+						button
+							.setIcon('rotate-ccw')
+							.setTooltip(`Reset to default (${DEFAULT_PAGE_THEMES[name][key]})`)
+							.onClick(() => {
+								delete this.plugin.settings.pageThemes[name][key];
+								this.save();
+								this.display();
+							}),
+					);
+			}
+			// Under its theme's colours, where the problem is.
+			containerEl.appendChild(warningEl);
+			updateWarning();
+		}
+
+		new Setting(containerEl)
+			.setName('Reset all page theme colours')
+			.addButton((button) =>
+				button.setButtonText('Reset all').onClick(() => {
+					this.plugin.settings.pageThemes = emptyThemeOverrides();
+					this.save();
+					this.display();
+				}),
+			);
+	}
+
 	private addExportSection(): void {
 		const { containerEl } = this;
 		new Setting(containerEl).setName('Export').setHeading();
+
+		new Setting(containerEl)
+			.setName('Ask for theme on export')
+			.setDesc(
+				'Choose light or dark pages each time you export. When off, exports use the theme you chose last.',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.askExportTheme)
+					.onChange((value) => {
+						this.plugin.settings.askExportTheme = value;
+						this.save();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Export theme')
+			.setDesc('Used when the question is turned off, and preselected when it is asked.')
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption('light', 'Light')
+					.addOption('dark', 'Dark')
+					.setValue(this.plugin.settings.exportTheme)
+					.onChange((value) => {
+						this.plugin.settings.exportTheme = value === 'dark' ? 'dark' : 'light';
+						this.save();
+					}),
+			);
 
 		new Setting(containerEl)
 			.setName('Annotations')

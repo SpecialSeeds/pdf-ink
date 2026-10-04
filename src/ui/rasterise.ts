@@ -1,3 +1,4 @@
+import type { PageTheme } from '../core/theme';
 import type { Matrix, PageViewport, RenderTask } from '../types/pdfjs';
 import type { PageSource } from '../types/view';
 import { paintInsertedPage } from './template-painter';
@@ -12,7 +13,8 @@ const DONE: Promise<void> = Promise.resolve();
 
 /**
  * Draw a page into a fresh canvas of `width` x `height` device px, with
- * `transform` mapping the viewport's CSS px onto it.
+ * `transform` mapping the viewport's CSS px onto it. `theme` colours an inserted
+ * page; a page of the PDF is drawn as the PDF has it.
  *
  * Always a fresh canvas, and never the one on screen. The on-screen bitmap stays
  * put — stretched by CSS to the new box after a zoom — until a complete
@@ -28,6 +30,7 @@ export function rasterise(
 	width: number,
 	height: number,
 	transform: Matrix,
+	theme: PageTheme,
 ): Raster | null {
 	const canvas = doc.createElement('canvas');
 	canvas.width = width;
@@ -49,6 +52,7 @@ export function rasterise(
 			viewport.width,
 			viewport.height,
 			transform,
+			theme,
 		);
 		return { canvas, task: { promise: DONE, cancel: () => undefined } };
 	}

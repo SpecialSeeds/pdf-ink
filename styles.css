@@ -315,8 +315,8 @@
 	width: var(--pdf-ink-page-w, 0);
 	height: var(--pdf-ink-page-h, 0);
 	margin: 0 auto var(--pdf-ink-page-gap, 12px);
-	/* The paper is white in the PDF; a theme variable would show through at the
-	   edges of a rendered page in dark mode. */
+	/* The paper is white in the PDF; Obsidian's theme variable would show through
+	   at the edges of a rendered page in dark mode. */
 	background-color: #fff;
 	box-shadow: 0 1px 4px rgb(0 0 0 / 25%);
 	/* `layout` only: `paint` would clip the selection handles at the page edge. */
@@ -328,6 +328,12 @@
 
 .pdf-ink-page:last-child {
 	margin-bottom: 0;
+}
+
+/* A notebook or inserted page takes the page theme's paper, set on the container
+   by the view, so it shows before the page's bitmap lands. */
+.pdf-ink-page.is-inserted {
+	background-color: var(--pdf-ink-inserted-paper, #fff);
 }
 
 /* Both canvases take their CSS size from the wrapper, so script only ever writes
@@ -352,6 +358,12 @@
 	z-index: 1;
 	mix-blend-mode: multiply;
 	pointer-events: none;
+}
+
+/* Multiplying onto dark paper leaves nothing visible, so a dark page screens
+   instead. The view picks the blend from the paper's luminance. */
+.pdf-ink-page.is-inserted > .pdf-ink-highlight {
+	mix-blend-mode: var(--pdf-ink-inserted-blend, multiply);
 }
 
 /*
@@ -397,6 +409,18 @@
 }
 
 /* ---- status ------------------------------------------------------------ */
+
+/* An empty notebook: what it is, and the way out. */
+.pdf-ink-empty-notebook {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-3);
+	align-items: center;
+	justify-content: center;
+	color: var(--text-muted);
+}
 
 .pdf-ink-status {
 	position: absolute;

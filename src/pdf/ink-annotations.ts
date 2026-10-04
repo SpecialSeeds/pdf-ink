@@ -1,6 +1,8 @@
 import type { PDFDocument, PDFPage } from 'pdf-lib';
 import { polylineBounds } from '../core/hit-test';
+import { parseHex } from '../core/color';
 import type { Stroke } from '../core/items';
+import type { HighlighterBlend } from '../core/theme';
 
 /** Padding around a stroke's points so the nib is not clipped by the Rect. */
 function padding(stroke: Stroke): number {
@@ -39,6 +41,7 @@ export function addInkAnnotation(
 	doc: PDFDocument,
 	page: PDFPage,
 	stroke: Stroke,
+	blend: HighlighterBlend = 'multiply',
 ): boolean {
 	const bounds = polylineBounds(stroke.points);
 	if (!bounds || stroke.points.length < 2) return false;
@@ -67,8 +70,13 @@ export function addInkAnnotation(
 					Type: 'ExtGState',
 					ca: stroke.opacity,
 					CA: stroke.opacity,
-					// A highlighter multiplies with the page, as it does on screen.
-					BM: stroke.tool === 'highlighter' ? 'Multiply' : 'Normal',
+					// A highlighter blends with the paper, as it does on screen.
+					BM:
+						stroke.tool !== 'highlighter'
+							? 'Normal'
+							: blend === 'screen'
+								? 'Screen'
+								: 'Multiply',
 				},
 			},
 		},
@@ -94,19 +102,7 @@ export function addInkAnnotation(
 }
 
 function colorComponents(color: string): { r: number; g: number; b: number } {
-	const hex = color.trim().replace('#', '');
-	const full =
-		hex.length === 3
-			? hex
-				  .split('')
-				  .map((c) => c + c)
-				  .join('')
-			: hex;
-	const value = Number.parseInt(full, 16);
-	if (full.length !== 6 || Number.isNaN(value)) return { r: 0, g: 0, b: 0 };
-	return {
-		r: ((value >> 16) & 0xff) / 255,
-		g: ((value >> 8) & 0xff) / 255,
-		b: (value & 0xff) / 255,
-	};
+	const rgb = parseHex(color);
+	if (!rgb) return { r: 0, g: 0, b: 0 };
+	return { r: rgb.r / 255, g: rgb.g / 255, b: rgb.b / 255 };
 }

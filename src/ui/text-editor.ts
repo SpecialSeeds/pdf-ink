@@ -3,8 +3,10 @@ import type { Component } from 'obsidian';
 /** Long enough for the on-screen keyboard to finish animating in, in ms. */
 const KEYBOARD_SETTLE_MS = 350;
 import type { TextItem } from '../core/items';
+import { renderColor } from '../core/theme';
 import { LINE_HEIGHT } from '../core/text-layout';
 import { TEXT_FONT_STACK } from './item-renderers';
+import type { PageTheme } from '../core/theme';
 import type { PageRecord } from '../types/view';
 
 export interface TextEditorCallbacks {
@@ -12,6 +14,8 @@ export interface TextEditorCallbacks {
 	commit(item: TextItem, text: string): void;
 	/** They left without typing anything into a brand-new box. */
 	discard(item: TextItem): void;
+	/** The theme of the page being edited, so typed text shows as it will render. */
+	pageTheme(record: PageRecord): PageTheme;
 }
 
 /**
@@ -156,7 +160,10 @@ export class TextEditor {
 			'--pdf-ink-text-h': `${String(Math.abs(item.box.h) * scale)}px`,
 			'--pdf-ink-text-size': `${String(item.fontSize * scale)}px`,
 			'--pdf-ink-text-line': String(LINE_HEIGHT),
-			'--pdf-ink-text-color': item.color,
+			'--pdf-ink-text-color': renderColor(
+				item.color,
+				this.callbacks.pageTheme(record),
+			),
 			'--pdf-ink-text-rotate': `${String(item.rotation)}deg`,
 			'--pdf-ink-text-font': TEXT_FONT_STACK,
 		});

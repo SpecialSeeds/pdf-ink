@@ -129,7 +129,6 @@ describe('templateGeometry', () => {
 		const geometry = templateGeometry('grid5', A4_W, A4_H);
 		expect(geometry.lineWidth).toBeLessThan(1);
 		expect(geometry.dotRadius).toBeLessThan(1);
-		expect(geometry.color).toMatch(/^#[0-9a-f]{6}$/i);
 	});
 });
 

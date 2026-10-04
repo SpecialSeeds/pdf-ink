@@ -4,6 +4,7 @@ import type {
 	PDFDocumentProxy,
 	PdfJsModule,
 } from '../types/pdfjs';
+import { NOTEBOOK_TEMPLATE } from '../core/new-notebook';
 import { rulingFromKeywords } from '../core/new-pdf';
 import { pdfPageKey } from '../core/pages';
 import type { PageTemplate } from '../core/templates';
@@ -29,10 +30,13 @@ const PDFJS_ASSETS = {
 } as const;
 
 export interface PdfInkDocument {
-	readonly doc: PDFDocumentProxy;
-	readonly loadingTask: PDFDocumentLoadingTask;
+	/** A PDF, or a notebook: a document of inserted pages with no PDF at all. */
+	readonly kind: 'pdf' | 'notebook';
+	/** Null for a notebook. */
+	readonly doc: PDFDocumentProxy | null;
+	readonly loadingTask: PDFDocumentLoadingTask | null;
 	/**
-	 * One entry per page of the source document, in order.
+	 * One entry per page of the source document, in order. Empty for a notebook.
 	 *
 	 * Inserted pages are not here: they come from the sidecar and are spliced in by
 	 * the view, which is the only place that knows about both.
@@ -107,5 +111,25 @@ export async function openPdfDocument(
 		geometry.push(...(await Promise.all(batch)));
 	}
 
-	return { doc, loadingTask, geometry, ruling: await readRuling(doc) };
+	return {
+		kind: 'pdf',
+		doc,
+		loadingTask,
+		geometry,
+		ruling: await readRuling(doc),
+	};
+}
+
+/**
+ * A notebook: no PDF, so no pages of its own. Every page is an inserted page from
+ * the notebook file, and a page added beside them is ruled like a new notebook.
+ */
+export function notebookDocument(): PdfInkDocument {
+	return {
+		kind: 'notebook',
+		doc: null,
+		loadingTask: null,
+		geometry: [],
+		ruling: NOTEBOOK_TEMPLATE,
+	};
 }

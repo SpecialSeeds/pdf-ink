@@ -1,7 +1,8 @@
 import { type App, type Component, Notice, Scope } from 'obsidian';
 import type { ItemRef } from '../core/history';
-import type { ShapeKind, TextItem } from '../core/items';
+import type { Item, ShapeKind, TextItem } from '../core/items';
 import type { PageKey } from '../core/pages';
+import type { PageTheme } from '../core/theme';
 import { recolorChanges } from '../core/selection';
 import { createStrokeId } from '../core/stroke';
 import { TextEditor } from './text-editor';
@@ -49,6 +50,13 @@ export interface InkControllerOptions {
 		fields: Record<string, string | number | boolean>,
 	): void;
 	tracingInput(): boolean;
+	/** The theme a page's ink renders under. */
+	pageTheme(record: PageRecord): PageTheme;
+	/**
+	 * Items were just added to a page by drawing or typing. Anything the host adds
+	 * in response joins the same undo step.
+	 */
+	itemsCommitted(pageKey: PageKey, items: readonly Item[]): void;
 }
 
 /**
@@ -111,6 +119,7 @@ export class InkController {
 			discard: (item) => {
 				this.discardText(item);
 			},
+			pageTheme: (record) => this.options.pageTheme(record),
 		});
 
 		this.layer = new InkLayer(component, rootEl, pagesEl, store, {
@@ -166,6 +175,10 @@ export class InkController {
 			},
 			sendSelectionBack: () => {
 				this.changeZ('back');
+			},
+			pageTheme: (record) => this.options.pageTheme(record),
+			itemsCommitted: (record, items) => {
+				this.options.itemsCommitted(record.geom.key, items);
 			},
 		});
 		this.layer.attach();
@@ -447,6 +460,7 @@ export class InkController {
 
 		if (isNew) {
 			this.store.addItem(pageKey, next);
+			this.options.itemsCommitted(pageKey, [next]);
 		} else {
 			this.store.transformItems([
 				{ pageKey, before: item, after: next },

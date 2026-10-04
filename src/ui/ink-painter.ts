@@ -1,6 +1,7 @@
 import type { CssRect } from '../core/detail-region';
 import type { ItemStore } from '../core/ink-store';
 import { type Item, type StrokeSample, inZOrder } from '../core/items';
+import type { PageTheme } from '../core/theme';
 import type { Matrix } from '../types/pdfjs';
 import type { PageRecord } from '../types/view';
 import { detailCssRect } from './detail-renderer';
@@ -65,7 +66,11 @@ export class InkPainter {
 	/** Keyed by the surface's on-screen ink canvas. */
 	private readonly committed = new WeakMap<HTMLCanvasElement, CachedLayers>();
 
-	constructor(private readonly store: ItemStore) {}
+	constructor(
+		private readonly store: ItemStore,
+		/** The theme a page's ink renders under. */
+		private readonly themeFor: (record: PageRecord) => PageTheme,
+	) {}
 
 	paint(
 		record: PageRecord,
@@ -97,7 +102,8 @@ export class InkPainter {
 		const highlightCtx = surface.highlight.getContext('2d');
 		if (!inkCtx || !highlightCtx) return;
 
-		const layers = this.layersFor(record, surface, pending);
+		const theme = this.themeFor(record);
+		const layers = this.layersFor(record, surface, pending, theme);
 		for (const [ctx, source] of [
 			[highlightCtx, layers?.highlight],
 			[inkCtx, layers?.ink],
@@ -127,6 +133,7 @@ export class InkPainter {
 				ctx,
 				viewport: record.viewport,
 				scale: record.viewport.scale,
+				theme,
 			});
 		}
 
@@ -136,6 +143,7 @@ export class InkPainter {
 				ctx,
 				viewport: record.viewport,
 				scale: record.viewport.scale,
+				theme,
 			};
 			if (live.samples && live.item.type === 'stroke') {
 				renderLiveStroke(live.item, live.samples, target);
@@ -159,10 +167,13 @@ export class InkPainter {
 		record: PageRecord,
 		surface: Surface,
 		pending: ReadonlySet<Item> | null,
+		theme: PageTheme,
 	): CachedLayers | null {
 		const { width, height } = surface.ink;
 		const key = [
 			this.store.version,
+			// Base ink is the only colour a theme changes.
+			theme.baseInk,
 			...surface.transform,
 			width,
 			height,
@@ -181,11 +192,17 @@ export class InkPainter {
 		if (!inkCtx || !highlightCtx) return null;
 
 		const targets: Record<LayerName, RenderTarget> = {
-			ink: { ctx: inkCtx, viewport: record.viewport, scale: record.viewport.scale },
+			ink: {
+				ctx: inkCtx,
+				viewport: record.viewport,
+				scale: record.viewport.scale,
+				theme,
+			},
 			highlight: {
 				ctx: highlightCtx,
 				viewport: record.viewport,
 				scale: record.viewport.scale,
+				theme,
 			},
 		};
 

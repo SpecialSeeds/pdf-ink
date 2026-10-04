@@ -1,6 +1,7 @@
 import { Plugin } from 'obsidian';
 import { registerCommands } from './commands';
-import { VIEW_TYPE_PDF_INK } from './constants';
+import { NOTEBOOK_ICON, VIEW_TYPE_PDF_INK } from './constants';
+import { NOTEBOOK_EXTENSION } from './core/new-notebook';
 import { registerFileMenu } from './menus/file-menu';
 import { registerSidecarEvents } from './pdf/sidecar';
 import {
@@ -10,6 +11,7 @@ import {
 	mergeSettings,
 } from './settings';
 import { PdfInkView } from './ui/pdf-ink-view';
+import { createNotebook } from './utils/create-notebook';
 import { createPdf } from './utils/create-pdf';
 import { DefaultPdfViewer } from './utils/default-viewer';
 
@@ -28,11 +30,17 @@ export default class PdfInkPlugin extends Plugin {
 			VIEW_TYPE_PDF_INK,
 			(leaf) => new PdfInkView(leaf, this),
 		);
+		// A notebook has no other viewer, so it is ours outright — unlike `.pdf`,
+		// which the core viewer owns until the user hands it over.
+		this.registerExtensions([NOTEBOOK_EXTENSION], VIEW_TYPE_PDF_INK);
 
 		// Like a drawing plugin's "new drawing": one click from the sidebar ribbon
 		// to a fresh page to write on.
 		this.addRibbonIcon('file-plus-2', 'Create new PDF', () => {
 			void createPdf(this.app, this.settings);
+		});
+		this.addRibbonIcon(NOTEBOOK_ICON, 'New notebook', () => {
+			void createNotebook(this.app);
 		});
 
 		registerCommands(this);

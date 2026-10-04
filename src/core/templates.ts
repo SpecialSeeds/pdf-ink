@@ -6,6 +6,9 @@
  * exporter consume exactly the same numbers. Anything else drifts: a template
  * drawn one way on screen and another way on export is a bug the user only finds
  * after printing.
+ *
+ * Colour is not geometry: the ruling is drawn in the page theme's grid colour
+ * (src/core/theme.ts), chosen by whoever draws it.
  */
 
 /** Points per millimetre: 72 pt/in over 25.4 mm/in. */
@@ -70,12 +73,6 @@ const MARGIN_MM = 6;
 const LINE_WIDTH = 0.4;
 const DOT_RADIUS = 0.5;
 
-/**
- * A grey with a slight blue cast, as ruled paper tends to be. Fixed rather than
- * themed: the page itself is always white, on screen and on paper.
- */
-export const TEMPLATE_COLOR = '#b9c2d0';
-
 export interface TemplateLine {
 	readonly x1: number;
 	readonly y1: number;
@@ -94,7 +91,6 @@ export interface TemplateGeometry {
 	/** In PDF points. */
 	readonly lineWidth: number;
 	readonly dotRadius: number;
-	readonly color: string;
 }
 
 const EMPTY: TemplateGeometry = {
@@ -102,7 +98,6 @@ const EMPTY: TemplateGeometry = {
 	dots: [],
 	lineWidth: LINE_WIDTH,
 	dotRadius: DOT_RADIUS,
-	color: TEMPLATE_COLOR,
 };
 
 /**
