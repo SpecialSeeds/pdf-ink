@@ -18,17 +18,19 @@ TypeScript, esbuild (sample plugin config), pdf-lib, perfect-freehand.
   everywhere — manifest, package.json, README, LICENSE, workflows. Never write any
   other account name or email into the repo, including one picked up from the git
   config or the environment.
-## Data schema (version 4)
-{ version: 4, pages: { [pageKey]: Item[] }, insertedPages: InsertedPage[] }
+## Data schema (version 5)
+{ version: 5, pages: { [pageKey]: Item[] }, insertedPages: InsertedPage[] }
 PageKey = "pdf:<0-based index>" for a page of the source PDF
         | "ins:<uuid>"          for an inserted page
-Item = Stroke | Shape | TextBox, all coordinates in PDF user space
+Item = Stroke | Shape | TextBox | Path, all coordinates in PDF user space
 Base  = { id, type, color, opacity, rotation, z, updatedAt, deletedAt? }
 Stroke  = Base & { type: "stroke", tool: "pen"|"highlighter", width, points: [x,y,p][] }
 Shape   = Base & { type: "shape", kind: ShapeKind, box: {x,y,w,h}, width, fill: null|color }
 ShapeKind = "line" | "arrow" | "rect" | "ellipse" | "triangle"
           | "axes2d_q" | "axes2d_c" | "axes3d_c"
 TextBox = Base & { type: "text", box: {x,y,w,h}, text, fontSize }
+Path    = Base & { type: "path", d, strokeWidth?, highlight? }
+  d = SVG-style path data, absolute M, L, C, Z only, in PDF user space
 InsertedPage = { id, afterPdfPage, sortKey, template, size: {width,height},
                  updatedAt, deletedAt? }
 PageTemplate = "blank" | "lined" | "lined7.5" | "lined10" | "grid5" | "dot"
@@ -58,6 +60,12 @@ PageTemplate = "blank" | "lined" | "lined7.5" | "lined10" | "grid5" | "dot"
   page. Everything downstream converts coordinates through a viewport as usual.
 - Every shape kind has ONE geometry function in src/core/shapes.ts returning
   path commands in PDF space. Canvas rendering and pdf-lib export both consume it.
+- Path geometry has ONE function, `pathGeometry` in src/core/path.ts, which the
+  canvas renderer and the pdf-lib exporter both draw. A path is filled unless it
+  has `strokeWidth`; `highlight` puts it on the highlighter layer and blend. Lasso
+  transforms bake into its points (rotation stays 0), recolour changes `color`,
+  the stroke eraser hits it, and the sized eraser removes it WHOLE, never cuts it.
+- A v4 file reads as v5 unchanged; only its version is bumped on the next save.
 - Migrate v1 (strokes only) and v2 (no timestamps) sidecars on load. Items from an
   older file are stamped updatedAt = 0, so any genuine remote edit beats them.
 - Deletion is a tombstone (deletedAt), never a splice: a removal that left no

@@ -7,6 +7,7 @@
 
 import type { Vec2 } from 'perfect-freehand';
 import { type Item, isStroke } from './items';
+import { flattenPath, pathBounds, pathCommands } from './path';
 import type { StrokeSample } from './items';
 import { strokeOutline } from './stroke';
 
@@ -73,6 +74,7 @@ export function polylineBounds(points: readonly StrokeSample[]): Bounds | null {
 /** A cheap bound for prefiltering — no outline generation. */
 export function itemBounds(item: Item): Bounds | null {
 	if (item.type === 'stroke') return polylineBounds(item.points);
+	if (item.type === 'path') return pathBounds(item);
 	if (item.type === 'shape' || item.type === 'text') {
 		const { box } = item;
 		return {
@@ -136,11 +138,38 @@ export function distanceToPolygonEdge(
 	return best;
 }
 
+/** Distance to an open polyline; a single point is a polyline too. */
+export function distanceToPolyline(x: number, y: number, line: readonly Vec2[]): number {
+	const first = line[0];
+	if (!first) return Number.POSITIVE_INFINITY;
+	let best = Math.hypot(x - first[0], y - first[1]);
+	for (let i = 1; i < line.length; i++) {
+		const a = line[i - 1];
+		const b = line[i];
+		if (a === undefined || b === undefined) continue;
+		const distance = distanceToSegment(x, y, a, b);
+		if (distance < best) best = distance;
+	}
+	return best;
+}
+
 /** An item's erase-testable shape, in PDF space. Cache one per item. */
 export interface ItemHitShape {
 	readonly bounds: Bounds;
 	readonly outline: readonly Vec2[];
+	/**
+	 * A path's subpaths, tested instead of `outline`. Filled rings are hit inside
+	 * or near an edge; open ones (a stroked path) only near the line.
+	 */
+	readonly rings?: readonly (readonly Vec2[])[];
+	/** Half a stroked path's width: how far from the line still counts. */
+	readonly reach?: number;
+	/** A stroked path is not hit inside its rings. */
+	readonly filled?: boolean;
 }
+
+/** Flattening step for hit-testing a path, in PDF points. */
+const PATH_HIT_SPACING = 1;
 
 /**
  * The shape the eraser tests against, dispatched on item type.
@@ -150,6 +179,17 @@ export interface ItemHitShape {
  * functions this should consume those instead.
  */
 export function itemHitShape(item: Item): ItemHitShape | null {
+	if (item.type === 'path') {
+		const bounds = pathBounds(item);
+		if (!bounds) return null;
+		return {
+			bounds,
+			outline: [],
+			rings: flattenPath(pathCommands(item), PATH_HIT_SPACING),
+			reach: (item.strokeWidth ?? 0) / 2,
+			filled: item.strokeWidth === undefined,
+		};
+	}
 	const outline = isStroke(item)
 		? // Width is in PDF points, so this outline is the real rendered shape at
 			// any zoom level.
@@ -183,6 +223,14 @@ export function hitTestShape(
 	radius: number,
 ): boolean {
 	if (!boundsContain(expandBounds(shape.bounds, radius), x, y)) return false;
+	if (shape.rings) {
+		const reach = radius + (shape.reach ?? 0);
+		return shape.rings.some(
+			(ring) =>
+				(shape.filled === true && ring.length >= 3 && pointInPolygon(x, y, ring)) ||
+				distanceToPolyline(x, y, ring) <= reach,
+		);
+	}
 	if (pointInPolygon(x, y, shape.outline)) return true;
 	return distanceToPolygonEdge(x, y, shape.outline) <= radius;
 }

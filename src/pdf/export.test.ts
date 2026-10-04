@@ -3,7 +3,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BlendMode, PDFDocument, StandardFonts, degrees } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
-import type { Item, ShapeItem, TextItem } from '../core/items';
+import type { Item, PathItem, ShapeItem, TextItem } from '../core/items';
+import { pathCommands } from '../core/path';
 import type { InsertedPage } from '../core/pages';
 import type { PageTemplate } from '../core/templates';
 import { layoutTextLines, wrapText } from '../core/text-layout';
@@ -744,5 +745,138 @@ describe('inserted pages are spliced into the export', () => {
 		expect(doc.getPageCount()).toBe(4);
 		// A second pass over the exported bytes must also hold up.
 		expect((await PDFDocument.load(await doc.save())).getPageCount()).toBe(4);
+	});
+});
+
+describe('path export', () => {
+	/** A path's points as drawn on an exported page, in page space, via pdf.js. */
+	async function drawnPaths(
+		bytes: Uint8Array,
+		pageNumber: number,
+	): Promise<{ paint: number; points: [number, number][] }[]> {
+		const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+		const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+		const page = await doc.getPage(pageNumber);
+		const list = await page.getOperatorList();
+		const { OPS } = pdfjs;
+		type M = [number, number, number, number, number, number];
+		const multiply = (m: M, n: M): M => [
+			n[0] * m[0] + n[1] * m[2],
+			n[0] * m[1] + n[1] * m[3],
+			n[2] * m[0] + n[3] * m[2],
+			n[2] * m[1] + n[3] * m[3],
+			n[4] * m[0] + n[5] * m[2] + m[4],
+			n[4] * m[1] + n[5] * m[3] + m[5],
+		];
+		let ctm: M = [1, 0, 0, 1, 0, 0];
+		const stack: M[] = [];
+		const out: { paint: number; points: [number, number][] }[] = [];
+		list.fnArray.forEach((fn, i) => {
+			const args = list.argsArray[i] as unknown[];
+			if (fn === OPS.save) stack.push(ctm);
+			else if (fn === OPS.restore) ctm = stack.pop() ?? ctm;
+			else if (fn === OPS.transform) ctm = multiply(ctm, args as M);
+			else if (fn === OPS.constructPath) {
+				const data = (args[1] as ArrayLike<number>[])[0] ?? [];
+				const points: [number, number][] = [];
+				for (let k = 0; k < data.length; ) {
+					const op = data[k++];
+					const count = op === 0 || op === 1 ? 2 : op === 2 ? 6 : 0;
+					for (let j = 0; j < count; j += 2) {
+						const x = data[k + j] ?? 0;
+						const y = data[k + j + 1] ?? 0;
+						points.push([ctm[0] * x + ctm[2] * y + ctm[4], ctm[1] * x + ctm[3] * y + ctm[5]]);
+					}
+					k += count;
+				}
+				out.push({ paint: args[0] as number, points });
+			}
+		});
+		return out;
+	}
+
+	const path: PathItem = {
+		type: 'path',
+		id: 'p',
+		color: '#e71225',
+		opacity: 1,
+		rotation: 0,
+		z: 0,
+		updatedAt: 0,
+		d: 'M100 700L200 700C220 720 240 740 260 760L120 760Z',
+	};
+
+	/** The path's own points, control points included, in order. */
+	function storedPoints(item: PathItem): [number, number][] {
+		return pathCommands(item).flatMap((c): [number, number][] =>
+			c.op === 'close'
+				? []
+				: c.op === 'cubic'
+					? [
+							[c.x1, c.y1],
+							[c.x2, c.y2],
+							[c.x, c.y],
+						]
+					: [[c.x, c.y]],
+		);
+	}
+
+	it('lands every point of the stored geometry where it was', async () => {
+		const bytes = await exportAnnotatedPdf({
+			pdfBytes: await blankPdf(),
+			pages: { 'pdf:0': [path] },
+		});
+		const drawn = await drawnPaths(bytes, 1);
+		const expected = storedPoints(path);
+		const match = drawn.find((p) => p.points.length === expected.length);
+		expect(match).toBeDefined();
+		match?.points.forEach(([x, y], i) => {
+			expect(x).toBeCloseTo(expected[i]?.[0] ?? NaN, 3);
+			expect(y).toBeCloseTo(expected[i]?.[1] ?? NaN, 3);
+		});
+	});
+
+	it('fills a path and strokes an outline path', async () => {
+		const { OPS } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+		const bytes = await exportAnnotatedPdf({
+			pdfBytes: await blankPdf(),
+			pages: { 'pdf:0': [path, { ...path, id: 'q', strokeWidth: 3 }] },
+		});
+		const paints = (await drawnPaths(bytes, 1)).map((p) => p.paint);
+		expect(paints).toContain(OPS.fill);
+		expect(paints.some((p) => p === OPS.stroke || p === OPS.closeStroke)).toBe(true);
+	});
+
+	it('maps base ink through the inserted page theme, and blends highlighter paths', async () => {
+		const inserted: InsertedPage = {
+			id: 'a',
+			afterPdfPage: -1,
+			sortKey: 'a0',
+			template: 'blank',
+			size: { width: 612, height: 792 },
+			updatedAt: 0,
+		};
+		const bytes = await exportAnnotatedPdf({
+			pages: {
+				'ins:a': [
+					{ ...path, color: '#000000' },
+					{ ...path, id: 'h', color: '#ffc114', highlight: true, opacity: 0.5 },
+				],
+			},
+			insertedPages: [inserted],
+			theme: 'dark',
+		});
+		const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+		const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+		const list = await (await doc.getPage(1)).getOperatorList();
+		const fills = list.fnArray
+			.map((fn, i) => (fn === pdfjs.OPS.setFillRGBColor ? (list.argsArray[i] as string[])[0] : null))
+			.filter((c) => c !== null);
+		// Black base ink renders white on dark paper; the yellow keeps its colour.
+		expect(fills).toContain('#ffffff');
+		expect(fills).toContain('#ffc114');
+		const flat = await (await PDFDocument.load(bytes)).save({ useObjectStreams: false });
+		// Over dark paper a highlighter screens rather than multiplies.
+		expect(new TextDecoder('latin1').decode(flat)).toContain('/Screen');
 	});
 });

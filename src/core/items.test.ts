@@ -50,10 +50,10 @@ function strokeAt(id: string, z: number): Item {
 }
 
 describe('schema', () => {
-	it('is version 4', () => {
-		expect(INK_DATA_VERSION).toBe(4);
+	it('is version 5', () => {
+		expect(INK_DATA_VERSION).toBe(5);
 		expect(emptyInkData()).toEqual({
-			version: 4,
+			version: 5,
 			pages: {},
 			insertedPages: [],
 		});

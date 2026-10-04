@@ -2,11 +2,13 @@ import type { PointConverter } from '../core/coords';
 import {
 	type Item,
 	type ItemType,
+	type PathItem,
 	type ShapeItem,
 	type Stroke,
 	type StrokeSample,
 	type TextItem,
 } from '../core/items';
+import { pathGeometry } from '../core/path';
 import { type PathSegment, shapeGeometry } from '../core/shapes';
 import { layoutTextLines } from '../core/text-layout';
 import { type PageTheme, renderColor } from '../core/theme';
@@ -40,6 +42,7 @@ export type ItemRenderer<T extends Item = Item> = (
 export type LayerName = 'highlight' | 'ink';
 
 export function layerFor(item: Item): LayerName {
+	if (item.type === 'path') return item.highlight === true ? 'highlight' : 'ink';
 	return item.type === 'stroke' && item.tool === 'highlighter'
 		? 'highlight'
 		: 'ink';
@@ -160,6 +163,61 @@ const renderShape: ItemRenderer<ShapeItem> = (shape, target) => {
 };
 
 /**
+ * A path's canvas path in PDF space, built once per item.
+ *
+ * Imported handwriting runs to hundreds of thousands of points, so rather than
+ * send every point through the viewport on each paint, the path is built in PDF
+ * space and drawn under the viewport's own affine transform.
+ */
+const pathCache = new WeakMap<PathItem, Path2D>();
+
+function pdfSpacePath(item: PathItem): Path2D {
+	const cached = pathCache.get(item);
+	if (cached) return cached;
+	const path = new Path2D();
+	for (const segment of pathGeometry(item).segments) {
+		for (const command of segment.commands) {
+			if (command.op === 'move') path.moveTo(command.x, command.y);
+			else if (command.op === 'line') path.lineTo(command.x, command.y);
+			else if (command.op === 'cubic') {
+				path.bezierCurveTo(command.x1, command.y1, command.x2, command.y2, command.x, command.y);
+			} else path.closePath();
+		}
+	}
+	pathCache.set(item, path);
+	return path;
+}
+
+/** The viewport as an affine matrix, probed from three points. */
+function viewportMatrix(viewport: PointConverter): [number, number, number, number, number, number] {
+	const [e, f] = viewport.convertToViewportPoint(0, 0);
+	const [ax, ay] = viewport.convertToViewportPoint(1, 0);
+	const [cx, cy] = viewport.convertToViewportPoint(0, 1);
+	return [ax - e, ay - f, cx - e, cy - f, e, f];
+}
+
+const renderPath: ItemRenderer<PathItem> = (item, target) => {
+	const { ctx } = target;
+	const path = pdfSpacePath(item);
+	const color = renderColor(item.color, target.theme);
+	ctx.save();
+	ctx.transform(...viewportMatrix(target.viewport));
+	ctx.globalAlpha = item.opacity;
+	if (item.strokeWidth === undefined) {
+		ctx.fillStyle = color;
+		ctx.fill(path);
+	} else {
+		// In PDF points: the context is in PDF space here.
+		ctx.strokeStyle = color;
+		ctx.lineWidth = item.strokeWidth;
+		ctx.lineJoin = 'round';
+		ctx.lineCap = 'round';
+		ctx.stroke(path);
+	}
+	ctx.restore();
+};
+
+/**
  * The font the on-screen renderer measures and draws with.
  *
  * It must be the same family the exporter embeds, or the two would wrap
@@ -210,6 +268,7 @@ export const ITEM_RENDERERS: Partial<Record<ItemType, ItemRenderer>> = {
 	stroke: renderStroke as ItemRenderer,
 	shape: renderShape as ItemRenderer,
 	text: renderText as ItemRenderer,
+	path: renderPath as ItemRenderer,
 };
 
 export function rendererFor(item: Item): ItemRenderer | undefined {

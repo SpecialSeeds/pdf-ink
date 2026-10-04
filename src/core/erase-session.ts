@@ -12,6 +12,7 @@ import {
 	boundsIntersect,
 	capsuleBounds,
 	capsuleContains,
+	erasesWhole,
 	fragmentToStroke,
 	itemToPolylines,
 	prefilterBounds,
@@ -163,6 +164,8 @@ export class SizedEraseSession {
 
 	private fragments(tracked: Tracked, nextId: () => string): Stroke[] {
 		const out: Stroke[] = [];
+		// A path the eraser touched goes entirely; nothing of it survives.
+		if (erasesWhole(tracked.ref.item)) return out;
 		tracked.polylines.forEach((line, index) => {
 			const mask = tracked.keep[index];
 			if (!mask) return;
@@ -180,7 +183,7 @@ export function radiusToPdf(radiusPx: number, scale: number): number {
 	return scale > 0 ? radiusPx / scale : radiusPx;
 }
 
-/** Items a sized erase can act on. Text is excluded. */
+/** Items a sized erase can act on. Text is excluded; a path goes whole. */
 export function isErasable(item: Item): boolean {
-	return item.type === 'stroke' || item.type === 'shape';
+	return item.type === 'stroke' || item.type === 'shape' || item.type === 'path';
 }
