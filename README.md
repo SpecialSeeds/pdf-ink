@@ -61,6 +61,52 @@ Obsidian puts new notes. Their page size (Letter or A4) and ruling are set under
 **Creating files** in settings. The ruling is part of the PDF, so it reads the same in
 any viewer, and pages you add to the notebook later take the same ruling.
 
+## Notebooks
+
+A notebook is a `.inknote` file: pages to write on with no PDF behind them. The
+**New notebook** button in the left ribbon makes one and opens it, with one Letter page
+ruled as a 5 mm grid. Right-click a folder and choose **New notebook** to make one
+there, or run **New notebook** from the command palette. Notebooks are named
+`Untitled.inknote`, `Untitled 1.inknote` and so on, and land where Obsidian puts new
+notes.
+
+Write near the bottom of the last page and the next page is added for you. A single
+undo takes back both the writing and the page it added. Every other page tool works as
+it does in a PDF: insert pages anywhere, re-rule them, or delete them. If you delete
+every page, the notebook offers to add one back.
+
+The notebook file holds the ink itself, in the same format as a PDF's sidecar, so there
+is nothing beside it to keep track of. Export turns it into a PDF in the `annotated`
+folder beside it.
+
+> **Obsidian Sync:** `.inknote` is not a file type Obsidian Sync carries by default.
+> Turn on **Sync all other types** under **Settings → Sync → Selective sync**, or notebooks
+> will stay on the device that made them.
+
+## Light and dark pages
+
+The sun button in the top bar switches notebook and added pages between **light** and
+**dark** paper. Each tab remembers its own choice. A tab that has never been switched
+follows Obsidian's theme.
+
+| | Paper | Grid | Base ink |
+|---|---|---|---|
+| Light | `#FFFFFF` | `#D5E1EC` | `#1A1A1A` |
+| Dark | `#1E1E1E` | `#2C3A4A` | `#FFFFFF` |
+
+Only **base ink** changes with the theme: anything you wrote in near black or near
+white is drawn in the theme's base ink, so black handwriting reads as white on dark
+paper. Every other colour is drawn exactly as you chose it. Nothing is rewritten; the
+theme only changes how the page is drawn.
+
+Pages of a PDF stay as the PDF has them, white as a rule, so ink on them always uses the
+light mapping, even in a dark tab. On dark paper the highlighter brightens what is under
+it instead of darkening it, so it stays visible.
+
+All six colours can be changed under **Page themes** in settings, each with its own
+reset. A warning appears if base ink has too little contrast against its paper.
+Changes show in open tabs at once.
+
 ## Moving around
 
 The bar along the top carries the same controls as Obsidian's own PDF viewer, in the
@@ -190,7 +236,12 @@ re-fits when the pane is resized.
 ## Exporting
 
 Press the export button at the end of the top bar, or run **PDF ink: Export
-annotated PDF**. Anything you have just drawn is saved first, so it is included. The
+annotated PDF**. You are asked whether to export light or dark pages, with your last
+choice preselected. Turn off **Ask for theme on export** to always use the last choice.
+The theme applies exactly as on screen: added and notebook pages get its paper, grid and
+base ink, and pages of the original PDF keep their light mapping.
+
+Anything you have just drawn is saved first, so it is included. The
 result goes into an **`annotated`** folder beside the original, created the first time,
 with a configurable suffix on the name. You are asked before an earlier export is
 replaced. The source
@@ -250,6 +301,19 @@ Sync conflict files are merged in and moved to the trash when the PDF is opened 
 including the numbered copies iCloud Drive makes, such as `paper.pdf.ink 2.json` or
 `paper.pdf.ink.json 3.bak`. Tombstones are dropped after 90 days.
 
+Notebooks merge the same way. Conflict copies that say so, such as
+`Notes (conflict).inknote`, are merged in and moved to the trash. iCloud's numbered
+copies, such as `Notes 2.inknote`, are never merged without asking. Every notebook
+carries an identity of its own, and when a numbered copy turns up with the same
+identity as the notebook you have open, you are asked whether to **Merge** it (it is
+merged, then moved to the trash) or **Keep separate** (it is given an identity of its
+own and you are not asked about it again). A notebook you simply named `Notes 2` has
+a different identity, so it is never asked about.
+
+A notebook is written in place rather than renamed, since it is the file you have open.
+It keeps the same `.tmp` and `.bak` beside it, and is recovered from them if it is ever
+left unreadable.
+
 A sidecar written by a newer version of the plugin is never overwritten — the view says
 it cannot read it and refuses to save over it.
 
@@ -261,7 +325,8 @@ it cannot read it and refuses to save over it.
 - **Palm rejection** on or off.
 - Default **colour** and **width** per tool, and the default text size.
 - Default eraser **mode**, whole-stroke reach and sized radius.
-- Export **mode** and filename **suffix**.
+- Export **mode** and filename **suffix**, and whether to **ask for a theme** on export.
+- **Page themes**: paper, grid and base ink for light and dark pages.
 - Page size and ruling for **new PDFs**.
 - **Tool palette side**, left or right.
 - **Input diagnostics**, for reporting a problem with a pen or tablet.
