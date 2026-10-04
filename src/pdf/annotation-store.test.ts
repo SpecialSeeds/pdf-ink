@@ -132,6 +132,20 @@ class FakeFileManager {
 		this.trashed.push(file.path);
 		return Promise.resolve();
 	}
+
+	renameFile(file: TFile, to: string): Promise<void> {
+		const entry = this.vault.files.get(file.path);
+		if (!entry) return Promise.reject(new Error('missing'));
+		this.vault.files.delete(file.path);
+		this.vault.files.set(to, entry);
+		const bytes = this.vault.binaries.get(file.path);
+		if (bytes) {
+			this.vault.binaries.delete(file.path);
+			this.vault.binaries.set(to, bytes);
+		}
+		this.vault.ops.push(`move:${file.path}->${to}`);
+		return Promise.resolve();
+	}
 }
 
 interface Harness {
@@ -1876,6 +1890,78 @@ describe('notebooks with a base layer', () => {
 		await store.load(file);
 		expect(store.itemsFor(PAGE)).toEqual([]);
 		expect(Notice.messages.some((m) => m.includes('unreadable'))).toBe(true);
+	});
+
+	describe('a base layer left in another folder', () => {
+		const ELSEWHERE = 'archive/old/Imported.inknote.gz';
+
+		async function moved(vault: FakeVault): Promise<TFile> {
+			const file = await imported(vault);
+			const bytes = vault.binaries.get(BASE);
+			if (!bytes) throw new Error('unreachable');
+			vault.files.delete(BASE);
+			vault.binaries.delete(BASE);
+			// Another notebook's base in the notebook's own folder, to be passed over.
+			vault.writeBinaryExternally('class/Other.inknote.gz', (await packBase({ [PAGE]: [basePath('x', 0)] })).bytes);
+			vault.writeBinaryExternally(ELSEWHERE, bytes);
+			return file;
+		}
+
+		it('is found by its hash anywhere in the vault, without a missing notice', async () => {
+			const { store, vault } = setup();
+			await store.load(await moved(vault));
+			expect(store.itemsFor(PAGE).map((i) => i.id)).toEqual(['b1', 'b2']);
+			expect(Notice.messages.some((m) => m.includes('missing'))).toBe(false);
+		});
+
+		it('is moved beside the notebook when the user agrees', async () => {
+			const { store, vault } = setup();
+			await store.load(await moved(vault));
+			const asked: [string, string][] = [];
+			await store.offerToMoveBase((found, target) => {
+				asked.push([found.path, target]);
+				return Promise.resolve(true);
+			});
+			expect(asked).toEqual([[ELSEWHERE, BASE]]);
+			expect(vault.binaries.has(BASE)).toBe(true);
+			expect(vault.binaries.has(ELSEWHERE)).toBe(false);
+			// Reopened, it is found where it belongs.
+			await store.load(vault.getFileByPath(NOTEBOOK) as TFile);
+			expect(store.itemsFor(PAGE).map((i) => i.id)).toEqual(['b1', 'b2']);
+		});
+
+		it('is left where it is when the user declines, and asked about only once', async () => {
+			const { store, vault } = setup();
+			await store.load(await moved(vault));
+			let asks = 0;
+			const decline = (): Promise<boolean> => {
+				asks += 1;
+				return Promise.resolve(false);
+			};
+			await store.offerToMoveBase(decline);
+			await store.offerToMoveBase(decline);
+			expect(asks).toBe(1);
+			expect(vault.binaries.has(ELSEWHERE)).toBe(true);
+			expect(vault.binaries.has(BASE)).toBe(false);
+		});
+
+		it('is not offered for a base found beside the notebook under another name', async () => {
+			const { store, vault } = setup();
+			const file = await imported(vault);
+			const bytes = vault.binaries.get(BASE);
+			if (!bytes) throw new Error('unreachable');
+			vault.files.delete(BASE);
+			vault.binaries.delete(BASE);
+			vault.writeBinaryExternally('class/Renamed.inknote.gz', bytes);
+			await store.load(file);
+			expect(store.itemsFor(PAGE).map((i) => i.id)).toEqual(['b1', 'b2']);
+			let asked = false;
+			await store.offerToMoveBase(() => {
+				asked = true;
+				return Promise.resolve(true);
+			});
+			expect(asked).toBe(false);
+		});
 	});
 
 	it('finds the base of a renamed notebook by its hash', async () => {
