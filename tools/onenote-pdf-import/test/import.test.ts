@@ -23,6 +23,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { unpackBase } from '../../../src/core/base-layer';
 import { parseInkData } from '../../../src/core/ink-serialization';
+import { HEADER_CONTENT_TOP } from '../../../src/core/header';
 import { pathBounds } from '../../../src/core/path';
 import { buildNotebook, classify } from '../src/build';
 import { compareCanvases, describeComparison } from '../src/compare';
@@ -430,5 +431,65 @@ describe.skipIf(!existsSync(MAC_SLICED) || !existsSync(IOS_TALL))('fixture: Mac 
 		const built = buildNotebook(await load(IOS_TALL), { now: 1 });
 		expect(built.layout).toBe('paginated');
 		expect(built.data.insertedPages.every((p) => p.size.width === 612 && p.size.height === 792)).toBe(true);
+	});
+});
+
+describe('the title header', () => {
+	it('needs a date line as well as the title', async () => {
+		const note = tallNote();
+		const canvas = reconstructCanvas(await extractPdf(await iosPdf(note.width, note.height, note.blobs, 'Synthetic')));
+		// iosPdf writes no date, so the title alone is not enough.
+		expect(buildNotebook(canvas, { now: 1, title: 'Synthetic' }).header).toBeUndefined();
+	});
+
+	it('starts page 1 below the header band on a paginated import', async () => {
+		const note = tallNote();
+		const canvas = reconstructCanvas(await extractPdf(await iosPdf(note.width, note.height, note.blobs)));
+		const withDate: Canvas = {
+			...canvas,
+			texts: [
+				...canvas.texts,
+				{ ...canvas.texts[0], text: 'Saturday, October 3, 2026 2:02 PM', y: (canvas.texts[0]?.y ?? 0) - 18, fontSize: 10 } as Canvas['texts'][number],
+			],
+		};
+		const built = buildNotebook(withDate, { now: 1, title: 'Synthetic' });
+		expect(built.header).toEqual({ createdAt: new Date(2026, 9, 3, 14, 2).getTime() });
+		const first = built.data.insertedPages[0];
+		const items = first ? (built.data.pages[`ins:${first.id}`] ?? []) : [];
+		expect(items.some((i) => i.type === 'text')).toBe(false);
+		for (const item of items) {
+			expect(item.type === 'path' && (pathBounds(item)?.maxY ?? 0)).toBeLessThanOrEqual(792 - HEADER_CONTENT_TOP + 1e-6);
+		}
+	});
+});
+
+describe.skipIf(!existsSync(IOS_BOARD))('fixture: the title header of the iOS board', () => {
+	it('comes from its title and date, which are no longer text', async () => {
+		const built = buildNotebook(await load(IOS_BOARD), { now: 1, title: 'Section 1' });
+		expect(built.header).toEqual({ createdAt: new Date(2026, 7, 26, 11, 15).getTime() });
+		expect(built.data.header).toEqual(built.header);
+		const texts = Object.values(built.data.pages)
+			.flat()
+			.filter((i) => i.type === 'text');
+		expect(texts).toEqual([]);
+	});
+});
+
+describe.skipIf(!existsSync(MAC_SLICED) || !existsSync(IOS_TALL))('fixture: the title header of the 1.3 note', () => {
+	it('comes from the Mac export named after the note', async () => {
+		const built = buildNotebook(await load(MAC_SLICED), { now: 1, title: '1.3 Modeling Building ODEs' });
+		expect(built.header).toEqual({ createdAt: new Date(2026, 9, 3, 14, 2).getTime() });
+		expect(Object.values(built.data.pages).flat().some((i) => i.type === 'text')).toBe(false);
+	});
+
+	it('comes from the iOS export too, when it carries the note\'s name', async () => {
+		const canvas = await load(IOS_TALL);
+		expect(buildNotebook(canvas, { now: 1, title: '1.3 Modeling Building ODEs' }).header).toEqual({
+			createdAt: new Date(2026, 9, 3, 14, 2).getTime(),
+		});
+		// Its file is named "..._long", which is not the title: no header, the text stays.
+		const asNamed = buildNotebook(canvas, { now: 1, title: '1.3 Modeling Building ODEs_long' });
+		expect(asNamed.header).toBeUndefined();
+		expect(Object.values(asNamed.data.pages).flat().filter((i) => i.type === 'text')).toHaveLength(3);
 	});
 });

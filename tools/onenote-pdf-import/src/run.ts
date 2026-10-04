@@ -9,6 +9,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { basePathFor, packBase } from '../../../src/core/base-layer';
+import { formatHeaderDate } from '../../../src/core/header';
 import { NOTEBOOK_SUFFIX, serializeInkData } from '../../../src/core/ink-serialization';
 import { simplifyPathCommands } from '../../../src/core/path';
 import { type Built, buildNotebook } from './build';
@@ -100,6 +101,11 @@ function describe(result: NoteResult): string {
 		`  canvas ${canvas.width.toFixed(0)} x ${canvas.height.toFixed(0)} pt, ${String(built.pathCount)} paths, ${String(built.textCount)} text runs`,
 		`  ${layout}`,
 	];
+	lines.push(
+		built.header
+			? `  header: ${formatHeaderDate(built.header.createdAt, 'onenote')}`
+			: '  header: none (no title and date line found)',
+	);
 	if (result.sizes) {
 		lines.push(
 			`  files: ${kb(result.sizes.notebook)} notebook, ${kb(result.sizes.base)} base layer`,
@@ -143,6 +149,7 @@ export async function runImport(options: ImportOptions): Promise<NoteResult[]> {
 			const canvas = reconstructCanvas(pages);
 			const built = buildNotebook(simplifyCanvas(canvas, tolerance), {
 				now: options.now ?? Date.now(),
+				title: name,
 			});
 			const files = await notebookFiles(built);
 			let status: NoteStatus = 'listed';

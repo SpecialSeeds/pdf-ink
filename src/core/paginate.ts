@@ -35,6 +35,11 @@ export interface PaginateOptions {
 	readonly minGutter?: number;
 	/** Shortest stroke that counts as a column divider, as a share of the ink's height. */
 	readonly dividerMinFraction?: number;
+	/**
+	 * How far below the top of the page the first page's content starts, in
+	 * points; the margin when absent. A notebook header takes the band above.
+	 */
+	readonly firstPageInset?: number;
 }
 
 export const LETTER_WIDTH = 612;
@@ -49,6 +54,7 @@ const DEFAULTS = {
 	columns: true,
 	minGutter: 36,
 	dividerMinFraction: 0.6,
+	firstPageInset: 36,
 } satisfies Required<PaginateOptions>;
 
 /** A horizontal slice of the canvas that is paginated on its own. */
@@ -353,7 +359,6 @@ function paginateColumn(
 	if (!ink) return [];
 
 	const contentWidth = opts.pageWidth - 2 * opts.margin;
-	const contentHeight = opts.pageHeight - 2 * opts.margin;
 	const inkWidth = ink.maxX - ink.minX;
 	const columnScale = inkWidth > contentWidth ? contentWidth / inkWidth : 1;
 
@@ -371,14 +376,18 @@ function paginateColumn(
 		scale < 1 ? opts.margin - ink.minX * scale : keptShift - column.left;
 
 	const rowHeight = 1 / columnScale;
-	const rows = Math.ceil(contentHeight);
-	const capacity = contentHeight / columnScale;
 	const pages: PaginatedPage[] = [];
 
 	while (remaining.length > 0) {
 		const left = unionBounds(remaining);
 		if (!left) break;
 		const top = left.maxY;
+		// The document's very first page may start lower, under a header.
+		const inset =
+			index === 0 && pages.length === 0 ? Math.max(opts.margin, opts.firstPageInset) : opts.margin;
+		const pageContentHeight = opts.pageHeight - inset - opts.margin;
+		const rows = Math.ceil(pageContentHeight);
+		const capacity = pageContentHeight / columnScale;
 
 		let taken: Placed[];
 		if (top - left.minY <= capacity) {
@@ -402,10 +411,10 @@ function paginateColumn(
 		const takenBounds = unionBounds(taken);
 		const takenHeight = takenBounds ? top - takenBounds.minY : 0;
 		const scale =
-			takenHeight > capacity ? contentHeight / takenHeight : columnScale;
+			takenHeight > capacity ? pageContentHeight / takenHeight : columnScale;
 
 		const dx = offsetX(scale);
-		const dy = opts.pageHeight - opts.margin - top * scale;
+		const dy = opts.pageHeight - inset - top * scale;
 		pages.push({
 			column: index,
 			items: taken.map((p) => mapItem(p.item, scale, dx, dy)),

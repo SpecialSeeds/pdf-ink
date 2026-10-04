@@ -25,8 +25,11 @@ npm run import-onenote -- <input folder> [output folder] [--dry-run] [--only <te
 A canvas wider than tall, or wider than 1.5 Letter widths, becomes a board: one
 page at the canvas's size. Anything else is split into Letter pages.
 
-Ink becomes `path` items in its exact exported colours. Typed text (the title and
-date included) becomes text boxes where it was.
+Ink becomes `path` items in its exact exported colours. Typed text becomes text
+boxes where it was, except the page title: when the note opens with its own name
+(the file name) and a date line, those become the notebook's title header
+instead, dated from that line. Notebooks imported before this can be converted
+with the plugin's "Convert imported titles to headers" command.
 
 Everything imported goes into `<name>.inknote.gz`, a gzipped base layer written
 once and never again. The `.inknote` beside it names the base by its SHA-256 and

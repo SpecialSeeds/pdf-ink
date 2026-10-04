@@ -118,6 +118,9 @@ PageTemplate = "blank" | "lined" | "lined7.5" | "lined10" | "grid5" | "dot"
 - The header is not an item: nothing draws on, erases, lassoes or moves it. A double
   tap on the title renames the file through the file manager; a taken or unusable
   name is refused with a notice and the title shows the old name again.
+- Imported titles become headers only when the topmost text matches the file name
+  AND a date line follows (`detectTitleHeader`); the migration command applies the
+  same rule to existing notebooks, hiding base text with tombstones.
 
 ## Base layer (imported notebooks)
 - Imported ink lives in `<name>.inknote.gz` (src/core/base-layer.ts): gzip, written

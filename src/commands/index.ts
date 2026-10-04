@@ -9,6 +9,7 @@ import { PdfInkView } from '../ui/pdf-ink-view';
 import { effectiveThemes } from '../core/theme';
 import { resolveExportTheme } from '../ui/export-theme-modal';
 import { createBoard, createNotebook } from '../utils/create-notebook';
+import { convertImportedTitles } from '../ui/convert-titles-modal';
 import { createPdf } from '../utils/create-pdf';
 import { exportAnnotatedCopy } from '../utils/export-pdf';
 import { resolvePdfTarget } from '../utils/pdf-target';
@@ -56,6 +57,15 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 		icon: BOARD_ICON,
 		callback: () => {
 			void createBoard(plugin.app, { titleHeader: plugin.settings.addTitleHeader });
+		},
+	});
+
+	plugin.addCommand({
+		id: 'convert-imported-titles',
+		name: 'Convert imported titles to headers',
+		icon: 'heading',
+		callback: () => {
+			convertImportedTitles(plugin.app);
 		},
 	});
 

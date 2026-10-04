@@ -1002,3 +1002,9 @@
 	-webkit-user-select: text;
 	user-select: text;
 }
+
+/* The notebooks a title conversion would change: long lists scroll. */
+.pdf-ink-conversion-list {
+	max-height: 40vh;
+	overflow-y: auto;
+}
