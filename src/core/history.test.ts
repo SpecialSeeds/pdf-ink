@@ -13,12 +13,18 @@ import type { InsertedPage } from './pages';
 import { pdfPageKey } from './pages';
 import { DEFAULT_PEN, createStroke } from './stroke';
 
+/**
+ * A fixed creation time: two refs built for the same id must be equal, which
+ * they are not if each is stamped with the clock and a millisecond passes.
+ */
+const CREATED = 1_700_000_000_000;
+
 /** Takes a page number for brevity; the schema's key is `pdf:<n>`. */
 function ref(page: number, index: number, id = `s${String(index)}`): ItemRef {
 	return {
 		pageKey: pdfPageKey(page),
 		index,
-		item: createStroke(DEFAULT_PEN, id),
+		item: createStroke(DEFAULT_PEN, id, CREATED),
 	};
 }
 
@@ -187,10 +193,11 @@ describe('grouped operations', () => {
 
 	it('joins an operation onto the newest step', () => {
 		const history = new InkHistory();
-		history.push(add(ref(0, 0, 'a')));
+		const first = add(ref(0, 0, 'a'));
+		history.push(first);
 		history.pushJoined(pageAdd);
 		const undone = history.undo();
-		expect(undone).toEqual({ kind: 'group', operations: [add(ref(0, 0, 'a')), pageAdd] });
+		expect(undone).toEqual({ kind: 'group', operations: [first, pageAdd] });
 		expect(history.canUndo).toBe(false);
 	});
 
