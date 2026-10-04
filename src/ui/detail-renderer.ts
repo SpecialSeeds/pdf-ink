@@ -1,4 +1,5 @@
 import type { CanvasBudget } from '../core/canvas-budget';
+import type { PageTheme } from '../core/theme';
 import {
 	type CssRect,
 	containsRect,
@@ -31,6 +32,7 @@ export class DetailRenderer {
 		private readonly budget: CanvasBudget,
 		private readonly currentViewEpoch: () => number,
 		private readonly onInkCanvasReset: (rec: PageRecord) => void,
+		private readonly insertedTheme: () => PageTheme,
 	) {}
 
 	/**
@@ -167,6 +169,7 @@ export class DetailRenderer {
 			height,
 			// Device px, shifted so the region's top-left corner lands at 0,0.
 			[dpr, 0, 0, dpr, -rect.x * dpr, -rect.y * dpr],
+			this.insertedTheme(),
 		);
 		if (!raster) {
 			if (detail.target === target) detail.target = null;

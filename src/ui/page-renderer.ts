@@ -1,6 +1,7 @@
 import { PAGE_CLEANUP_DELAY_MS } from '../constants';
 import { type CanvasBudget, effectiveDpr } from '../core/canvas-budget';
 import type { CssRect } from '../core/detail-region';
+import type { PageTheme } from '../core/theme';
 import { isRenderCancelled } from '../types/pdfjs';
 import type { PageBox, PageRecord } from '../types/view';
 import { DetailRenderer } from './detail-renderer';
@@ -32,8 +33,27 @@ export class PageRenderer {
 		 * already-committed strokes can be repainted.
 		 */
 		private readonly onInkCanvasReset: (rec: PageRecord) => void,
+		/** The colours an inserted page is painted in, under the view's theme. */
+		private readonly insertedTheme: () => PageTheme,
 	) {
-		this.details = new DetailRenderer(budget, currentViewEpoch, onInkCanvasReset);
+		this.details = new DetailRenderer(
+			budget,
+			currentViewEpoch,
+			onInkCanvasReset,
+			insertedTheme,
+		);
+	}
+
+	/**
+	 * Forget that a page's bitmap is current, so the next {@link ensure} paints it
+	 * again — after its template or the theme changed. The old bitmap stays on
+	 * screen until the new one replaces it.
+	 */
+	invalidate(rec: PageRecord): void {
+		this.details.drop(rec);
+		rec.bitmapScale = 0;
+		rec.bitmapDpr = 0;
+		rec.renderedDensity = 0;
 	}
 
 	/**
@@ -163,6 +183,7 @@ export class PageRenderer {
 			bitmapWidth,
 			bitmapHeight,
 			[effDpr, 0, 0, effDpr, 0, 0],
+			this.insertedTheme(),
 		);
 		if (!raster) {
 			this.markEmpty(rec);

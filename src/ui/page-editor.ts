@@ -1,6 +1,7 @@
 import { type Component, Menu, Platform, setIcon } from 'obsidian';
 import { pageSizes, sizeLookup } from '../core/page-composition';
 import {
+	type InsertedPage,
 	type PageKey,
 	createInsertedPage,
 	orderPages,
@@ -115,6 +116,21 @@ export class PageEditor {
 	 * the same paper, without the user having to say so.
 	 */
 	insertAt(at: number): void {
+		this.store.insertPage(this.pageFor(at));
+		// The list has already been rebuilt by the store's change callback.
+		this.host.scrollToPage(at);
+	}
+
+	/**
+	 * Add a page after the last one, as part of the newest undo step and without
+	 * scrolling: a notebook growing under the pen should not yank the page away
+	 * from it, and undoing the stroke that grew it should take the page back too.
+	 */
+	appendPage(): void {
+		this.store.insertPage(this.pageFor(this.host.geometry().length), true);
+	}
+
+	private pageFor(at: number): InsertedPage {
 		const geometry = this.host.geometry();
 		const order = orderPages(
 			this.host.pdfPageCount(),
@@ -122,16 +138,7 @@ export class PageEditor {
 		);
 		const sizes = pageSizes(geometry);
 		const size = sizeForInsertion(order, at, sizeLookup(sizes));
-		const page = createInsertedPage(
-			order,
-			at,
-			this.templateFor(at),
-			size,
-			Date.now(),
-		);
-		this.store.insertPage(page);
-		// The list has already been rebuilt by the store's change callback.
-		this.host.scrollToPage(at);
+		return createInsertedPage(order, at, this.templateFor(at), size, Date.now());
 	}
 
 	insertAbove(key: PageKey): void {

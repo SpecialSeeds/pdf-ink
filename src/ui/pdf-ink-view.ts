@@ -15,16 +15,39 @@ import {
 	MOBILE_BUDGET,
 } from '../core/canvas-budget';
 import { maxBaseHeight, maxBaseWidth } from '../core/layout';
+import { itemBounds } from '../core/hit-test';
+import type { Item } from '../core/items';
+import {
+	NOTEBOOK_EXTENSION,
+	isNotebookPath,
+	isNumberedCopyName,
+	shouldAppendPage,
+} from '../core/new-notebook';
+import { pageBounds } from '../core/page-bounds';
 import { composePages, pagesSignature } from '../core/page-composition';
 import type { PageKey } from '../core/pages';
+import {
+	type PageTheme,
+	type PageThemes,
+	type ThemeName,
+	effectiveThemes,
+	highlighterBlend,
+	themeForPage,
+} from '../core/theme';
 import { readInkViewState, writeInkViewState } from '../core/view-state';
 import { AnnotationStore } from '../pdf/annotation-store';
-import { type PdfInkDocument, openPdfDocument } from '../pdf/document';
+import {
+	type PdfInkDocument,
+	notebookDocument,
+	openPdfDocument,
+} from '../pdf/document';
 import { getPdfJs } from '../pdf/pdfjs';
 import { exportAnnotatedCopy } from '../utils/export-pdf';
 import { type PdfInkHost } from '../settings';
 import type { ToolKind } from '../core/tools';
-import type { PageGeometry, ZoomMode } from '../types/view';
+import type { PageGeometry, PageRecord, ZoomMode } from '../types/view';
+import { resolveExportTheme } from './export-theme-modal';
+import { askAboutSyncCopy } from './sync-copy-modal';
 import { PageEditor } from './page-editor';
 import { PageList } from './page-list';
 import { InputDiagnostics } from './input-diagnostics';
@@ -49,6 +72,8 @@ export class PdfInkView extends FileView implements ZoomHost {
 	pagesEl!: HTMLElement;
 
 	private statusEl!: HTMLElement;
+	/** The "no pages" notice of an empty notebook, while it shows. */
+	private emptyEl: HTMLElement | null = null;
 	private toolbar!: PdfInkToolbar;
 	private sidebar!: PdfSidebar;
 	private diagnostics!: InputDiagnostics;
@@ -100,12 +125,25 @@ export class PdfInkView extends FileView implements ZoomHost {
 	 */
 	private pendingPageKey: PageKey | null = null;
 
+	/**
+	 * Light or dark notebook and inserted pages, for this tab. Restored from the
+	 * workspace, and otherwise following Obsidian's own theme when the tab opened.
+	 */
+	private theme: ThemeName = obsidianTheme();
+	/** The theme colours in effect: the settings laid over the defaults. */
+	private pageThemes: PageThemes;
+	/** A check for sync copies is running. */
+	private checkingCopies = false;
+	/** Another check is wanted once the running one finishes. */
+	private copiesChanged = false;
+
 	constructor(
 		leaf: WorkspaceLeaf,
 		private readonly host: PdfInkHost,
 	) {
 		super(leaf);
 		this.icon = PDF_INK_ICON;
+		this.pageThemes = effectiveThemes(host.settings.pageThemes);
 	}
 
 	getViewType(): string {
@@ -120,13 +158,19 @@ export class PdfInkView extends FileView implements ZoomHost {
 		return this.file ? this.file.basename : 'PDF ink';
 	}
 
+	/** Whether the open file is a notebook rather than a PDF. */
+	get isNotebook(): boolean {
+		return this.file !== null && isNotebookPath(this.file.path);
+	}
+
 	/**
 	 * Obsidian consults this when putting a file into an existing leaf of this
 	 * type, such as back/forward navigation, even when `.pdf` is routed elsewhere.
 	 * Returning false would make the leaf silently swap itself to another view.
 	 */
 	override canAcceptExtension(extension: string): boolean {
-		return extension.toLowerCase() === 'pdf';
+		const ext = extension.toLowerCase();
+		return ext === 'pdf' || ext === NOTEBOOK_EXTENSION;
 	}
 
 	override getState(): Record<string, unknown> {
@@ -139,6 +183,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 				this.zoom.getZoom(),
 				this.currentPageNumber(),
 				this.currentPageKey(),
+				this.theme,
 			),
 		);
 	}
@@ -154,6 +199,10 @@ export class PdfInkView extends FileView implements ZoomHost {
 		const restored = readInkViewState(state);
 		if (restored.zoomMode) this.pendingZoomMode = restored.zoomMode;
 		if (restored.pageKey !== null) this.pendingPageKey = restored.pageKey;
+		if (restored.theme !== null && restored.theme !== this.theme) {
+			this.theme = restored.theme;
+			if (this.ready) this.applyTheme();
+		}
 
 		// Leave result.history alone — FileView sets it when the file changes, and
 		// overriding it is how the back button breaks.
@@ -211,6 +260,9 @@ export class PdfInkView extends FileView implements ZoomHost {
 			pageOptions: (at) => {
 				this.openPageMenu(at);
 			},
+			toggleTheme: () => {
+				this.toggleTheme();
+			},
 			exportPdf: () => {
 				void this.exportAnnotated();
 			},
@@ -226,6 +278,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 			goToIndex: (index) => {
 				this.pageList?.scrollToPage(index);
 			},
+			insertedTheme: () => this.insertedTheme(),
 		});
 
 		this.scrollEl = bodyEl.createDiv({ cls: 'pdf-ink-scroll' });
@@ -242,6 +295,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 				// Resizing a canvas clears it, so committed ink has to be repainted.
 				this.ink?.redraw(record);
 			},
+			() => this.insertedTheme(),
 		);
 		this.zoom = new ZoomController(this, this);
 		this.applyZoomLock();
@@ -270,6 +324,10 @@ export class PdfInkView extends FileView implements ZoomHost {
 					this.diagnostics.log(event, fields);
 				},
 				tracingInput: () => this.diagnostics.isEnabled,
+				pageTheme: (record) => this.pageTheme(record),
+				itemsCommitted: (pageKey, items) => {
+					this.growNotebook(pageKey, items);
+				},
 			},
 		);
 		this.scope = this.ink.scope;
@@ -286,6 +344,16 @@ export class PdfInkView extends FileView implements ZoomHost {
 				}
 			}),
 		);
+
+		// A sync client can drop a numbered copy of this notebook in at any time.
+		const onAppear = (file: unknown): void => {
+			const open = this.file;
+			if (!(file instanceof TFile) || !open) return;
+			if (isNumberedCopyName(open.path, file.path)) this.checkNumberedCopies();
+		};
+		this.registerEvent(this.app.vault.on('create', onAppear));
+		this.registerEvent(this.app.vault.on('rename', onAppear));
+		this.applyThemeStyles();
 		this.ready = true;
 	}
 
@@ -294,15 +362,22 @@ export class PdfInkView extends FileView implements ZoomHost {
 		await this.releaseDocument();
 		if (epoch !== this.epoch) return;
 
-		this.setStatus('Loading PDF…');
+		const notebook = isNotebookPath(file.path);
+		const noun = notebook ? 'notebook' : 'PDF';
+		this.setStatus(`Loading ${noun}…`);
 		try {
-			const pdfjs = await getPdfJs();
-			if (epoch !== this.epoch) return;
+			let loaded: PdfInkDocument;
+			if (notebook) {
+				loaded = notebookDocument();
+			} else {
+				const pdfjs = await getPdfJs();
+				if (epoch !== this.epoch) return;
 
-			const loaded = await openPdfDocument(this.app, file, pdfjs);
-			if (epoch !== this.epoch) {
-				await loaded.loadingTask.destroy();
-				return;
+				loaded = await openPdfDocument(this.app, file, pdfjs);
+				if (epoch !== this.epoch) {
+					await loaded.loadingTask?.destroy();
+					return;
+				}
 			}
 
 			this.document = loaded;
@@ -313,11 +388,12 @@ export class PdfInkView extends FileView implements ZoomHost {
 			this.mountDocument(loaded);
 			this.repaintInk();
 			this.setStatus(null);
+			if (notebook) this.checkNumberedCopies();
 		} catch (err) {
 			if (epoch !== this.epoch) return;
-			console.error('pdf-ink: could not open PDF', err);
-			this.setStatus('Could not open this PDF.');
-			new Notice('Could not open this PDF.');
+			console.error(`pdf-ink: could not open ${noun}`, err);
+			this.setStatus(`Could not open this ${noun}.`);
+			new Notice(`Could not open this ${noun}.`);
 		}
 	}
 
@@ -340,6 +416,104 @@ export class PdfInkView extends FileView implements ZoomHost {
 		this.diagnostics.setEnabled(this.host.settings.inputDiagnostics);
 		this.applyZoomLock();
 		this.ink?.applySettings();
+
+		// Theme colours edited in the settings tab show at once, not on reopen.
+		const themes = effectiveThemes(this.host.settings.pageThemes);
+		if (JSON.stringify(themes) !== JSON.stringify(this.pageThemes)) {
+			this.pageThemes = themes;
+			this.applyTheme();
+		}
+	}
+
+	/**
+	 * Ask about any numbered copy of this notebook that shares its identity.
+	 * Never merges on its own; one check at a time, with one more queued if a copy
+	 * turns up while the user is still answering.
+	 */
+	private checkNumberedCopies(): void {
+		if (!this.isNotebook) return;
+		this.copiesChanged = true;
+		if (this.checkingCopies) return;
+		this.checkingCopies = true;
+		void (async () => {
+			try {
+				while (this.copiesChanged) {
+					this.copiesChanged = false;
+					await this.annotations.resolveNumberedCopies((copy, notebook) =>
+						askAboutSyncCopy(this.app, copy, notebook),
+					);
+				}
+			} catch (err) {
+				console.error('pdf-ink: could not check for sync copies', err);
+			} finally {
+				this.checkingCopies = false;
+			}
+		})();
+	}
+
+	/** Switch this tab's notebook and inserted pages between light and dark. */
+	toggleTheme(): void {
+		this.theme = this.theme === 'dark' ? 'light' : 'dark';
+		this.applyTheme();
+		// The theme is per tab, saved with the workspace.
+		this.app.workspace.requestSaveLayout();
+	}
+
+	/** The colours of a notebook or inserted page, under this tab's theme. */
+	private insertedTheme(): PageTheme {
+		return this.pageThemes[this.theme];
+	}
+
+	/** The theme a page's ink renders under: original PDF pages are always light. */
+	private pageTheme(record: PageRecord): PageTheme {
+		return this.pageThemes[themeForPage(record.geom.source.kind, this.theme)];
+	}
+
+	/** Paint every page the theme reaches again, and update what shows it. */
+	private applyTheme(): void {
+		if (!this.ready) return;
+		this.applyThemeStyles();
+		this.pageList?.repaint((record) => record.geom.source.kind === 'inserted');
+		this.sidebar.repaintInserted();
+		// Ink on every page: a changed light theme reaches PDF pages too.
+		this.repaintInk();
+		this.ink?.refresh();
+	}
+
+	/**
+	 * The paper behind an inserted page before its bitmap lands, and how its
+	 * highlighter blends — chosen from the paper's luminance, so a customised
+	 * paper still gets the blend that keeps highlights visible.
+	 */
+	private applyThemeStyles(): void {
+		const paper = this.insertedTheme().paper;
+		this.pagesEl.setCssProps({
+			'--pdf-ink-inserted-paper': paper,
+			'--pdf-ink-inserted-blend': highlighterBlend(paper),
+		});
+		this.toolbar.setTheme(this.theme);
+	}
+
+	/**
+	 * Grow a notebook as it is written in: ink near the bottom of the last page
+	 * adds the next one, as part of the same undo step as the ink.
+	 */
+	private growNotebook(pageKey: PageKey, items: readonly Item[]): void {
+		if (this.document?.kind !== 'notebook') return;
+		const last = this.composed[this.composed.length - 1];
+		if (!last || last.key !== pageKey) return;
+
+		let lowest = Number.POSITIVE_INFINITY;
+		for (const item of items) {
+			const bounds = itemBounds(item);
+			if (bounds) lowest = Math.min(lowest, bounds.minY);
+		}
+		if (!Number.isFinite(lowest)) return;
+
+		const page = pageBounds(last.baseViewport, last.baseWidth, last.baseHeight);
+		if (shouldAppendPage(lowest, page.minY, page.maxY - page.minY, true)) {
+			this.pageEditor?.appendPage();
+		}
 	}
 
 	/** Lock or unlock the zoom, in every open ink view. */
@@ -422,6 +596,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 		this.toolbar.setPageCount(this.composed.length);
 		this.sidebar.setPages(this.composed);
 		void this.sidebar.loadOutline(loaded.doc);
+		this.showEmptyNotebook();
 
 		const mode: ZoomMode = this.pendingZoomMode ?? this.defaultZoomMode();
 		this.pendingZoomMode = null;
@@ -494,6 +669,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 			this.sidebar.setPages(composed);
 			// Fit-width is measured against the widest page, which may have changed.
 			this.zoom.recomputeFit();
+			this.showEmptyNotebook();
 			// A deleted page leaves a selection pointing at items that are now gone.
 			this.ink?.pruneSelection();
 			this.ink?.refreshSelectionBox();
@@ -532,6 +708,11 @@ export class PdfInkView extends FileView implements ZoomHost {
 		return this.ready && this.composed.length > 0;
 	}
 
+	/** Whether a page can be inserted: beside the one in view, or into an empty notebook. */
+	canInsertPage(): boolean {
+		return this.hasCurrentPage() || (this.ready && this.document?.kind === 'notebook');
+	}
+
 	/**
 	 * Open the page menu for whatever page is in view.
 	 *
@@ -563,22 +744,56 @@ export class PdfInkView extends FileView implements ZoomHost {
 		if (!file) return;
 		this.ink?.flushText();
 		await this.annotations.flush();
+		const theme = await resolveExportTheme(this.app, this.host);
+		if (theme === null) return;
 		await exportAnnotatedCopy(this.app, file, {
 			suffix: this.host.settings.exportSuffix,
 			mode: this.host.settings.exportMode,
+			theme,
+			themes: this.pageThemes,
 		});
 	}
 
 	/** Insert a page immediately after the one in view. */
 	insertPageBelowCurrent(): void {
+		if (this.addFirstPage()) return;
 		const key = this.currentPageKey();
 		if (key !== null) this.pageEditor?.insertBelow(key);
 	}
 
 	/** Insert a page immediately before the one in view. */
 	insertPageAboveCurrent(): void {
+		if (this.addFirstPage()) return;
 		const key = this.currentPageKey();
 		if (key !== null) this.pageEditor?.insertAbove(key);
+	}
+
+	/**
+	 * Give an empty notebook a page. True when it did, so the caller stops: with no
+	 * page in view there is nothing to insert above or below.
+	 */
+	private addFirstPage(): boolean {
+		if (this.document?.kind !== 'notebook' || this.composed.length > 0) return false;
+		this.pageEditor?.insertAt(0);
+		return true;
+	}
+
+	/**
+	 * An empty notebook — its last page deleted, or an empty file — says so and
+	 * offers a page, since there is no page to open a menu on or insert beside.
+	 */
+	private showEmptyNotebook(): void {
+		const empty = this.document?.kind === 'notebook' && this.composed.length === 0;
+		this.emptyEl?.remove();
+		this.emptyEl = null;
+		if (!empty) return;
+		const emptyEl = this.scrollEl.createDiv({ cls: 'pdf-ink-empty-notebook' });
+		emptyEl.createDiv({ text: 'This notebook has no pages.' });
+		const buttonEl = emptyEl.createEl('button', { cls: 'mod-cta', text: 'Add a page' });
+		buttonEl.addEventListener('click', () => {
+			this.addFirstPage();
+		});
+		this.emptyEl = emptyEl;
 	}
 
 	/** Repaint every live page's ink from PDF space at the current viewport. */
@@ -615,9 +830,12 @@ export class PdfInkView extends FileView implements ZoomHost {
 		this.pageList = null;
 		if (list) await list.dispose();
 
+		this.emptyEl?.remove();
+		this.emptyEl = null;
+
 		const loaded = this.document;
 		this.document = null;
-		if (loaded) {
+		if (loaded?.loadingTask) {
 			try {
 				// Destroys the document and its worker-side data too.
 				await loaded.loadingTask.destroy();
@@ -677,4 +895,9 @@ export class PdfInkView extends FileView implements ZoomHost {
 		this.statusEl.show();
 	}
 
+}
+
+/** Obsidian's own theme right now, which a tab with no saved theme follows. */
+function obsidianTheme(): ThemeName {
+	return activeDocument.body.hasClass('theme-dark') ? 'dark' : 'light';
 }

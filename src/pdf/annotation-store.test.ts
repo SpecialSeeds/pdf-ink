@@ -16,6 +16,8 @@ import type { InkData } from '../core/items';
 import { INK_DATA_VERSION } from '../core/items';
 import { type InsertedPage, insertedPageKey } from '../core/pages';
 import { TOMBSTONE_MAX_AGE_MS } from '../core/merge';
+import { newNotebookText } from '../core/new-notebook';
+import type { AskAboutCopy, CopyDecision } from './annotation-store';
 import { DEFAULT_PEN, createStroke } from '../core/stroke';
 import { AnnotationStore } from './annotation-store';
 
@@ -1238,6 +1240,24 @@ describe('inserted pages', () => {
 		expect(store.insertedPages().map((page) => page.id)).toEqual(['p1']);
 	});
 
+	it('undoes a page joined to the stroke that grew it in one step', async () => {
+		const harness = setup();
+		const { store } = harness;
+		await store.load(pdfFile(harness.vault));
+		store.addItem(KEY, stroke('s1'));
+		store.insertPage(newPage({ id: 'p2' }), true);
+		expect(store.insertedPages().map((page) => page.id)).toEqual(['p2']);
+
+		expect(store.undo()).toBe(true);
+		expect(store.insertedPages()).toEqual([]);
+		expect(store.itemsFor(KEY)).toEqual([]);
+		expect(store.canUndo).toBe(false);
+
+		expect(store.redo()).toBe(true);
+		expect(store.insertedPages().map((page) => page.id)).toEqual(['p2']);
+		expect(store.itemsFor(KEY).map((item) => item.id)).toEqual(['s1']);
+	});
+
 	it('changes a template as one undoable step', async () => {
 		const { store } = await withPage();
 		store.setPageTemplate('p1', 'grid5');
@@ -1407,5 +1427,226 @@ describe('inserted pages', () => {
 				'p2',
 			]);
 		});
+	});
+});
+
+describe('notebooks', () => {
+	const NOTEBOOK = 'class/Notes.inknote';
+	const PAGE = insertedPageKey('p1');
+
+	function notebookFile(vault: FakeVault, body = newNotebookText(1000, 'p1')): TFile {
+		vault.writeExternally(NOTEBOOK, body);
+		const found = vault.getFileByPath(NOTEBOOK);
+		if (!found) throw new Error('unreachable');
+		return found;
+	}
+
+	it('reads its pages from the notebook itself', async () => {
+		const { store, vault } = setup();
+		await store.load(notebookFile(vault));
+		expect(store.insertedPages().map((page) => page.id)).toEqual(['p1']);
+		expect(store.isFrozen).toBe(false);
+	});
+
+	it('writes the notebook in place, never renaming or deleting it', async () => {
+		const { store, vault } = setup();
+		const original = newNotebookText(1000, 'p1');
+		await store.load(notebookFile(vault, original));
+		store.addItem(PAGE, stroke('a'));
+		await store.flush();
+
+		const saved = JSON.parse(vault.files.get(NOTEBOOK)?.data ?? 'null') as InkData;
+		expect(saved.pages[PAGE]?.map((item) => item.id)).toEqual(['a']);
+		expect(vault.ops).toContain(`modify:${NOTEBOOK}`);
+		expect(vault.ops.some((op) => op.startsWith(`rename:${NOTEBOOK}`))).toBe(false);
+		expect(vault.ops).not.toContain(`delete:${NOTEBOOK}`);
+		// No sidecar beside a notebook, and no temp file left behind.
+		expect(vault.files.has(sidecarPathFor(NOTEBOOK))).toBe(false);
+		expect(vault.files.has(`${NOTEBOOK}${TEMP_SUFFIX}`)).toBe(false);
+		// The notebook as opened is kept as the backup.
+		expect(vault.files.get(`${NOTEBOOK}${BACKUP_SUFFIX}`)?.data).toBe(original);
+	});
+
+	it('treats an empty file as an empty notebook', async () => {
+		const { store, vault } = setup();
+		await store.load(notebookFile(vault, ''));
+		expect(store.isFrozen).toBe(false);
+		expect(store.insertedPages()).toEqual([]);
+	});
+
+	it('does not take its own write for an external change', async () => {
+		const { store, vault, loaded } = setup();
+		await store.load(notebookFile(vault));
+		store.addItem(PAGE, stroke('a'));
+		await store.flush();
+		const before = loaded.count;
+		const file = vault.getFileByPath(NOTEBOOK);
+		if (!file) throw new Error('unreachable');
+		store.handleExternalChange(file);
+		await store.reconcile();
+		expect(loaded.count).toBe(before);
+	});
+
+	it('recovers a damaged notebook from its backup, by content', async () => {
+		const { store, vault } = setup();
+		vault.writeExternally(`${NOTEBOOK}${BACKUP_SUFFIX}`, newNotebookText(1000, 'p1', 'doc-1'));
+		await store.load(notebookFile(vault, '{"version": 4, "pages": {'));
+		expect(store.isFrozen).toBe(false);
+		expect(store.insertedPages().map((page) => page.id)).toEqual(['p1']);
+
+		await store.flush();
+		const saved = parseJson(vault.files.get(NOTEBOOK)?.data);
+		expect(saved?.insertedPages.map((page) => page.id)).toEqual(['p1']);
+		// The backup that saved it is not overwritten by the damaged file.
+		expect(vault.files.get(`${NOTEBOOK}${BACKUP_SUFFIX}`)?.data).toBe(
+			newNotebookText(1000, 'p1', 'doc-1'),
+		);
+		expect(vault.ops.some((op) => op.startsWith(`rename:`))).toBe(false);
+	});
+
+	it('leaves a notebook from a newer version alone', async () => {
+		const { store, vault } = setup();
+		vault.writeExternally(`${NOTEBOOK}${BACKUP_SUFFIX}`, newNotebookText(1000, 'p1'));
+		await store.load(notebookFile(vault, '{"version": 99, "pages": {}}'));
+		expect(store.isFrozen).toBe(true);
+	});
+
+	it('merges and trashes a conflict copy, but not a look-alike notebook', async () => {
+		const { store, vault, fileManager } = setup();
+		const copy = JSON.parse(newNotebookText(1000, 'p1')) as InkData;
+		vault.writeExternally(
+			'class/Notes (conflict).inknote',
+			JSON.stringify({ ...copy, pages: { [PAGE]: [{ ...stroke('remote'), updatedAt: 5 }] } }),
+		);
+		vault.writeExternally('class/Notes 2.inknote', newNotebookText(1000, 'other'));
+		await store.load(notebookFile(vault));
+		expect(store.itemsFor(PAGE).map((item) => item.id)).toEqual(['remote']);
+		expect(fileManager.trashed).toEqual(['class/Notes (conflict).inknote']);
+		expect(vault.files.has('class/Notes 2.inknote')).toBe(true);
+	});
+});
+
+function parseJson(raw: string | undefined): InkData | null {
+	return raw === undefined ? null : (JSON.parse(raw) as InkData);
+}
+
+describe('numbered sync copies of a notebook', () => {
+	const NOTEBOOK = 'class/Notes.inknote';
+	const COPY = 'class/Notes 2.inknote';
+	const PAGE = insertedPageKey('p1');
+
+	function withInk(docId: string, strokeId: string): string {
+		const data = JSON.parse(newNotebookText(1000, 'p1', docId)) as InkData;
+		return JSON.stringify({ ...data, pages: { [PAGE]: [stroke(strokeId)] } });
+	}
+
+	async function open(copyBody: string): Promise<Harness> {
+		const harness = setup();
+		harness.vault.writeExternally(NOTEBOOK, newNotebookText(1000, 'p1', 'doc-1'));
+		harness.vault.writeExternally(COPY, copyBody);
+		const file = harness.vault.getFileByPath(NOTEBOOK);
+		if (!file) throw new Error('unreachable');
+		await harness.store.load(file);
+		return harness;
+	}
+
+	function answering(decision: CopyDecision): { ask: AskAboutCopy; asked: string[] } {
+		const asked: string[] = [];
+		return {
+			asked,
+			ask: (copy, notebook) => {
+				asked.push(`${copy.path} of ${notebook.path}`);
+				return Promise.resolve(decision);
+			},
+		};
+	}
+
+	it('asks about a numbered copy with the same identity', async () => {
+		const { store } = await open(withInk('doc-1', 'remote'));
+		const { ask, asked } = answering(null);
+		await store.resolveNumberedCopies(ask);
+		expect(asked).toEqual([`${COPY} of ${NOTEBOOK}`]);
+	});
+
+	it('never asks about a notebook with a different identity', async () => {
+		const { store } = await open(withInk('doc-other', 'remote'));
+		const { ask, asked } = answering('merge');
+		await store.resolveNumberedCopies(ask);
+		expect(asked).toEqual([]);
+		expect(store.itemsFor(PAGE)).toEqual([]);
+	});
+
+	it('never asks about a copy with no identity at all', async () => {
+		const legacy = JSON.parse(withInk('x', 'remote')) as InkData;
+		const { docId: _drop, ...anonymous } = legacy;
+		const { store } = await open(JSON.stringify(anonymous));
+		const { ask, asked } = answering('merge');
+		await store.resolveNumberedCopies(ask);
+		expect(asked).toEqual([]);
+	});
+
+	it('merges on request, then trashes the copy', async () => {
+		const { store, vault, fileManager } = await open(withInk('doc-1', 'remote'));
+		await store.resolveNumberedCopies(answering('merge').ask);
+		expect(store.itemsFor(PAGE).map((item) => item.id)).toEqual(['remote']);
+		expect(fileManager.trashed).toEqual([COPY]);
+		await store.flush();
+		const saved = JSON.parse(vault.files.get(NOTEBOOK)?.data ?? 'null') as InkData;
+		expect(saved.pages[PAGE]?.map((item) => item.id)).toEqual(['remote']);
+		expect(saved.docId).toBe('doc-1');
+	});
+
+	it('keeps it separate by giving it a new identity, and does not ask again', async () => {
+		const { store, vault, fileManager } = await open(withInk('doc-1', 'remote'));
+		await store.resolveNumberedCopies(answering('keep').ask);
+
+		const copy = JSON.parse(vault.files.get(COPY)?.data ?? 'null') as InkData;
+		expect(copy.docId).toBeDefined();
+		expect(copy.docId).not.toBe('doc-1');
+		// Its own ink is untouched, and nothing came across.
+		expect(copy.pages[PAGE]?.map((item) => item.id)).toEqual(['remote']);
+		expect(store.itemsFor(PAGE)).toEqual([]);
+		expect(fileManager.trashed).toEqual([]);
+
+		const again = answering('merge');
+		await store.resolveNumberedCopies(again.ask);
+		expect(again.asked).toEqual([]);
+	});
+
+	it('does nothing when the question is dismissed', async () => {
+		const { store, vault, fileManager } = await open(withInk('doc-1', 'remote'));
+		const before = vault.files.get(COPY)?.data;
+		await store.resolveNumberedCopies(answering(null).ask);
+		expect(vault.files.get(COPY)?.data).toBe(before);
+		expect(fileManager.trashed).toEqual([]);
+		expect(store.itemsFor(PAGE)).toEqual([]);
+	});
+
+	it('gives a notebook from before identities one, and writes it', async () => {
+		const harness = setup();
+		const legacy = JSON.parse(newNotebookText(1000, 'p1', 'x')) as InkData;
+		const { docId: _drop, ...anonymous } = legacy;
+		harness.vault.writeExternally(NOTEBOOK, JSON.stringify(anonymous));
+		const file = harness.vault.getFileByPath(NOTEBOOK);
+		if (!file) throw new Error('unreachable');
+		await harness.store.load(file);
+		await harness.store.flush();
+		const saved = JSON.parse(harness.vault.files.get(NOTEBOOK)?.data ?? 'null') as InkData;
+		expect(saved.docId).toMatch(/^[0-9a-f-]{36}$/);
+	});
+
+	it('adopts an identity reassigned on disk rather than writing the old one back', async () => {
+		const harness = setup();
+		harness.vault.writeExternally(COPY, newNotebookText(1000, 'p1', 'doc-1'));
+		const file = harness.vault.getFileByPath(COPY);
+		if (!file) throw new Error('unreachable');
+		await harness.store.load(file);
+		// Another tab kept this copy separate.
+		harness.vault.writeExternally(COPY, newNotebookText(1000, 'p1', 'doc-new'));
+		await harness.store.reconcile();
+		harness.store.addItem(PAGE, stroke('mine'));
+		await harness.store.flush();
+		const saved = JSON.parse(harness.vault.files.get(COPY)?.data ?? 'null') as InkData;
+		expect(saved.docId).toBe('doc-new');
 	});
 });

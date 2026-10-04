@@ -1,6 +1,7 @@
 import { Keymap, type Plugin, TFile, TFolder } from 'obsidian';
-import { PDF_INK_ICON, VIEW_TYPE_PDF_INK } from '../constants';
+import { NOTEBOOK_ICON, PDF_INK_ICON, VIEW_TYPE_PDF_INK } from '../constants';
 import type { PdfInkHost } from '../settings';
+import { createNotebook } from '../utils/create-notebook';
 import { createPdf } from '../utils/create-pdf';
 import {
 	openInInkViewSafely,
@@ -17,7 +18,7 @@ import {
 export function registerFileMenu(plugin: Plugin & PdfInkHost): void {
 	plugin.registerEvent(
 		plugin.app.workspace.on('file-menu', (menu, file, _source, leaf) => {
-			// A folder's menu offers a new PDF inside it.
+			// A folder's menu offers a new PDF or notebook inside it.
 			if (file instanceof TFolder) {
 				menu.addItem((item) =>
 					item
@@ -26,6 +27,15 @@ export function registerFileMenu(plugin: Plugin & PdfInkHost): void {
 						.setSection('action-primary')
 						.onClick(() => {
 							void createPdf(plugin.app, plugin.settings, file);
+						}),
+				);
+				menu.addItem((item) =>
+					item
+						.setTitle('New notebook')
+						.setIcon(NOTEBOOK_ICON)
+						.setSection('action-primary')
+						.onClick(() => {
+							void createNotebook(plugin.app, file);
 						}),
 				);
 				return;

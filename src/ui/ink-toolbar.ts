@@ -1,4 +1,5 @@
 import { type Component, Menu, setIcon } from 'obsidian';
+import { normalizeHex, sameColor } from '../core/color';
 import type { ShapeKind } from '../core/items';
 import type { ToolbarSide } from '../core/settings-schema';
 import {
@@ -286,7 +287,10 @@ export class InkToolbar {
 				selected !== null && sameColor(swatch.color, selected),
 			);
 		}
-		if (selected !== null) this.colorInputEl.value = normalizeHex(selected);
+		// `<input type="color">` only accepts lowercase #rrggbb.
+		if (selected !== null) {
+			this.colorInputEl.value = normalizeHex(selected) ?? '#000000';
+		}
 
 		// The eraser is the only tool whose slider changes meaning with its mode.
 		const range = widthRangeFor(state);
@@ -395,18 +399,4 @@ export class InkToolbar {
 		this.component.registerDomEvent(buttonEl, 'click', onClick);
 		return buttonEl;
 	}
-}
-
-/** Case-insensitive hex comparison, so #FFF and #fff match. */
-function sameColor(a: string, b: string): boolean {
-	return a.toLowerCase() === b.toLowerCase();
-}
-
-/** `<input type="color">` only accepts lowercase #rrggbb. */
-function normalizeHex(color: string): string {
-	const value = color.trim().toLowerCase();
-	if (/^#[0-9a-f]{6}$/.test(value)) return value;
-	const short = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/.exec(value);
-	if (short) return `#${short[1] ?? ''}${short[1] ?? ''}${short[2] ?? ''}${short[2] ?? ''}${short[3] ?? ''}${short[3] ?? ''}`;
-	return '#000000';
 }

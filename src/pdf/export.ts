@@ -13,26 +13,25 @@ import { type PathSegment, shapeGeometry } from '../core/shapes';
 import { type PageTemplate, templateGeometry } from '../core/templates';
 import { outlineToPathData, strokeOutline } from '../core/stroke';
 import { layoutTextLines } from '../core/text-layout';
+import { normalizeHex, parseHex } from '../core/color';
+import {
+	DEFAULT_PAGE_THEMES,
+	type HighlighterBlend,
+	type PageTheme,
+	type PageThemes,
+	type ThemeName,
+	highlighterBlend,
+	renderColor,
+	themeForPage,
+} from '../core/theme';
 import { embeddedFontBytes } from './font';
 import { addInkAnnotation } from './ink-annotations';
 
-/** A colour string the exporter understands, as a pdf-lib colour. */
+/** A colour string the exporter understands, as 0–1 channels. Black for junk. */
 export function parseColor(color: string): { r: number; g: number; b: number } {
-	const hex = color.trim().replace('#', '');
-	const full =
-		hex.length === 3
-			? hex
-				  .split('')
-				  .map((c) => c + c)
-				  .join('')
-			: hex;
-	const value = Number.parseInt(full, 16);
-	if (full.length !== 6 || Number.isNaN(value)) return { r: 0, g: 0, b: 0 };
-	return {
-		r: ((value >> 16) & 0xff) / 255,
-		g: ((value >> 8) & 0xff) / 255,
-		b: (value & 0xff) / 255,
-	};
+	const rgb = parseHex(color);
+	if (!rgb) return { r: 0, g: 0, b: 0 };
+	return { r: rgb.r / 255, g: rgb.g / 255, b: rgb.b / 255 };
 }
 
 function toRgb(color: string): ReturnType<typeof rgb> {
@@ -52,7 +51,7 @@ function toSvgSpace(pathData: string): string {
 	);
 }
 
-function drawStroke(page: PDFPage, stroke: Stroke): void {
+function drawStroke(page: PDFPage, stroke: Stroke, blend: HighlighterBlend): void {
 	// The same outline generator the screen uses, in PDF points.
 	const outline = strokeOutline(stroke.points, stroke.width, true, stroke.tool, {
 		start: stroke.cutStart,
@@ -69,10 +68,15 @@ function drawStroke(page: PDFPage, stroke: Stroke): void {
 		color: toRgb(stroke.color),
 		opacity: stroke.opacity,
 		borderWidth: 0,
-		// A highlighter multiplies with the page, exactly as it does on screen, so
-		// text stays legible through it instead of being washed out.
+		// A highlighter multiplies with light paper, exactly as it does on screen, so
+		// text stays legible through it instead of being washed out — and screens
+		// over dark paper, where multiplying would leave nothing to see.
 		blendMode:
-			stroke.tool === 'highlighter' ? BlendMode.Multiply : BlendMode.Normal,
+			stroke.tool !== 'highlighter'
+				? BlendMode.Normal
+				: blend === 'screen'
+					? BlendMode.Screen
+					: BlendMode.Multiply,
 	});
 }
 
@@ -166,19 +170,37 @@ function drawText(page: PDFPage, item: TextItem, font: PDFFont): void {
  */
 export type ExportMode = 'flatten' | 'native';
 
+/**
+ * An item as it renders under `theme`: base ink swapped for the theme's.
+ *
+ * A copy for drawing only — the export never writes anything back, so the stored
+ * colours are untouched, exactly as on screen.
+ */
+function themed(item: Item, theme: PageTheme): Item {
+	const color = renderColor(item.color, theme);
+	if (item.type === 'shape') {
+		const fill = item.fill === null ? null : renderColor(item.fill, theme);
+		return { ...item, color, fill };
+	}
+	return { ...item, color };
+}
+
 function drawItem(
 	doc: PDFDocument,
 	page: PDFPage,
-	item: Item,
+	stored: Item,
 	font: PDFFont,
 	mode: ExportMode,
+	theme: PageTheme,
 ): void {
+	const item = themed(stored, theme);
+	const blend = highlighterBlend(theme.paper);
 	switch (item.type) {
 		case 'stroke':
 			// Shapes and text have no native equivalent that round-trips reliably, so
 			// only strokes take the annotation path; the rest stay flattened.
-			if (mode === 'native' && addInkAnnotation(doc, page, item)) break;
-			drawStroke(page, item);
+			if (mode === 'native' && addInkAnnotation(doc, page, item, blend)) break;
+			drawStroke(page, item, blend);
 			break;
 		case 'shape':
 			drawShape(page, item);
@@ -189,9 +211,21 @@ function drawItem(
 	}
 }
 
-/** The ruling for an inserted page, drawn under whatever is on it. */
-function drawTemplate(page: PDFPage, inserted: InsertedPage): void {
-	drawRuling(page, inserted.template, inserted.size.width, inserted.size.height);
+/** An inserted page's paper and ruling, in its theme, under whatever is on it. */
+function drawTemplate(page: PDFPage, inserted: InsertedPage, theme: PageTheme): void {
+	const { width, height } = inserted.size;
+	// A PDF page is white already, so white paper costs nothing to draw.
+	if (normalizeHex(theme.paper) !== '#ffffff') {
+		page.drawRectangle({
+			x: 0,
+			y: 0,
+			width,
+			height,
+			color: toRgb(theme.paper),
+			borderWidth: 0,
+		});
+	}
+	drawRuling(page, inserted.template, width, height, theme.grid);
 }
 
 /**
@@ -205,9 +239,10 @@ export function drawRuling(
 	template: PageTemplate,
 	width: number,
 	height: number,
+	gridColor: string,
 ): void {
 	const geometry = templateGeometry(template, width, height);
-	const color = toRgb(geometry.color);
+	const color = toRgb(gridColor);
 	// Not drawSvgPath: these are page-space primitives with no y-flip to undo, and
 	// an inserted page's MediaBox origin is (0, 0) by construction.
 	for (const line of geometry.lines) {
@@ -230,14 +265,24 @@ export function drawRuling(
 }
 
 export interface ExportOptions {
-	/** The original PDF's bytes. Never modified. */
-	readonly pdfBytes: Uint8Array;
+	/**
+	 * The original PDF's bytes. Never modified. Absent for a notebook, whose every
+	 * page is an inserted one.
+	 */
+	readonly pdfBytes?: Uint8Array;
 	/** Items per page, keyed by page key — `pdf:<n>` or `ins:<uuid>`. */
 	readonly pages: Readonly<Record<PageKey, Item[]>>;
 	/** Page records for pages that are not in the source document. */
 	readonly insertedPages?: readonly InsertedPage[];
 	/** Defaults to flattening. */
 	readonly mode?: ExportMode;
+	/**
+	 * The theme inserted pages export in. Original PDF pages always take the light
+	 * mapping, as on screen. Defaults to light.
+	 */
+	readonly theme?: ThemeName;
+	/** The themes' colours, as configured. Defaults to the built-in ones. */
+	readonly themes?: PageThemes;
 }
 
 /**
@@ -251,7 +296,13 @@ export interface ExportOptions {
 export async function exportAnnotatedPdf(
 	options: ExportOptions,
 ): Promise<Uint8Array> {
-	const doc = await PDFDocument.load(options.pdfBytes);
+	const doc = options.pdfBytes
+		? await PDFDocument.load(options.pdfBytes)
+		: await PDFDocument.create();
+	const themes = options.themes ?? DEFAULT_PAGE_THEMES;
+	const viewTheme = options.theme ?? 'light';
+	const themeFor = (kind: 'pdf' | 'inserted'): PageTheme =>
+		themes[themeForPage(kind, viewTheme)];
 	// Required before embedding a TrueType font.
 	doc.registerFontkit(fontkit);
 	const font = await doc.embedFont(embeddedFontBytes(), { subset: true });
@@ -266,11 +317,19 @@ export async function exportAnnotatedPdf(
 	for (const slot of order) {
 		if (slot.kind !== 'inserted') continue;
 		const { width, height } = slot.page.size;
-		drawTemplate(doc.insertPage(slot.index, [width, height]), slot.page);
+		drawTemplate(
+			doc.insertPage(slot.index, [width, height]),
+			slot.page,
+			themeFor('inserted'),
+		);
 	}
 
 	const indexByKey = new Map<PageKey, number>();
-	for (const slot of order) indexByKey.set(slot.key, slot.index);
+	const kindByKey = new Map<PageKey, 'pdf' | 'inserted'>();
+	for (const slot of order) {
+		indexByKey.set(slot.key, slot.index);
+		kindByKey.set(slot.key, slot.kind);
+	}
 
 	for (const [key, items] of Object.entries(options.pages)) {
 		const index = indexByKey.get(key);
@@ -278,8 +337,9 @@ export async function exportAnnotatedPdf(
 		// against a different PDF — are left alone rather than drawn somewhere wrong.
 		if (index === undefined) continue;
 		const page = doc.getPage(index);
+		const theme = themeFor(kindByKey.get(key) ?? 'pdf');
 		for (const item of inZOrder(items)) {
-			drawItem(doc, page, item, font, options.mode ?? 'flatten');
+			drawItem(doc, page, item, font, options.mode ?? 'flatten', theme);
 		}
 	}
 	return doc.save();

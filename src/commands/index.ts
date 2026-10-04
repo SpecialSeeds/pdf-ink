@@ -1,11 +1,14 @@
 import type { Plugin } from 'obsidian';
-import { PDF_INK_ICON } from '../constants';
+import { NOTEBOOK_ICON, PDF_INK_ICON } from '../constants';
 import {
 	openInInkViewSafely,
 	openInPlainViewSafely,
 } from '../utils/open-ink-view';
 import type { PdfInkHost } from '../settings';
 import { PdfInkView } from '../ui/pdf-ink-view';
+import { effectiveThemes } from '../core/theme';
+import { resolveExportTheme } from '../ui/export-theme-modal';
+import { createNotebook } from '../utils/create-notebook';
 import { createPdf } from '../utils/create-pdf';
 import { exportAnnotatedCopy } from '../utils/export-pdf';
 import { resolvePdfTarget } from '../utils/pdf-target';
@@ -35,6 +38,27 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 		icon: 'file-plus-2',
 		callback: () => {
 			void createPdf(plugin.app, plugin.settings);
+		},
+	});
+
+	plugin.addCommand({
+		id: 'create-notebook',
+		name: 'New notebook',
+		icon: NOTEBOOK_ICON,
+		callback: () => {
+			void createNotebook(plugin.app);
+		},
+	});
+
+	plugin.addCommand({
+		id: 'toggle-page-theme',
+		name: 'Toggle light or dark pages',
+		icon: 'sun-moon',
+		checkCallback: (checking: boolean): boolean => {
+			const view = plugin.app.workspace.getActiveViewOfType(PdfInkView);
+			if (!view?.file) return false;
+			if (!checking) view.toggleTheme();
+			return true;
 		},
 	});
 
@@ -128,7 +152,7 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 	 * hovering pointer, and iOS does not reliably raise a context menu on a long
 	 * press — so without these there is no way to add a page on an iPad.
 	 */
-	for (const [id, name, icon, run] of [
+	for (const [id, name, icon, run, available] of [
 		[
 			'insert-page-below',
 			'Insert page below',
@@ -136,6 +160,7 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 			(view: PdfInkView) => {
 				view.insertPageBelowCurrent();
 			},
+			(view: PdfInkView) => view.canInsertPage(),
 		],
 		[
 			'insert-page-above',
@@ -144,6 +169,7 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 			(view: PdfInkView) => {
 				view.insertPageAboveCurrent();
 			},
+			(view: PdfInkView) => view.canInsertPage(),
 		],
 		[
 			'page-options',
@@ -152,6 +178,7 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 			(view: PdfInkView) => {
 				view.openPageMenu();
 			},
+			(view: PdfInkView) => view.hasCurrentPage(),
 		],
 	] as const) {
 		plugin.addCommand({
@@ -160,7 +187,7 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 			icon,
 			checkCallback: (checking: boolean): boolean => {
 				const view = plugin.app.workspace.getActiveViewOfType(PdfInkView);
-				if (!view?.hasCurrentPage()) return false;
+				if (!view || !available(view)) return false;
 				if (!checking) run(view);
 				return true;
 			},
@@ -196,6 +223,12 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 		name: 'Export annotated PDF',
 		icon: 'file-down',
 		checkCallback: (checking: boolean): boolean => {
+			// A notebook has no other viewer, so the ink view showing it is the target.
+			const active = plugin.app.workspace.getActiveViewOfType(PdfInkView);
+			if (active?.file) {
+				if (!checking) void active.exportAnnotated();
+				return true;
+			}
 			const target = resolvePdfTarget(plugin.app);
 			if (!target) return false;
 			if (checking) return true;
@@ -204,10 +237,16 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 			if (view instanceof PdfInkView && view.file === target.file) {
 				void view.exportAnnotated();
 			} else {
-				void exportAnnotatedCopy(plugin.app, target.file, {
-					suffix: plugin.settings.exportSuffix,
-					mode: plugin.settings.exportMode,
-				});
+				void (async () => {
+					const theme = await resolveExportTheme(plugin.app, plugin);
+					if (theme === null) return;
+					await exportAnnotatedCopy(plugin.app, target.file, {
+						suffix: plugin.settings.exportSuffix,
+						mode: plugin.settings.exportMode,
+						theme,
+						themes: effectiveThemes(plugin.settings.pageThemes),
+					});
+				})();
 			}
 			return true;
 		},

@@ -15,6 +15,7 @@ import {
 	hashContent,
 	isConflictCopy,
 	isIndented,
+	isNotebookLeftover,
 	isSyncLeftover,
 	parseInkData,
 	serializeInkData,
@@ -34,13 +35,34 @@ import type { PageTemplate } from '../core/templates';
 import type { InkData } from '../core/items';
 import type { PageKey } from '../core/pages';
 import { InkStore, type ItemStore } from '../core/ink-store';
+import {
+	createDocId,
+	isNotebookPath,
+	isNumberedCopyName,
+	withNewDocId,
+} from '../core/new-notebook';
 import type { Item } from '../core/items';
 
+/** What the user decided about a numbered copy of the open notebook. */
+export type CopyDecision = 'merge' | 'keep' | null;
+
 /**
- * Strokes for one open PDF, backed by its `<file>.ink.json` sidecar.
+ * Asked about each copy that shares the open notebook's `docId`. Null means the
+ * question was dismissed: nothing happens, and it is asked again next time.
+ */
+export type AskAboutCopy = (copy: TFile, notebook: TFile) => Promise<CopyDecision>;
+
+/**
+ * Strokes for one open document: a PDF, backed by its `<file>.ink.json` sidecar,
+ * or a notebook, whose `.inknote` file is the ink data itself.
  *
  * Writes are debounced so a burst of strokes costs one file write, and flushed on
  * close so nothing is lost. The source PDF is never touched.
+ *
+ * A notebook cannot be written the way a sidecar is: that sequence renames and
+ * deletes the target, and the target here is the file open in the view, which
+ * would follow the rename to `.bak` or close. A notebook is written in place, with
+ * the same `.tmp` and `.bak` beside it for recovery.
  */
 export class AnnotationStore implements ItemStore {
 	private readonly ink = new InkStore();
@@ -59,6 +81,8 @@ export class AnnotationStore implements ItemStore {
 	 */
 	private lastContentHash = '';
 	private file: TFile | null = null;
+	/** Whether {@link file} is a notebook, holding its own ink, rather than a PDF. */
+	private notebook = false;
 
 	/**
 	 * Set when the sidecar could not be understood — an unsupported version, or
@@ -198,10 +222,15 @@ export class AnnotationStore implements ItemStore {
 		return this.ink.insertedPages();
 	}
 
-	/** Add an inserted page as one undoable operation. */
-	insertPage(page: InsertedPage): void {
+	/**
+	 * Add an inserted page as one undoable operation — or, with `joinPrevious`, as
+	 * part of the newest one, so a page grown by a stroke goes with that stroke.
+	 */
+	insertPage(page: InsertedPage, joinPrevious = false): void {
 		this.ink.addPage(page);
-		this.history.push({ kind: 'page-add', pages: [page], refs: [] });
+		const operation: InkOperation = { kind: 'page-add', pages: [page], refs: [] };
+		if (joinPrevious) this.history.pushJoined(operation);
+		else this.history.push(operation);
 		this.afterMutation();
 	}
 
@@ -303,6 +332,9 @@ export class AnnotationStore implements ItemStore {
 					this.ink.replacePage(change.after);
 				}
 				break;
+			case 'group':
+				for (const step of operation.operations) this.apply(step);
+				break;
 		}
 	}
 
@@ -311,7 +343,17 @@ export class AnnotationStore implements ItemStore {
 		this.onChanged();
 	}
 
-	/** Read the sidecar for `file`, if there is one. Never throws. */
+	/** Where `file`'s ink is stored: its sidecar, or the notebook itself. */
+	private storagePath(file: TFile): string {
+		return this.notebook ? file.path : sidecarPathFor(file.path);
+	}
+
+	/** What the user calls this document's ink, in notices. */
+	private get noun(): string {
+		return this.notebook ? 'notebook' : 'annotations';
+	}
+
+	/** Read the ink for `file`, if there is any. Never throws. */
 	async load(file: TFile): Promise<void> {
 		this.saveSoon.cancel();
 		this.ink.clear();
@@ -319,11 +361,13 @@ export class AnnotationStore implements ItemStore {
 		this.frozen = false;
 		this.backedUp = false;
 		this.file = file;
+		this.notebook = isNotebookPath(file.path);
 		this.savedRevision = this.ink.version;
 
-		const path = sidecarPathFor(file.path);
+		const path = this.storagePath(file);
 		const sidecar =
-			this.app.vault.getFileByPath(path) ?? (await this.recover(path));
+			this.app.vault.getFileByPath(path) ??
+			(this.notebook ? null : await this.recover(path));
 		// No sidecar yet is the normal case; one is created on the first stroke.
 		if (!sidecar) {
 			this.lastSeenMtime = 0;
@@ -338,20 +382,41 @@ export class AnnotationStore implements ItemStore {
 		} catch (err) {
 			console.error(`pdf-ink: could not read ${path}`, err);
 			this.frozen = true;
-			new Notice('Could not read saved annotations. Edits will not be saved.');
+			new Notice(`Could not read the saved ${this.noun}. Edits will not be saved.`);
 			return;
 		}
 
 		this.lastContentHash = hashContent(raw);
 
-		const result = parseInkData(raw);
+		// A notebook created empty — by hand, or by another tool — is an empty
+		// notebook, not a corrupt one.
+		if (this.notebook && raw.trim().length === 0) {
+			this.ensureDocId();
+			this.onChanged();
+			return;
+		}
+
+		let result = parseInkData(raw);
+		let recovered = false;
+		// Only a damaged notebook is recovered. One written by a newer version is
+		// fine as it is, and replacing it with an older backup would lose work.
+		if (!result.ok && this.notebook && result.reason !== 'unsupported-version') {
+			const fallback = await this.recoverNotebook(path);
+			if (fallback) {
+				result = fallback;
+				recovered = true;
+				// The unreadable notebook must not replace the backup that just
+				// saved it.
+				this.backedUp = true;
+			}
+		}
 		if (!result.ok) {
 			this.frozen = true;
 			console.error(`pdf-ink: ${result.reason} in ${path}`);
 			new Notice(
 				result.reason === 'unsupported-version'
 					? `These annotations use format version ${String(result.version ?? 0)}, which this version of the plugin cannot read. Edits will not be saved.`
-					: 'Saved annotations are unreadable and will be left untouched. Edits will not be saved.',
+					: `The saved ${this.noun} ${this.notebook ? 'is' : 'are'} unreadable and will be left untouched. Edits will not be saved.`,
 			);
 			return;
 		}
@@ -359,7 +424,10 @@ export class AnnotationStore implements ItemStore {
 		// Fold in anything a sync client left beside the sidecar before loading.
 		const merged = await this.absorbConflictCopies(path, result.data);
 		this.ink.load(merged.data);
-		if (merged.changed) {
+		// After the dirty bookkeeping below would be too late: a notebook from
+		// before identities existed is given one, and that has to be written.
+		const identified = this.ensureDocId();
+		if (merged.changed || recovered || identified) {
 			// The conflict copies contributed something, so the sidecar needs
 			// rewriting and the store must stay dirty until it is.
 			this.saveSoon();
@@ -383,6 +451,80 @@ export class AnnotationStore implements ItemStore {
 			);
 		}
 		this.onChanged();
+	}
+
+	/**
+	 * Give a notebook without one an identity — one written before identities
+	 * existed. Schedules the write; returns whether one was needed.
+	 */
+	private ensureDocId(): boolean {
+		if (!this.notebook || this.ink.docId !== undefined) return false;
+		this.ink.setDocId(createDocId());
+		this.saveSoon();
+		return true;
+	}
+
+	/**
+	 * Offer to merge the open notebook's numbered sync copies.
+	 *
+	 * iCloud names a conflicting copy `Notes 2.inknote` and never says "conflict",
+	 * and that name is just as likely to be a notebook the user made. So a copy is
+	 * only considered when it also carries this notebook's `docId`, and even then
+	 * it is never merged without asking. "Keep separate" gives the copy a new id,
+	 * so it is never asked about again.
+	 */
+	async resolveNumberedCopies(ask: AskAboutCopy): Promise<void> {
+		const file = this.file;
+		const docId = this.ink.docId;
+		if (!file || !this.notebook || this.frozen || docId === undefined) return;
+
+		const vault = this.app.vault;
+		const candidates = vault
+			.getFiles()
+			.filter((candidate) => isNumberedCopyName(file.path, candidate.path));
+		for (const copy of candidates) {
+			// The document may have been switched while a question was open.
+			if (this.file !== file) return;
+			let parsed: ReturnType<typeof parseInkData>;
+			try {
+				parsed = parseInkData(await vault.read(copy));
+			} catch (err) {
+				console.error(`pdf-ink: could not read ${copy.path}`, err);
+				continue;
+			}
+			if (!parsed.ok || parsed.data.docId !== docId) continue;
+
+			const decision = await ask(copy, file);
+			if (this.file !== file) return;
+			if (decision === 'merge') await this.mergeCopy(copy, parsed.data);
+			else if (decision === 'keep') await this.separateCopy(copy, parsed.data);
+		}
+	}
+
+	private async mergeCopy(copy: TFile, data: InkData): Promise<void> {
+		const merged = mergeInkData(this.ink.toData(), data);
+		if (merged.changed) {
+			this.ink.load(merged.data);
+			this.saveSoon();
+			this.onChanged();
+		}
+		try {
+			// Trash rather than delete: this is the user's work, and a wrong merge
+			// should be recoverable.
+			await this.app.fileManager.trashFile(copy);
+			new Notice(`Merged ${copy.name} into ${this.file?.name ?? 'the notebook'}.`);
+		} catch (err) {
+			console.error(`pdf-ink: could not remove ${copy.path}`, err);
+		}
+	}
+
+	private async separateCopy(copy: TFile, data: InkData): Promise<void> {
+		try {
+			await this.app.vault.modify(copy, serializeInkData(withNewDocId(data)));
+		} catch (err) {
+			console.error(`pdf-ink: could not give ${copy.path} its own identity`, err);
+			new Notice(`Could not update ${copy.name}. You may be asked about it again.`);
+		}
 	}
 
 	/** Write immediately if there is anything pending. Safe to call repeatedly. */
@@ -430,6 +572,79 @@ export class AnnotationStore implements ItemStore {
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * Notebook contents from its `.tmp`, then its `.bak`, when the notebook itself
+	 * will not parse. The first that does wins; the notebook is rewritten from it
+	 * by content on the next save, never by renaming over the open file.
+	 */
+	private async recoverNotebook(
+		path: string,
+	): Promise<ReturnType<typeof parseInkData> | null> {
+		const vault = this.app.vault;
+		for (const suffix of [TEMP_SUFFIX, BACKUP_SUFFIX]) {
+			const candidate = vault.getFileByPath(`${path}${suffix}`);
+			if (!candidate) continue;
+			try {
+				const parsed = parseInkData(await vault.read(candidate));
+				if (!parsed.ok) {
+					console.warn(`pdf-ink: ignoring unusable ${candidate.path}`);
+					continue;
+				}
+				console.warn(`pdf-ink: recovered ${path} from ${suffix}`);
+				new Notice('Recovered the notebook from an interrupted save.');
+				return parsed;
+			} catch (err) {
+				console.error(`pdf-ink: could not recover from ${candidate.path}`, err);
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Write a notebook in place, keeping `.tmp` and `.bak` beside it.
+	 *
+	 * The new contents go to `.tmp` first and the notebook as opened goes to `.bak`
+	 * once per session, so a crash mid-write always leaves a full copy for
+	 * {@link recoverNotebook}. Then the notebook itself is modified — never renamed
+	 * or deleted, because it is the file the view has open.
+	 */
+	private async writeInPlace(path: string, payload: string): Promise<void> {
+		const vault = this.app.vault;
+		const tempPath = `${path}${TEMP_SUFFIX}`;
+		const backupPath = `${path}${BACKUP_SUFFIX}`;
+
+		await this.writeFile(tempPath, payload);
+
+		const current = vault.getFileByPath(path);
+		if (!current) return;
+		if (!this.backedUp) {
+			await this.writeFile(backupPath, await vault.read(current));
+			this.backedUp = true;
+		}
+
+		// Set before writing: the modify event can arrive before modify() resolves,
+		// and must be recognised as our own.
+		const previousHash = this.lastContentHash;
+		this.lastContentHash = hashContent(payload);
+		try {
+			await vault.modify(current, payload);
+		} catch (err) {
+			this.lastContentHash = previousHash;
+			throw err;
+		}
+
+		const temp = vault.getFileByPath(tempPath);
+		if (temp) await vault.delete(temp);
+		const written = vault.getFileByPath(path);
+		if (written) this.lastSeenMtime = written.stat.mtime;
+	}
+
+	private async writeFile(path: string, data: string): Promise<void> {
+		const existing = this.app.vault.getFileByPath(path);
+		if (existing) await this.app.vault.modify(existing, data);
+		else await this.app.vault.create(path, data);
 	}
 
 	/**
@@ -484,7 +699,7 @@ export class AnnotationStore implements ItemStore {
 	async reconcile(): Promise<void> {
 		const file = this.file;
 		if (!file || this.frozen) return;
-		const path = sidecarPathFor(file.path);
+		const path = this.storagePath(file);
 		const sidecar = this.app.vault.getFileByPath(path);
 		if (!sidecar || sidecar.stat.mtime === this.lastSeenMtime) return;
 
@@ -504,13 +719,26 @@ export class AnnotationStore implements ItemStore {
 		}
 		this.lastContentHash = hash;
 
+		// A notebook emptied from outside has nothing to merge in; the next save
+		// writes it back out whole.
+		if (this.notebook && raw.trim().length === 0) return;
+
 		const parsed = parseInkData(raw);
 		if (!parsed.ok) {
 			// Unreadable now, though it was readable before: refuse to overwrite it.
 			this.frozen = true;
 			console.error(`pdf-ink: ${parsed.reason} in ${path} on re-read`);
-			new Notice('The annotation file changed and cannot be read. Edits will not be saved.');
+			new Notice(
+				`The ${this.notebook ? 'notebook' : 'annotation file'} changed and cannot be read. Edits will not be saved.`,
+			);
 			return;
+		}
+
+		// An identity changed on disk — this notebook was kept separate from the
+		// one it was copied from — is adopted rather than written back over.
+		const diskId = parsed.data.docId;
+		if (diskId !== undefined && diskId !== this.ink.docId) {
+			this.ink.setDocId(diskId);
 		}
 
 		const merged = mergeInkData(this.ink.toData(), parsed.data);
@@ -525,7 +753,7 @@ export class AnnotationStore implements ItemStore {
 	/** The vault reported our sidecar changed. */
 	handleExternalChange(changed: TFile): void {
 		const file = this.file;
-		if (!file || changed.path !== sidecarPathFor(file.path)) return;
+		if (!file || changed.path !== this.storagePath(file)) return;
 		void this.reconcile();
 	}
 
@@ -538,10 +766,11 @@ export class AnnotationStore implements ItemStore {
 	): Promise<{ data: InkData; changed: boolean }> {
 		const copies = this.app.vault
 			.getFiles()
-			.filter(
-				(candidate) =>
-					isConflictCopy(path, candidate.path) ||
-					isSyncLeftover(path, candidate.path),
+			.filter((candidate) =>
+				this.notebook
+					? isNotebookLeftover(path, candidate.path)
+					: isConflictCopy(path, candidate.path) ||
+						isSyncLeftover(path, candidate.path),
 			);
 		if (copies.length === 0) return { data: ours, changed: false };
 
@@ -590,7 +819,7 @@ export class AnnotationStore implements ItemStore {
 		if (!this.app.vault.getFileByPath(file.path)) return;
 
 		const revision = this.ink.version;
-		const path = sidecarPathFor(file.path);
+		const path = this.storagePath(file);
 
 		this.writing = this.writing.then(async () => {
 			try {
@@ -611,13 +840,17 @@ export class AnnotationStore implements ItemStore {
 					Date.now(),
 					TOMBSTONE_MAX_AGE_MS,
 				);
-				await this.writeAtomically(path, serializeInkData(pruned));
+				const payload = serializeInkData(pruned);
+				if (this.notebook) await this.writeInPlace(path, payload);
+				else await this.writeAtomically(path, payload);
 				// Edits made during the write leave this behind, so the next debounce
 				// picks them up.
 				this.savedRevision = revision;
 			} catch (err) {
 				console.error(`pdf-ink: could not save ${path}`, err);
-				new Notice('Could not save PDF annotations.');
+				new Notice(
+					this.notebook ? 'Could not save the notebook.' : 'Could not save PDF annotations.',
+				);
 			}
 		});
 		await this.writing;

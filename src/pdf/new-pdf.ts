@@ -1,6 +1,7 @@
 import { PDFDocument } from 'pdf-lib';
 import { type NewPdfPageSize, PAGE_SIZES, rulingKeyword } from '../core/new-pdf';
 import type { PageTemplate } from '../core/templates';
+import { DEFAULT_PAGE_THEMES } from '../core/theme';
 import { drawRuling } from './export';
 
 export interface NewPdfOptions {
@@ -17,7 +18,14 @@ export interface NewPdfOptions {
 export async function createBlankPdf(options: NewPdfOptions): Promise<Uint8Array> {
 	const doc = await PDFDocument.create();
 	const { width, height } = PAGE_SIZES[options.size];
-	drawRuling(doc.addPage([width, height]), options.template, width, height);
+	// Light: a PDF is a printed page, and its own paper is white.
+	drawRuling(
+		doc.addPage([width, height]),
+		options.template,
+		width,
+		height,
+		DEFAULT_PAGE_THEMES.light.grid,
+	);
 	doc.setKeywords([rulingKeyword(options.template)]);
 	doc.setCreator('PDF ink');
 	doc.setProducer('PDF ink');

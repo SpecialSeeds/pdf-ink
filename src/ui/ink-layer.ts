@@ -60,6 +60,7 @@ import type {
 	TextToolSettings,
 	ToolKind,
 } from '../core/tools';
+import type { PageTheme } from '../core/theme';
 import type { PageRecord } from '../types/view';
 import { InkPainter, isDrawable } from './ink-painter';
 import {
@@ -199,6 +200,13 @@ export interface InkLayerOptions {
 	duplicateSelection(): void;
 	bringSelectionForward(): void;
 	sendSelectionBack(): void;
+	/** The theme a page's ink renders under. */
+	pageTheme(record: PageRecord): PageTheme;
+	/**
+	 * Items were just drawn onto a page, so the host can grow the document.
+	 * Anything it adds joins the same undo step.
+	 */
+	itemsCommitted(record: PageRecord, items: readonly Item[]): void;
 }
 
 /**
@@ -281,7 +289,9 @@ export class InkLayer {
 		private readonly store: ItemStore,
 		private readonly options: InkLayerOptions,
 	) {
-		this.painter = new InkPainter(store);
+		this.painter = new InkPainter(store, (record) =>
+			this.options.pageTheme(record),
+		);
 		const overlayCallbacks: SelectionOverlayCallbacks = {
 			delete: () => {
 				this.options.deleteSelection();
@@ -1330,6 +1340,7 @@ export class InkLayer {
 		const { box } = shaping.item;
 		if (commit && !isDegenerate(box, shaping.settings.width)) {
 			this.store.addItem(shaping.record.geom.key, shaping.item);
+			this.options.itemsCommitted(shaping.record, [shaping.item]);
 		}
 		this.paint(shaping.record);
 	}
@@ -1385,6 +1396,7 @@ export class InkLayer {
 		const [only] = pieces;
 		if (pieces.length === 1 && only && !only.cutStart && !only.cutEnd) {
 			this.store.addItem(record.geom.key, stroke);
+			this.options.itemsCommitted(record, [stroke]);
 			return;
 		}
 		if (pieces.length === 0) return;
@@ -1403,6 +1415,10 @@ export class InkLayer {
 			},
 		}));
 		this.store.replaceItems([], added);
+		this.options.itemsCommitted(
+			record,
+			added.map((ref) => ref.item),
+		);
 	}
 
 	private takeCapture(el: HTMLElement, pointerId: number): void {

@@ -9,6 +9,7 @@ import {
 } from '../core/items';
 import { type PathSegment, shapeGeometry } from '../core/shapes';
 import { layoutTextLines } from '../core/text-layout';
+import { type PageTheme, renderColor } from '../core/theme';
 import {
 	outlineToPathData,
 	strokeOutline,
@@ -22,6 +23,8 @@ export interface RenderTarget {
 	readonly viewport: PointConverter;
 	/** CSS pixels per PDF point. */
 	readonly scale: number;
+	/** The page's theme: base ink renders in its colour. Stored colours are untouched. */
+	readonly theme: PageTheme;
 }
 
 /**
@@ -63,7 +66,7 @@ function paintStrokeOutline(
 	const { ctx } = target;
 	ctx.save();
 	ctx.globalAlpha = stroke.opacity;
-	ctx.fillStyle = stroke.color;
+	ctx.fillStyle = renderColor(stroke.color, target.theme);
 	ctx.fill(path);
 	ctx.restore();
 }
@@ -124,8 +127,9 @@ function buildPath(segment: PathSegment, target: RenderTarget): Path2D {
 }
 
 const renderShape: ItemRenderer<ShapeItem> = (shape, target) => {
-	const { ctx, scale } = target;
+	const { ctx, scale, theme } = target;
 	const geometry = shapeGeometry(shape.kind, shape.box, shape.width);
+	const color = renderColor(shape.color, theme);
 
 	for (const segment of geometry.segments) {
 		const path = buildPath(segment, target);
@@ -134,14 +138,14 @@ const renderShape: ItemRenderer<ShapeItem> = (shape, target) => {
 
 		if (segment.fill === true) {
 			// Arrowheads are solid in the outline colour.
-			ctx.fillStyle = shape.color;
+			ctx.fillStyle = color;
 			ctx.fill(path);
 		} else {
 			if (shape.fill !== null) {
-				ctx.fillStyle = shape.fill;
+				ctx.fillStyle = renderColor(shape.fill, theme);
 				ctx.fill(path);
 			}
-			ctx.strokeStyle = shape.color;
+			ctx.strokeStyle = color;
 			// Width is in PDF points, so it scales with the page.
 			ctx.lineWidth = Math.max(0.5, shape.width * scale);
 			ctx.lineJoin = 'round';
@@ -172,7 +176,7 @@ const renderText: ItemRenderer<TextItem> = (item, target) => {
 	ctx.font = `${String(fontPx)}px ${TEXT_FONT_STACK}`;
 	ctx.textBaseline = 'alphabetic';
 	ctx.globalAlpha = item.opacity;
-	ctx.fillStyle = item.color;
+	ctx.fillStyle = renderColor(item.color, target.theme);
 
 	// Measure in PDF points, so wrapping is zoom-independent and matches export.
 	const lines = layoutTextLines(item.text, item.box, item.fontSize, (text) =>

@@ -6,6 +6,7 @@ import type {
 	PDFOutlineNode,
 	PDFRef,
 } from '../types/pdfjs';
+import type { PageTheme } from '../core/theme';
 import type { PageGeometry } from '../types/view';
 import { paintInsertedPage } from './template-painter';
 
@@ -18,6 +19,8 @@ const THUMBNAIL_DPR_CAP = 2;
 export interface SidebarCallbacks {
 	/** Jump to a page by display index, 0-based. */
 	goToIndex(index: number): void;
+	/** The colours an inserted page is painted in, under the view's theme. */
+	insertedTheme(): PageTheme;
 }
 
 type Tab = 'thumbnails' | 'outline';
@@ -169,6 +172,15 @@ export class PdfSidebar {
 		if (this.open) this.refreshVisible();
 	}
 
+	/** Draw every inserted page's thumbnail again, after the theme changed. */
+	repaintInserted(): void {
+		for (const entry of this.entries.values()) {
+			if (entry.geom.source.kind !== 'inserted' || entry.rendering) continue;
+			entry.rendered = false;
+		}
+		if (this.open) this.refreshVisible();
+	}
+
 	/** Highlight the page currently in view. */
 	setActiveIndex(index: number): void {
 		this.activeIndex = index;
@@ -179,10 +191,20 @@ export class PdfSidebar {
 	}
 
 	/** Load the document's bookmarks. Safe to call once per document. */
-	async loadOutline(doc: PDFDocumentProxy): Promise<void> {
+	async loadOutline(doc: PDFDocumentProxy | null): Promise<void> {
 		if (this.outlineLoaded) return;
 		this.outlineLoaded = true;
 		const epoch = this.epoch;
+
+		if (!doc) {
+			// A notebook: there is no PDF to have bookmarks.
+			this.outlineEl.empty();
+			this.outlineEl.createDiv({
+				cls: 'pdf-ink-sidebar-empty',
+				text: 'Notebooks have no outline.',
+			});
+			return;
+		}
 
 		let outline: PDFOutlineNode[] | null = null;
 		try {
@@ -323,6 +345,7 @@ export class PdfSidebar {
 					cssWidth,
 					cssHeight,
 					[dpr, 0, 0, dpr, 0, 0],
+					this.callbacks.insertedTheme(),
 				);
 			} else {
 				await geom.source.page.render({

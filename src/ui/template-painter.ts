@@ -1,15 +1,7 @@
 import type { InsertedPage } from '../core/pages';
 import { templateGeometry } from '../core/templates';
+import type { PageTheme } from '../core/theme';
 import type { Matrix, PageViewport } from '../types/pdfjs';
-
-/**
- * The paper colour of an inserted page.
- *
- * White rather than a themed background: a page is a page in every viewer and on
- * paper, and an inserted page that went dark with the theme would stop matching
- * the rasterised PDF pages above and below it.
- */
-const PAGE_COLOR = '#ffffff';
 
 /**
  * Below this a hairline rounds away to nothing on screen. The exported PDF keeps
@@ -18,7 +10,7 @@ const PAGE_COLOR = '#ffffff';
 const MIN_SCREEN_WIDTH = 0.4;
 
 /**
- * Draw an inserted page: paper, then its ruling.
+ * Draw an inserted page: paper, then its ruling, in the page theme's colours.
  *
  * Works in CSS pixels, like every other drawing path here, with `transform`
  * mapping them to the bitmap: the device pixel ratio, plus an offset when only
@@ -34,10 +26,11 @@ export function paintInsertedPage(
 	cssWidth: number,
 	cssHeight: number,
 	transform: Matrix,
+	theme: PageTheme,
 ): void {
 	// Resizing the canvas reset the transform, so it has to be re-applied here.
 	ctx.setTransform(...transform);
-	ctx.fillStyle = PAGE_COLOR;
+	ctx.fillStyle = theme.paper;
 	ctx.fillRect(0, 0, cssWidth, cssHeight);
 
 	const geometry = templateGeometry(
@@ -49,8 +42,8 @@ export function paintInsertedPage(
 
 	const scale = viewport.scale;
 	ctx.save();
-	ctx.strokeStyle = geometry.color;
-	ctx.fillStyle = geometry.color;
+	ctx.strokeStyle = theme.grid;
+	ctx.fillStyle = theme.grid;
 	ctx.lineWidth = Math.max(MIN_SCREEN_WIDTH, geometry.lineWidth * scale);
 
 	if (geometry.lines.length > 0) {

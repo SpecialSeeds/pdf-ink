@@ -4,16 +4,21 @@ import { confirm } from '../ui/confirm-modal';
 import { parseInkData, sidecarPathFor } from '../core/ink-serialization';
 import { exportAnnotatedPdf } from '../pdf/export';
 import { exportPathFor, parentFolder } from '../core/export-path';
+import { isNotebookPath } from '../core/new-notebook';
+import type { PageThemes, ThemeName } from '../core/theme';
 
 export interface ExportSettings {
 	readonly suffix: string;
 	readonly mode: ExportMode;
+	/** The theme inserted and notebook pages export in. */
+	readonly theme: ThemeName;
+	readonly themes: PageThemes;
 }
 
 /**
- * Flatten a PDF's annotations into a new file.
+ * Flatten a PDF's annotations — or a notebook — into a new PDF.
  *
- * The source PDF is re-read rather than reused from memory, so the export always
+ * The source is re-read rather than reused from memory, so the export always
  * reflects what is on disk, and it is never written to.
  */
 export async function exportAnnotatedCopy(
@@ -21,28 +26,42 @@ export async function exportAnnotatedCopy(
 	file: TFile,
 	settings: ExportSettings,
 ): Promise<void> {
-	const sidecar = app.vault.getFileByPath(sidecarPathFor(file.path));
-	if (!sidecar) {
+	const notebook = isNotebookPath(file.path);
+	// A notebook is its own ink data; a PDF's lives in its sidecar.
+	const source = notebook ? file : app.vault.getFileByPath(sidecarPathFor(file.path));
+	if (!source) {
 		new Notice('This PDF has no annotations to export.');
 		return;
 	}
 
 	try {
-		const parsed = parseInkData(await app.vault.read(sidecar));
+		const raw = await app.vault.read(source);
+		const parsed = parseInkData(raw);
 		if (!parsed.ok) {
-			new Notice('Could not read the annotations for this PDF.');
+			new Notice(
+				notebook && raw.trim().length === 0
+					? 'This notebook is empty.'
+					: `Could not read the ${notebook ? 'notebook' : 'annotations for this PDF'}.`,
+			);
 			return;
 		}
 
-		const pdfBytes = new Uint8Array(await app.vault.readBinary(file));
+		const pdfBytes = notebook
+			? undefined
+			: new Uint8Array(await app.vault.readBinary(file));
 		const flattened = await exportAnnotatedPdf({
 			pdfBytes,
 			pages: parsed.data.pages,
 			insertedPages: parsed.data.insertedPages,
 			mode: settings.mode,
+			theme: settings.theme,
+			themes: settings.themes,
 		});
 
-		const target = exportPathFor(file.path, settings.suffix);
+		// A notebook exports beside itself as a PDF of the same name.
+		const target = notebook
+			? exportPathFor(`${file.path.slice(0, -file.extension.length)}pdf`, settings.suffix)
+			: exportPathFor(file.path, settings.suffix);
 		const existing = app.vault.getFileByPath(target);
 		if (existing) {
 			// Re-exporting is normal, but it silently replaced the previous file.
@@ -73,6 +92,6 @@ export async function exportAnnotatedCopy(
 		new Notice(`Exported to ${target}`);
 	} catch (err) {
 		console.error('pdf-ink: export failed', err);
-		new Notice('Could not export this PDF.');
+		new Notice(`Could not export this ${notebook ? 'notebook' : 'PDF'}.`);
 	}
 }

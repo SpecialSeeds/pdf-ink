@@ -114,7 +114,11 @@ export class PageList {
 			if (reused) {
 				leftover.delete(geom.key);
 				// An inserted page's record changes when its template does, so the
-				// geometry is replaced even when the key matched.
+				// geometry is replaced even when the key matched — and the page is
+				// painted again, or it would keep its old ruling until the next zoom.
+				if (templateOf(reused.geom) !== templateOf(geom)) {
+					this.renderer.invalidate(reused);
+				}
 				reused.geom = geom;
 				reused.index = index;
 				next.push(reused);
@@ -146,6 +150,17 @@ export class PageList {
 		this.dpr = dpr;
 		// Boxes are unchanged, so no relayout and no anchor work — only the
 		// bitmaps are now wrong, and ensure() notices that by itself.
+		this.updateRetainSet();
+	}
+
+	/**
+	 * Paint the matching pages again — after the theme or a template changed —
+	 * keeping each old bitmap on screen until its replacement lands.
+	 */
+	repaint(matches: (record: PageRecord) => boolean): void {
+		for (const record of this.records) {
+			if (matches(record)) this.renderer.invalidate(record);
+		}
 		this.updateRetainSet();
 	}
 
@@ -463,4 +478,8 @@ export class PageList {
 		}
 		this.onVisibleChange(Math.min(first, this.records.length - 1) + 1);
 	}
+}
+
+function templateOf(geom: PageGeometry): string | null {
+	return geom.source.kind === 'inserted' ? geom.source.page.template : null;
 }

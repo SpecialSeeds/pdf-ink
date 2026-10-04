@@ -3,6 +3,9 @@ export const VIEW_TYPE_PDF_INK = 'pdf-ink-view';
 
 export const PDF_INK_ICON = 'pen-tool';
 
+/** For a new notebook: the ribbon, the command and a folder's menu. */
+export const NOTEBOOK_ICON = 'notebook-pen';
+
 /**
  * 96 CSS px/in over 72 pt/in. Zoom 1.0 means "100%" — physical size at 96 dpi,
  * matching pdf.js's own viewer. A raw pdf.js scale of 1 would make a 30-inch

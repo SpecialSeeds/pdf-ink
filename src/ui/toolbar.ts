@@ -1,4 +1,5 @@
 import { type Component, setIcon } from 'obsidian';
+import type { ThemeName } from '../core/theme';
 import type { ZoomMode } from '../types/view';
 
 export interface ToolbarCallbacks {
@@ -15,6 +16,8 @@ export interface ToolbarCallbacks {
 	insertPageBelow(): void;
 	/** Open the page menu, anchored under the button at this point. */
 	pageOptions(at: { x: number; y: number }): void;
+	/** Switch notebook and inserted pages between light and dark. */
+	toggleTheme(): void;
 	exportPdf(): void;
 }
 
@@ -39,6 +42,7 @@ export class PdfInkToolbar {
 	private readonly fitWidthButtonEl: HTMLButtonElement;
 	private readonly fitPageButtonEl: HTMLButtonElement;
 	private readonly zoomLockButtonEl: HTMLButtonElement;
+	private readonly themeButtonEl: HTMLButtonElement;
 	/** Every control that changes the zoom, disabled while it is locked. */
 	private readonly zoomButtonEls: HTMLButtonElement[] = [];
 	private pageCount = 0;
@@ -170,6 +174,15 @@ export class PdfInkToolbar {
 				callbacks.pageOptions({ x: box.left, y: box.bottom });
 			},
 		);
+		this.themeButtonEl = this.addButton(
+			actionsGroupEl,
+			component,
+			'sun',
+			'Switch to dark pages',
+			() => {
+				callbacks.toggleTheme();
+			},
+		);
 		this.addButton(
 			actionsGroupEl,
 			component,
@@ -212,6 +225,18 @@ export class PdfInkToolbar {
 			locked ? 'Unlock zoom' : 'Lock zoom',
 		);
 		for (const buttonEl of this.zoomButtonEls) buttonEl.disabled = locked;
+	}
+
+	/** Show the theme in effect: the sun for light pages, the moon for dark. */
+	setTheme(theme: ThemeName): void {
+		const dark = theme === 'dark';
+		setIcon(this.themeButtonEl, dark ? 'moon' : 'sun');
+		this.themeButtonEl.toggleClass('is-active', dark);
+		this.themeButtonEl.setAttribute('aria-pressed', String(dark));
+		this.themeButtonEl.setAttribute(
+			'aria-label',
+			dark ? 'Switch to light pages' : 'Switch to dark pages',
+		);
 	}
 
 	setPageCount(count: number): void {
