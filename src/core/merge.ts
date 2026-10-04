@@ -201,11 +201,14 @@ export function mergeInkData(ours: InkData, theirs: InkData): MergeResult {
 
 	// Identity is not merged: ours stands, and theirs only fills a gap.
 	const docId = ours.docId ?? theirs.docId;
+	// Nor is layout: a notebook does not stop being a board by merging.
+	const layout = ours.layout ?? theirs.layout;
 	const data: InkData = {
 		version: INK_DATA_VERSION,
 		pages,
 		insertedPages: pageMerge.pages,
 		...(docId === undefined ? {} : { docId }),
+		...(layout === undefined ? {} : { layout }),
 	};
 	return {
 		data,
@@ -279,6 +282,7 @@ export function pruneTombstones(
 		pages,
 		insertedPages,
 		...(data.docId === undefined ? {} : { docId: data.docId }),
+		...(data.layout === undefined ? {} : { layout: data.layout }),
 	};
 }
 

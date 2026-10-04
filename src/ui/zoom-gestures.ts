@@ -4,6 +4,9 @@ import type { ZoomController } from './zoom-controller';
 interface Pinch {
 	readonly startDistance: number;
 	readonly startZoom: number;
+	/** The midpoint the gesture began at, in client px. */
+	readonly startX: number;
+	readonly startY: number;
 }
 
 /**
@@ -66,7 +69,12 @@ export function attachZoomGestures(
 			const midpoint = touchMidpoint(evt);
 			if (distance === null || midpoint === null) return;
 			evt.preventDefault();
-			pinch = { startDistance: distance, startZoom: zoom.getZoom() };
+			pinch = {
+				startDistance: distance,
+				startZoom: zoom.getZoom(),
+				startX: midpoint.x,
+				startY: midpoint.y,
+			};
 			// Anchor on the INITIAL midpoint: a live midpoint drifts and feeds
 			// back into the zoom, which oscillates.
 			zoom.beginGesture(midpoint.x, midpoint.y);
@@ -80,13 +88,16 @@ export function attachZoomGestures(
 		(evt) => {
 			if (!pinch || evt.touches.length !== 2) return;
 			const distance = touchDistance(evt);
-			if (distance === null || pinch.startDistance === 0) return;
+			const midpoint = touchMidpoint(evt);
+			if (distance === null || midpoint === null || pinch.startDistance === 0) return;
 			// Only two-finger moves are swallowed, so one-finger panning still
-			// scrolls natively.
+			// scrolls natively. Two fingers both zoom and pan: the page follows
+			// their midpoint, which is how a wide board is moved around by touch.
 			evt.preventDefault();
-			zoom.preview(
-				(pinch.startZoom * distance) / pinch.startDistance,
-			);
+			zoom.preview((pinch.startZoom * distance) / pinch.startDistance, {
+				x: midpoint.x - pinch.startX,
+				y: midpoint.y - pinch.startY,
+			});
 		},
 		{ passive: false },
 	);

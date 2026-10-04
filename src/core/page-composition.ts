@@ -15,12 +15,22 @@ import {
 	type PageSlot,
 	insertedPageKey,
 	orderPages,
+	pageOrigin,
 } from './pages';
 import type { PageGeometry } from '../types/view';
 
 /** Geometry for one inserted page, standing in for a pdf.js page. */
 export function insertedGeometry(page: InsertedPage): PageGeometry {
-	const baseViewport = syntheticViewport(page.size.width, page.size.height);
+	const origin = pageOrigin(page);
+	const baseViewport = syntheticViewport(
+		page.size.width,
+		page.size.height,
+		1,
+		0,
+		0,
+		origin.x,
+		origin.y,
+	);
 	return {
 		key: insertedPageKey(page.id),
 		source: { kind: 'inserted', page },
@@ -65,9 +75,12 @@ export function pagesSignature(geometry: readonly PageGeometry[]): string {
 	return geometry
 		.map((geom) => {
 			const size = `${geom.baseWidth.toFixed(3)}x${geom.baseHeight.toFixed(3)}`;
-			const template =
-				geom.source.kind === 'inserted' ? geom.source.page.template : '';
-			return `${geom.key}|${size}|${template}`;
+			const inserted = geom.source.kind === 'inserted' ? geom.source.page : null;
+			const template = inserted?.template ?? '';
+			// A board grown downward keeps its size key's height change, but its
+			// origin moves too, and every point on it maps differently.
+			const origin = inserted ? pageOrigin(inserted) : { x: 0, y: 0 };
+			return `${geom.key}|${size}|${template}|${origin.x.toFixed(3)},${origin.y.toFixed(3)}`;
 		})
 		.join(',');
 }

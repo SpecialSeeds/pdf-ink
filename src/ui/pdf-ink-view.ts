@@ -15,7 +15,8 @@ import {
 	MOBILE_BUDGET,
 } from '../core/canvas-budget';
 import { maxBaseHeight, maxBaseWidth } from '../core/layout';
-import { itemBounds } from '../core/hit-test';
+import { type Bounds, itemBounds } from '../core/hit-test';
+import { grownBoardPage } from '../core/board';
 import type { Item } from '../core/items';
 import {
 	NOTEBOOK_EXTENSION,
@@ -496,10 +497,15 @@ export class PdfInkView extends FileView implements ZoomHost {
 
 	/**
 	 * Grow a notebook as it is written in: ink near the bottom of the last page
-	 * adds the next one, as part of the same undo step as the ink.
+	 * adds the next one, as part of the same undo step as the ink. A board never
+	 * adds a page; its one page widens or lengthens instead.
 	 */
 	private growNotebook(pageKey: PageKey, items: readonly Item[]): void {
 		if (this.document?.kind !== 'notebook') return;
+		if (this.annotations.layout === 'board') {
+			this.growBoard(pageKey, items);
+			return;
+		}
 		const last = this.composed[this.composed.length - 1];
 		if (!last || last.key !== pageKey) return;
 
@@ -514,6 +520,28 @@ export class PdfInkView extends FileView implements ZoomHost {
 		if (shouldAppendPage(lowest, page.minY, page.maxY - page.minY, true)) {
 			this.pageEditor?.appendPage();
 		}
+	}
+
+	/** Widen or lengthen a board page when ink lands near its right or bottom edge. */
+	private growBoard(pageKey: PageKey, items: readonly Item[]): void {
+		const geom = this.composed.find((g) => g.key === pageKey);
+		if (geom?.source.kind !== 'inserted') return;
+		let ink: Bounds | null = null;
+		for (const item of items) {
+			const b = itemBounds(item);
+			if (!b) continue;
+			ink = ink
+				? {
+						minX: Math.min(ink.minX, b.minX),
+						minY: Math.min(ink.minY, b.minY),
+						maxX: Math.max(ink.maxX, b.maxX),
+						maxY: Math.max(ink.maxY, b.maxY),
+					}
+				: b;
+		}
+		if (!ink) return;
+		const grown = grownBoardPage(geom.source.page, ink, Date.now());
+		if (grown) this.annotations.resizePageJoined(grown);
 	}
 
 	/** Lock or unlock the zoom, in every open ink view. */
@@ -876,6 +904,8 @@ export class PdfInkView extends FileView implements ZoomHost {
 	}
 
 	private defaultZoomMode(): ZoomMode {
+		// A board opens with its whole height in view, to pan along its width.
+		if (this.annotations.layout === 'board') return { kind: 'fit-height' };
 		return this.host.settings.defaultZoomMode === 'actual-size'
 			? { kind: 'fixed', zoom: 1 }
 			: { kind: 'fit-width' };
