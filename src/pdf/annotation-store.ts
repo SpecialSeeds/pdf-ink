@@ -59,6 +59,9 @@ export type CopyDecision = 'merge' | 'keep' | null;
  */
 export type AskAboutCopy = (copy: TFile, notebook: TFile) => Promise<CopyDecision>;
 
+/** Whether to move a base layer found elsewhere in the vault to `target`. */
+export type AskToMoveBase = (found: TFile, target: string) => Promise<boolean>;
+
 /**
  * Strokes for one open document: a PDF, backed by its `<file>.ink.json` sidecar,
  * or a notebook, whose `.inknote` file is the ink data itself.
@@ -106,6 +109,9 @@ export class AnnotationStore implements ItemStore {
 	 * protection against a bad session anyway.
 	 */
 	private backedUp = false;
+
+	/** A base layer read from another folder this load, until the user is asked. */
+	private baseElsewhere: TFile | null = null;
 
 	/** Revision last written to disk, so a clean store does no I/O. */
 	private savedRevision: number;
@@ -384,6 +390,7 @@ export class AnnotationStore implements ItemStore {
 		this.history.clear();
 		this.frozen = false;
 		this.backedUp = false;
+		this.baseElsewhere = null;
 		this.file = file;
 		this.notebook = isNotebookPath(file.path);
 		this.savedRevision = this.ink.version;
@@ -792,7 +799,29 @@ export class AnnotationStore implements ItemStore {
 			new Notice(`This notebook's imported ink (${basePathFor(notebook.name)}) is unreadable. Showing only your own edits.`);
 			return;
 		}
-		this.ink.setBase(found);
+		this.ink.setBase(found.pages);
+		this.baseElsewhere = found.elsewhere ? found.file : null;
+	}
+
+	/**
+	 * Offer to move a base layer found in another folder back beside its
+	 * notebook — what happens when a notebook is moved without it. Asked once, after
+	 * load; the notebook works either way, since the base is found by its hash.
+	 */
+	async offerToMoveBase(ask: AskToMoveBase): Promise<void> {
+		const found = this.baseElsewhere;
+		const file = this.file;
+		this.baseElsewhere = null;
+		if (!found || !file || !this.notebook) return;
+		const target = basePathFor(file.path);
+		if (this.app.vault.getFileByPath(target)) return;
+		if (!(await ask(found, target))) return;
+		try {
+			await this.app.fileManager.renameFile(found, target);
+		} catch (err) {
+			console.error(`pdf-ink: could not move ${found.path} to ${target}`, err);
+			new Notice("Could not move the notebook's imported ink.");
+		}
 	}
 
 	private findBase(notebook: TFile, ref: BaseRef): Promise<BaseLookup> {
@@ -808,7 +837,7 @@ export class AnnotationStore implements ItemStore {
 		void (async () => {
 			const found = await this.findBase(file, ref);
 			if (typeof found === 'string' || this.file !== file || this.ink.hasBase) return;
-			this.ink.setBase(found);
+			this.ink.setBase(found.pages);
 			this.onChanged();
 		})();
 	}

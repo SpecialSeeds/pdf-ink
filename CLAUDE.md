@@ -119,7 +119,9 @@ PageTemplate = "blank" | "lined" | "lined7.5" | "lined10" | "grid5" | "dot"
 - A tombstone over a base path is written with stub geometry, and is never pruned:
   it is all that hides the base item. With the base not read in, no tombstone is
   pruned at all.
-- A missing or mismatched base opens the user layer alone with a notice, and is
+- A base is found by hash: beside the notebook, then in its folder, then anywhere in
+  the vault, and one found in another folder is offered a move back beside the
+  notebook. Not found, the user layer opens alone with a notice, and the base is
   read in when it arrives. A renamed notebook's base moves with it; a deleted
   notebook's base is trashed.
 

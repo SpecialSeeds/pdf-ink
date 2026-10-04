@@ -49,6 +49,7 @@ import type { ToolKind } from '../core/tools';
 import type { PageGeometry, PageRecord, ZoomMode } from '../types/view';
 import { resolveExportTheme } from './export-theme-modal';
 import { askAboutSyncCopy } from './sync-copy-modal';
+import { confirm } from './confirm-modal';
 import { PageEditor } from './page-editor';
 import { PageList } from './page-list';
 import { InputDiagnostics } from './input-diagnostics';
@@ -445,6 +446,13 @@ export class PdfInkView extends FileView implements ZoomHost {
 					this.copiesChanged = false;
 					await this.annotations.resolveNumberedCopies((copy, notebook) =>
 						askAboutSyncCopy(this.app, copy, notebook),
+					);
+					await this.annotations.offerToMoveBase((found, target) =>
+						confirm(this.app, {
+							title: "Move this notebook's imported ink?",
+							message: `Its imported ink was found at ${found.path}. Move it to ${target}, beside the notebook?`,
+							cta: 'Move',
+						}),
 					);
 				}
 			} catch (err) {

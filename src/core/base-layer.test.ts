@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	STUB_PATH,
+	basePathFor,
 	compactBaseTombstones,
 	decodeBase,
 	encodeBase,
@@ -27,6 +28,10 @@ function path(id: string, x = 0, over: Partial<PathItem> = {}): PathItem {
 }
 
 describe('base files', () => {
+	it('sit beside the notebook as <name>.inknote.gz', () => {
+		expect(basePathFor('notes/Week 2.inknote')).toBe('notes/Week 2.inknote.gz');
+	});
+
 	it('round-trip through gzip, checked by hash', async () => {
 		const pages = { 'ins:a': [path('p1'), path('p2', 20)] };
 		const { bytes, ref } = await packBase(pages);

@@ -60,7 +60,7 @@ export async function exportAnnotatedCopy(
 				new Notice(`Could not read this notebook's imported ink (${base}); nothing was exported.`);
 				return;
 			}
-			pages = layerPages(base, pages);
+			pages = layerPages(base.pages, pages);
 		}
 		const { bytes: flattened, scaledPages } = await exportAnnotatedPdfWithReport({
 			pdfBytes,
