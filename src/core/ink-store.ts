@@ -12,6 +12,7 @@ import {
 	tombstoned,
 	touched,
 } from './items';
+import { type BaseRef, layerItems } from './base-layer';
 import {
 	type InsertedPage,
 	type PageKey,
@@ -54,6 +55,17 @@ export class InkStore {
 	private docIdValue: string | undefined;
 	/** See {@link InkData.layout}. */
 	private layoutValue: DocumentLayout | undefined;
+	/** See {@link InkData.base}: what the document says its base layer is. */
+	private baseRefValue: BaseRef | undefined;
+	/**
+	 * The base layer itself, once read: imported items, never edited in place.
+	 * `pages` above is the user's layer over it.
+	 */
+	private readonly base = new Map<PageKey, readonly Item[]>();
+	/** The page each base item is on, by id. */
+	private readonly baseIds = new Map<string, PageKey>();
+	/** Each page's combined layers, rebuilt when the revision moves on. */
+	private readonly combined = new Map<PageKey, { revision: number; items: readonly Item[] }>();
 
 	constructor(private readonly now: Clock = systemClock) {}
 
@@ -69,6 +81,32 @@ export class InkStore {
 		return this.layoutValue;
 	}
 
+	get baseRef(): BaseRef | undefined {
+		return this.baseRefValue;
+	}
+
+	/** Whether the base layer the document names has been read in. */
+	get hasBase(): boolean {
+		return this.base.size > 0;
+	}
+
+	/** Whether `id` belongs to the base layer. */
+	isBaseItem(id: string): boolean {
+		return this.baseIds.has(id);
+	}
+
+	/** Put the base layer in place. It survives `load`, which replaces only the user's layer. */
+	setBase(pages: Readonly<Record<PageKey, readonly Item[]>>): void {
+		this.base.clear();
+		this.baseIds.clear();
+		for (const [key, items] of Object.entries(pages)) {
+			if (items.length === 0) continue;
+			this.base.set(key, items);
+			for (const item of items) this.baseIds.set(item.id, key);
+		}
+		this.revision += 1;
+	}
+
 	/** Give the document an identity, or a new one. Marks the store changed. */
 	setDocId(docId: string): void {
 		if (docId === this.docIdValue) return;
@@ -77,23 +115,46 @@ export class InkStore {
 	}
 
 	get isEmpty(): boolean {
-		return this.pages.size === 0 && this.inserted.size === 0;
+		return this.pages.size === 0 && this.inserted.size === 0 && this.base.size === 0;
 	}
 
-	/** The items to draw, hit-test and export: tombstones excluded. */
+	/**
+	 * The items to draw, hit-test and export: both layers, tombstones excluded.
+	 * A user record replaces the base item with its id.
+	 */
 	itemsFor(pageKey: PageKey): readonly Item[] {
-		const page = this.pages.get(pageKey);
-		return page ? liveItems(page) : [];
+		const user = this.pages.get(pageKey);
+		const base = this.base.get(pageKey);
+		if (!base) return user ? liveItems(user) : [];
+		const cached = this.combined.get(pageKey);
+		if (cached?.revision === this.revision) return cached.items;
+		const items = liveItems(layerItems(base, user ?? []));
+		this.combined.set(pageKey, { revision: this.revision, items });
+		return items;
 	}
 
-	/** Everything, tombstones included. For serialising and merging only. */
+	/** The user's layer, tombstones included. For serialising and merging only. */
 	allItemsFor(pageKey: PageKey): readonly Item[] {
 		return this.pages.get(pageKey) ?? [];
 	}
 
-	/** Every page that holds anything at all. */
+	/** Every page that holds anything at all, in either layer. */
 	pageKeys(): PageKey[] {
-		return [...this.pages.keys()].sort();
+		return [...new Set([...this.pages.keys(), ...this.base.keys()])].sort();
+	}
+
+	/** A live base item with this id on this page that the user has not replaced. */
+	private untouchedBase(pageKey: PageKey, id: string): Item | undefined {
+		if (this.baseIds.get(id) !== pageKey) return undefined;
+		if (this.pages.get(pageKey)?.some((item) => item.id === id)) return undefined;
+		return this.base.get(pageKey)?.find((item) => item.id === id);
+	}
+
+	private pushUser(pageKey: PageKey, item: Item): number {
+		const existing = this.pages.get(pageKey);
+		if (existing) existing.push(item);
+		else this.pages.set(pageKey, [item]);
+		return (existing?.length ?? 1) - 1;
 	}
 
 	/** The z value a new item on this page should take: on top of everything. */
@@ -144,6 +205,13 @@ export class InkStore {
 	 * the next time the two are merged.
 	 */
 	removeById(pageKey: PageKey, id: string): number {
+		// A base item is never touched: its tombstone goes in the user's layer.
+		const base = this.untouchedBase(pageKey, id);
+		if (base) {
+			const at = this.pushUser(pageKey, tombstoned(base, this.now()));
+			this.revision += 1;
+			return at;
+		}
 		const existing = this.pages.get(pageKey);
 		if (!existing) return -1;
 		const at = existing.findIndex(
@@ -159,6 +227,13 @@ export class InkStore {
 
 	/** Swap an item for a new version of itself, in place. */
 	replaceById(pageKey: PageKey, item: Item): boolean {
+		// Editing a base item is copy on write: the edit joins the user's layer
+		// under the same id, and from then on stands in for it.
+		if (this.untouchedBase(pageKey, item.id)) {
+			this.pushUser(pageKey, touched(item, this.now()));
+			this.revision += 1;
+			return true;
+		}
 		const existing = this.pages.get(pageKey);
 		if (!existing) return false;
 		const at = existing.findIndex((candidate) => candidate.id === item.id);
@@ -249,14 +324,19 @@ export class InkStore {
 		for (const page of data.insertedPages) this.inserted.set(page.id, page);
 		this.docIdValue = data.docId;
 		this.layoutValue = data.layout;
+		this.baseRefValue = data.base;
 		this.revision += 1;
 	}
 
 	clear(): void {
 		this.pages.clear();
 		this.inserted.clear();
+		this.base.clear();
+		this.baseIds.clear();
+		this.combined.clear();
 		this.docIdValue = undefined;
 		this.layoutValue = undefined;
+		this.baseRefValue = undefined;
 		this.revision += 1;
 	}
 
@@ -272,6 +352,7 @@ export class InkStore {
 			insertedPages: [...this.inserted.values()],
 			...(this.docIdValue === undefined ? {} : { docId: this.docIdValue }),
 			...(this.layoutValue === undefined ? {} : { layout: this.layoutValue }),
+			...(this.baseRefValue === undefined ? {} : { base: this.baseRefValue }),
 		};
 	}
 }

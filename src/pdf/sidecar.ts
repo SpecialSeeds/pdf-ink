@@ -1,5 +1,14 @@
 import { type App, Notice, type Plugin, TFile } from 'obsidian';
+import { basePathFor } from '../core/base-layer';
 import { sidecarPathFor } from '../core/ink-serialization';
+import { NOTEBOOK_EXTENSION } from '../core/new-notebook';
+
+/** The file that has to travel with `file`: a PDF's sidecar, a notebook's base layer. */
+function companionPath(extension: string, path: string): string | null {
+	if (extension === 'pdf') return sidecarPathFor(path);
+	if (extension === NOTEBOOK_EXTENSION) return basePathFor(path);
+	return null;
+}
 
 /**
  * Keep each PDF's annotation sidecar alongside it as files move and disappear.
@@ -13,28 +22,29 @@ import { sidecarPathFor } from '../core/ink-serialization';
 export function registerSidecarEvents(plugin: Plugin): void {
 	plugin.registerEvent(
 		plugin.app.vault.on('rename', (file, oldPath) => {
-			if (!(file instanceof TFile) || file.extension !== 'pdf') return;
-			void moveSidecar(plugin.app, oldPath, file.path);
+			if (!(file instanceof TFile)) return;
+			const from = companionPath(file.extension, oldPath);
+			const to = companionPath(file.extension, file.path);
+			if (from !== null && to !== null) void moveSidecar(plugin.app, from, to);
 		}),
 	);
 
 	plugin.registerEvent(
 		plugin.app.vault.on('delete', (file) => {
-			if (!(file instanceof TFile) || file.extension !== 'pdf') return;
-			void trashSidecar(plugin.app, file.path);
+			if (!(file instanceof TFile)) return;
+			const companion = companionPath(file.extension, file.path);
+			if (companion !== null) void trashSidecar(plugin.app, companion);
 		}),
 	);
 }
 
 async function moveSidecar(
 	app: App,
-	oldPdfPath: string,
-	newPdfPath: string,
+	oldPath: string,
+	newPath: string,
 ): Promise<void> {
-	const sidecar = app.vault.getFileByPath(sidecarPathFor(oldPdfPath));
+	const sidecar = app.vault.getFileByPath(oldPath);
 	if (!sidecar) return;
-
-	const newPath = sidecarPathFor(newPdfPath);
 	if (sidecar.path === newPath) return;
 
 	if (app.vault.getFileByPath(newPath)) {
@@ -53,8 +63,8 @@ async function moveSidecar(
 	}
 }
 
-async function trashSidecar(app: App, pdfPath: string): Promise<void> {
-	const sidecar = app.vault.getFileByPath(sidecarPathFor(pdfPath));
+async function trashSidecar(app: App, path: string): Promise<void> {
+	const sidecar = app.vault.getFileByPath(path);
 	if (!sidecar) return;
 	try {
 		// Trash rather than delete: this is the user's work, and it honours their

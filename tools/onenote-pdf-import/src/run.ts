@@ -8,6 +8,7 @@
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { basePathFor, packBase } from '../../../src/core/base-layer';
 import { NOTEBOOK_SUFFIX, serializeInkData } from '../../../src/core/ink-serialization';
 import { simplifyPathCommands } from '../../../src/core/path';
 import { type Built, buildNotebook } from './build';
@@ -38,7 +39,19 @@ export interface NoteResult {
 	readonly status: NoteStatus;
 	readonly canvas?: Canvas;
 	readonly built?: Built;
+	/** Bytes of the `.inknote` and of its base layer, as written (or as they would be). */
+	readonly sizes?: { readonly notebook: number; readonly base: number };
 	readonly error?: string;
+}
+
+/**
+ * The two files an import writes: the base layer holding everything imported,
+ * and the `.inknote` naming it, which starts with no items of its own.
+ */
+export async function notebookFiles(built: Built): Promise<{ notebook: string; base: Uint8Array }> {
+	const { bytes, ref } = await packBase(built.data.pages);
+	const notebook = serializeInkData({ ...built.data, pages: {}, base: ref });
+	return { notebook, base: bytes };
 }
 
 /**
@@ -68,6 +81,10 @@ export function simplifyCanvas(canvas: Canvas, tolerance: number): Canvas {
 	};
 }
 
+function kb(bytes: number): string {
+	return bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
+
 function describe(result: NoteResult): string {
 	const { canvas, built } = result;
 	if (!canvas || !built) return `${result.name}: ${result.status}${result.error ? ` (${result.error})` : ''}`;
@@ -83,8 +100,19 @@ function describe(result: NoteResult): string {
 		`  canvas ${canvas.width.toFixed(0)} x ${canvas.height.toFixed(0)} pt, ${String(built.pathCount)} paths, ${String(built.textCount)} text runs`,
 		`  ${layout}`,
 	];
+	if (result.sizes) {
+		lines.push(
+			`  files: ${kb(result.sizes.notebook)} notebook, ${kb(result.sizes.base)} base layer`,
+		);
+	}
 	for (const warning of canvas.warnings) lines.push(`  warning: ${warning}`);
 	return lines.join('\n');
+}
+
+async function writeAtomically(path: string, data: string | Uint8Array): Promise<void> {
+	const temp = `${path}.tmp`;
+	await writeFile(temp, data);
+	await rename(temp, path);
 }
 
 export async function runImport(options: ImportOptions): Promise<NoteResult[]> {
@@ -116,15 +144,20 @@ export async function runImport(options: ImportOptions): Promise<NoteResult[]> {
 			const built = buildNotebook(simplifyCanvas(canvas, tolerance), {
 				now: options.now ?? Date.now(),
 			});
+			const files = await notebookFiles(built);
 			let status: NoteStatus = 'listed';
 			if (!options.dryRun) {
 				await mkdir(options.output, { recursive: true });
-				const temp = `${target}.tmp`;
-				await writeFile(temp, serializeInkData(built.data));
-				await rename(temp, target);
+				// The base first: a notebook must never name a base that is not there.
+				await writeAtomically(basePathFor(target), files.base);
+				await writeAtomically(target, files.notebook);
 				status = 'written';
 			}
-			const result: NoteResult = { name, source, target, status, canvas, built };
+			const sizes = {
+				notebook: new TextEncoder().encode(files.notebook).length,
+				base: files.base.length,
+			};
+			const result: NoteResult = { name, source, target, status, canvas, built, sizes };
 			results.push(result);
 			log(describe(result));
 		} catch (error) {

@@ -36,6 +36,13 @@ import type { DocumentLayout, InkData } from '../core/items';
 import type { PageKey } from '../core/pages';
 import { InkStore, type ItemStore } from '../core/ink-store';
 import {
+	BASE_SUFFIX,
+	type BaseRef,
+	basePathFor,
+	compactBaseTombstones,
+} from '../core/base-layer';
+import { type BaseLookup, readBaseLayer } from './base-file';
+import {
 	createDocId,
 	isNotebookPath,
 	isNumberedCopyName,
@@ -441,6 +448,7 @@ export class AnnotationStore implements ItemStore {
 		// Fold in anything a sync client left beside the sidecar before loading.
 		const merged = await this.absorbConflictCopies(path, result.data);
 		this.ink.load(merged.data);
+		if (this.notebook && merged.data.base) await this.loadBase(file, merged.data.base);
 		// After the dirty bookkeeping below would be too late: a notebook from
 		// before identities existed is given one, and that has to be written.
 		const identified = this.ensureDocId();
@@ -767,6 +775,44 @@ export class AnnotationStore implements ItemStore {
 		this.onChanged();
 	}
 
+	/**
+	 * Read the notebook's base layer and check it is the one the notebook names.
+	 * Missing or different, the notebook still opens with the user's own layer,
+	 * and the base is picked up if it arrives later (see {@link handleBaseAppeared}).
+	 */
+	private async loadBase(notebook: TFile, ref: BaseRef): Promise<void> {
+		const found = await this.findBase(notebook, ref);
+		if (found === 'missing') {
+			new Notice(
+				`This notebook's imported ink (${basePathFor(notebook.name)}) is missing. Showing only your own edits until it arrives.`,
+			);
+			return;
+		}
+		if (found === 'unreadable') {
+			new Notice(`This notebook's imported ink (${basePathFor(notebook.name)}) is unreadable. Showing only your own edits.`);
+			return;
+		}
+		this.ink.setBase(found);
+	}
+
+	private findBase(notebook: TFile, ref: BaseRef): Promise<BaseLookup> {
+		return readBaseLayer(this.app, notebook, ref);
+	}
+
+	/** A file appeared or changed: if it is the base layer still missing, read it in. */
+	handleBaseAppeared(changed: TFile): void {
+		const file = this.file;
+		const ref = this.ink.baseRef;
+		if (!file || !this.notebook || !ref || this.ink.hasBase) return;
+		if (!changed.path.endsWith(BASE_SUFFIX)) return;
+		void (async () => {
+			const found = await this.findBase(file, ref);
+			if (typeof found === 'string' || this.file !== file || this.ink.hasBase) return;
+			this.ink.setBase(found);
+			this.onChanged();
+		})();
+	}
+
 	/** The vault reported our sidecar changed. */
 	handleExternalChange(changed: TFile): void {
 		const file = this.file;
@@ -852,12 +898,19 @@ export class AnnotationStore implements ItemStore {
 				}
 				// Tombstones cannot be dropped eagerly, but after the window every
 				// device has certainly synced and they are just weight.
+				// A tombstone over a base item is all that hides it, so it is kept
+				// for good; with the base not read in, none can be told apart.
+				const baseMissing = this.ink.baseRef !== undefined && !this.ink.hasBase;
 				const pruned = pruneTombstones(
 					this.ink.toData(),
 					Date.now(),
 					TOMBSTONE_MAX_AGE_MS,
+					(id) => baseMissing || this.ink.isBaseItem(id),
 				);
-				const payload = serializeInkData(pruned);
+				const payload = serializeInkData({
+					...pruned,
+					pages: compactBaseTombstones(pruned.pages, (id) => this.ink.isBaseItem(id)),
+				});
 				if (this.notebook) await this.writeInPlace(path, payload);
 				else await this.writeAtomically(path, payload);
 				// Edits made during the write leave this behind, so the next debounce

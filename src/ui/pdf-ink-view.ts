@@ -342,6 +342,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 			this.app.vault.on('modify', (changed) => {
 				if (changed instanceof TFile) {
 					this.annotations.handleExternalChange(changed);
+					this.annotations.handleBaseAppeared(changed);
 				}
 			}),
 		);
@@ -351,6 +352,8 @@ export class PdfInkView extends FileView implements ZoomHost {
 			const open = this.file;
 			if (!(file instanceof TFile) || !open) return;
 			if (isNumberedCopyName(open.path, file.path)) this.checkNumberedCopies();
+			// A notebook can arrive by sync before its base layer does.
+			this.annotations.handleBaseAppeared(file);
 		};
 		this.registerEvent(this.app.vault.on('create', onAppear));
 		this.registerEvent(this.app.vault.on('rename', onAppear));

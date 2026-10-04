@@ -20,7 +20,7 @@ TypeScript, esbuild (sample plugin config), pdf-lib, perfect-freehand.
   config or the environment.
 ## Data schema (version 5)
 { version: 5, pages: { [pageKey]: Item[] }, insertedPages: InsertedPage[],
-  docId?, layout?: "board" }
+  docId?, layout?: "board", base?: { hash } }
 PageKey = "pdf:<0-based index>" for a page of the source PDF
         | "ins:<uuid>"          for an inserted page
 Item = Stroke | Shape | TextBox | Path, all coordinates in PDF user space
@@ -103,6 +103,22 @@ PageTemplate = "blank" | "lined" | "lined7.5" | "lined10" | "grid5" | "dot"
   merging in a modal (Merge: merge then trash; Keep separate: new docId on the
   copy). Never merge a numbered copy silently; a different or missing docId is
   never asked about.
+
+## Base layer (imported notebooks)
+- Imported ink lives in `<name>.inknote.gz` (src/core/base-layer.ts): gzip, written
+  ONCE by the importer and never rewritten by the plugin. The `.inknote` names it by
+  the SHA-256 of its bytes and holds only the user's records; merge and conflict
+  handling never touch the base.
+- Layering is by id: a `.inknote` record with a base item's id replaces it, whatever
+  the timestamps. Editing a base item is copy on write (`replaceById`/`removeById`
+  in InkStore put the edit or a tombstone in the user layer). Render, hit testing
+  and export all go through the combined layers.
+- A tombstone over a base path is written with stub geometry, and is never pruned:
+  it is all that hides the base item. With the base not read in, no tombstone is
+  pruned at all.
+- A missing or mismatched base opens the user layer alone with a notice, and is
+  read in when it arrives. A renamed notebook's base moves with it; a deleted
+  notebook's base is trashed.
 
 ## Boards
 - A board is a notebook with `layout: "board"` and ONE inserted page, as wide as

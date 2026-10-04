@@ -3,6 +3,8 @@ import type { ExportMode } from '../core/settings-schema';
 import { confirm } from '../ui/confirm-modal';
 import { parseInkData, sidecarPathFor } from '../core/ink-serialization';
 import { exportAnnotatedPdfWithReport, scaledNote } from '../pdf/export';
+import { readBaseLayer } from '../pdf/base-file';
+import { layerPages } from '../core/base-layer';
 import { exportPathFor, parentFolder } from '../core/export-path';
 import { isNotebookPath } from '../core/new-notebook';
 import type { PageThemes, ThemeName } from '../core/theme';
@@ -49,9 +51,20 @@ export async function exportAnnotatedCopy(
 		const pdfBytes = notebook
 			? undefined
 			: new Uint8Array(await app.vault.readBinary(file));
+		// A notebook's imported ink lives in its base layer; export draws both.
+		let pages = parsed.data.pages;
+		const ref = parsed.data.base;
+		if (notebook && ref) {
+			const base = await readBaseLayer(app, file, ref);
+			if (typeof base === 'string') {
+				new Notice(`Could not read this notebook's imported ink (${base}); nothing was exported.`);
+				return;
+			}
+			pages = layerPages(base, pages);
+		}
 		const { bytes: flattened, scaledPages } = await exportAnnotatedPdfWithReport({
 			pdfBytes,
-			pages: parsed.data.pages,
+			pages,
 			insertedPages: parsed.data.insertedPages,
 			mode: settings.mode,
 			theme: settings.theme,
