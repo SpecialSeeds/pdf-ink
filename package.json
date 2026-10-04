@@ -1,6 +1,6 @@
 {
 	"name": "pdf-ink",
-	"version": "0.4.0",
+	"version": "0.4.1",
 	"description": "Annotate PDFs with a pen in Obsidian, without modifying the original file.",
 	"main": "main.js",
 	"type": "module",
