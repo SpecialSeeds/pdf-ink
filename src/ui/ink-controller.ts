@@ -57,6 +57,10 @@ export interface InkControllerOptions {
 	 * in response joins the same undo step.
 	 */
 	itemsCommitted(pageKey: PageKey, items: readonly Item[]): void;
+	/** Whether (x, y), in PDF space, is on a notebook header's title. */
+	headerTitleAt(record: PageRecord, x: number, y: number): boolean;
+	/** The title was double tapped. */
+	editHeader(record: PageRecord): void;
 }
 
 /**
@@ -179,6 +183,10 @@ export class InkController {
 			pageTheme: (record) => this.options.pageTheme(record),
 			itemsCommitted: (record, items) => {
 				this.options.itemsCommitted(record.geom.key, items);
+			},
+			headerTitleAt: (record, x, y) => this.options.headerTitleAt(record, x, y),
+			editHeader: (record) => {
+				this.options.editHeader(record);
 			},
 		});
 		this.layer.attach();

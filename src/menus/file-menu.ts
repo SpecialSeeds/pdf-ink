@@ -35,7 +35,7 @@ export function registerFileMenu(plugin: Plugin & PdfInkHost): void {
 						.setIcon(NOTEBOOK_ICON)
 						.setSection('action-primary')
 						.onClick(() => {
-							void createNotebook(plugin.app, file);
+							void createNotebook(plugin.app, { titleHeader: plugin.settings.addTitleHeader }, file);
 						}),
 				);
 				menu.addItem((item) =>
@@ -44,7 +44,7 @@ export function registerFileMenu(plugin: Plugin & PdfInkHost): void {
 						.setIcon(BOARD_ICON)
 						.setSection('action-primary')
 						.onClick(() => {
-							void createBoard(plugin.app, file);
+							void createBoard(plugin.app, { titleHeader: plugin.settings.addTitleHeader }, file);
 						}),
 				);
 				return;

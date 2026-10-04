@@ -13,6 +13,7 @@ import {
 	touched,
 } from './items';
 import { type BaseRef, layerItems } from './base-layer';
+import type { NotebookHeader } from './header';
 import {
 	type InsertedPage,
 	type PageKey,
@@ -57,6 +58,8 @@ export class InkStore {
 	private layoutValue: DocumentLayout | undefined;
 	/** See {@link InkData.base}: what the document says its base layer is. */
 	private baseRefValue: BaseRef | undefined;
+	/** See {@link InkData.header}. */
+	private headerValue: NotebookHeader | undefined;
 	/**
 	 * The base layer itself, once read: imported items, never edited in place.
 	 * `pages` above is the user's layer over it.
@@ -83,6 +86,10 @@ export class InkStore {
 
 	get baseRef(): BaseRef | undefined {
 		return this.baseRefValue;
+	}
+
+	get header(): NotebookHeader | undefined {
+		return this.headerValue;
 	}
 
 	/** Whether the base layer the document names has been read in. */
@@ -325,6 +332,7 @@ export class InkStore {
 		this.docIdValue = data.docId;
 		this.layoutValue = data.layout;
 		this.baseRefValue = data.base;
+		this.headerValue = data.header;
 		this.revision += 1;
 	}
 
@@ -337,6 +345,7 @@ export class InkStore {
 		this.docIdValue = undefined;
 		this.layoutValue = undefined;
 		this.baseRefValue = undefined;
+		this.headerValue = undefined;
 		this.revision += 1;
 	}
 
@@ -353,6 +362,7 @@ export class InkStore {
 			...(this.docIdValue === undefined ? {} : { docId: this.docIdValue }),
 			...(this.layoutValue === undefined ? {} : { layout: this.layoutValue }),
 			...(this.baseRefValue === undefined ? {} : { base: this.baseRefValue }),
+			...(this.headerValue === undefined ? {} : { header: this.headerValue }),
 		};
 	}
 }

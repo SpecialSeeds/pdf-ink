@@ -5,6 +5,7 @@
  */
 
 import { BUFFER_PAGES } from '../constants';
+import { type HeaderDateFormat, isHeaderDateFormat } from './header';
 import { type NewPdfPageSize, isNewPdfPageSize } from './new-pdf';
 import { type PageTemplate, isPageTemplate } from './templates';
 import {
@@ -101,6 +102,10 @@ export interface PdfInkSettings {
 	exportTheme: ThemeName;
 	/** Ask which theme to export in; off exports in {@link exportTheme} directly. */
 	askExportTheme: boolean;
+	/** Give new notebooks and boards a title header, as OneNote pages have. */
+	addTitleHeader: boolean;
+	/** How a header writes its date, unless the notebook says otherwise. */
+	headerDateFormat: HeaderDateFormat;
 }
 
 /** The edge the tool palette docks to. */
@@ -156,6 +161,8 @@ export const DEFAULT_SETTINGS: PdfInkSettings = {
 	pageThemes: emptyThemeOverrides(),
 	exportTheme: 'light',
 	askExportTheme: true,
+	addTitleHeader: true,
+	headerDateFormat: 'onenote',
 };
 
 function clampWidth(tool: SizedTool, value: number): number {
@@ -281,6 +288,12 @@ export function mergeSettings(stored: unknown): PdfInkSettings {
 
 	const askExportTheme = raw['askExportTheme'];
 	if (typeof askExportTheme === 'boolean') merged.askExportTheme = askExportTheme;
+
+	const addTitleHeader = raw['addTitleHeader'];
+	if (typeof addTitleHeader === 'boolean') merged.addTitleHeader = addTitleHeader;
+
+	const headerDateFormat = raw['headerDateFormat'];
+	if (isHeaderDateFormat(headerDateFormat)) merged.headerDateFormat = headerDateFormat;
 
 	return merged;
 }

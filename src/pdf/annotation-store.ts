@@ -33,6 +33,7 @@ import {
 } from '../core/pages';
 import type { PageTemplate } from '../core/templates';
 import type { DocumentLayout, InkData } from '../core/items';
+import type { NotebookHeader } from '../core/header';
 import type { PageKey } from '../core/pages';
 import { InkStore, type ItemStore } from '../core/ink-store';
 import {
@@ -272,6 +273,11 @@ export class AnnotationStore implements ItemStore {
 	}
 
 	/** Change an inserted page's ruling as one undoable operation. */
+	/** A notebook's title header; see {@link InkData.header}. */
+	get header(): NotebookHeader | undefined {
+		return this.ink.header;
+	}
+
 	/** `"board"` for a board notebook; see {@link InkData.layout}. */
 	get layout(): DocumentLayout | undefined {
 		return this.ink.layout;

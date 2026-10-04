@@ -20,7 +20,7 @@ TypeScript, esbuild (sample plugin config), pdf-lib, perfect-freehand.
   config or the environment.
 ## Data schema (version 5)
 { version: 5, pages: { [pageKey]: Item[] }, insertedPages: InsertedPage[],
-  docId?, layout?: "board", base?: { hash } }
+  docId?, layout?: "board", base?: { hash }, header?: { createdAt, dateFormat? } }
 PageKey = "pdf:<0-based index>" for a page of the source PDF
         | "ins:<uuid>"          for an inserted page
 Item = Stroke | Shape | TextBox | Path, all coordinates in PDF user space
@@ -106,6 +106,18 @@ PageTemplate = "blank" | "lined" | "lined7.5" | "lined10" | "grid5" | "dot"
   merging in a modal (Merge: merge then trash; Keep separate: new docId on the
   copy). Never merge a numbered copy silently; a different or missing docId is
   never asked about.
+
+## Title header
+- A notebook header (src/core/header.ts) stores only `createdAt` and an optional
+  `dateFormat`. The title is ALWAYS the file's base name, never stored, so a rename
+  and the header cannot disagree; renaming anywhere re-syncs page 1.
+- Drawn on the first page only, screen and export alike, from ONE layout
+  (`headerLayout`, OneNote's own positions): title 20 pt in base ink, date 10 pt in
+  the theme's `headerMuted`, a rule in the grid colour. Ruling stays out of its band
+  (`reserveHeaderBand`); a paginated import starts page 1 below it.
+- The header is not an item: nothing draws on, erases, lassoes or moves it. A double
+  tap on the title renames the file through the file manager; a taken or unusable
+  name is refused with a notice and the title shows the old name again.
 
 ## Base layer (imported notebooks)
 - Imported ink lives in `<name>.inknote.gz` (src/core/base-layer.ts): gzip, written

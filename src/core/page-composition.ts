@@ -7,6 +7,7 @@
  * and by the exporter so they cannot disagree about what page 4 is.
  */
 
+import type { HeaderText } from './header';
 import { syntheticViewport } from './page-viewport';
 import {
 	type InsertedPage,
@@ -20,7 +21,7 @@ import {
 import type { PageGeometry } from '../types/view';
 
 /** Geometry for one inserted page, standing in for a pdf.js page. */
-export function insertedGeometry(page: InsertedPage): PageGeometry {
+export function insertedGeometry(page: InsertedPage, header?: HeaderText): PageGeometry {
 	const origin = pageOrigin(page);
 	const baseViewport = syntheticViewport(
 		page.size.width,
@@ -33,7 +34,7 @@ export function insertedGeometry(page: InsertedPage): PageGeometry {
 	);
 	return {
 		key: insertedPageKey(page.id),
-		source: { kind: 'inserted', page },
+		source: header ? { kind: 'inserted', page, header } : { kind: 'inserted', page },
 		baseViewport,
 		baseWidth: baseViewport.width,
 		baseHeight: baseViewport.height,
@@ -51,11 +52,13 @@ export function insertedGeometry(page: InsertedPage): PageGeometry {
 export function composePages(
 	pdfGeometry: readonly PageGeometry[],
 	inserted: readonly InsertedPage[],
+	/** A notebook's title header, drawn on whatever page comes first. */
+	header?: HeaderText,
 ): PageGeometry[] {
 	const composed: PageGeometry[] = [];
 	for (const slot of orderPages(pdfGeometry.length, inserted)) {
 		if (slot.kind === 'inserted') {
-			composed.push(insertedGeometry(slot.page));
+			composed.push(insertedGeometry(slot.page, slot.index === 0 ? header : undefined));
 			continue;
 		}
 		const geom = pdfGeometry[slot.pdfIndex];
@@ -80,7 +83,10 @@ export function pagesSignature(geometry: readonly PageGeometry[]): string {
 			// A board grown downward keeps its size key's height change, but its
 			// origin moves too, and every point on it maps differently.
 			const origin = inserted ? pageOrigin(inserted) : { x: 0, y: 0 };
-			return `${geom.key}|${size}|${template}|${origin.x.toFixed(3)},${origin.y.toFixed(3)}`;
+			// A header changes what the page shows: a rename or a new date format.
+			const header = geom.source.kind === 'inserted' ? geom.source.header : undefined;
+			const heading = header ? `|${header.title}|${header.date}` : '';
+			return `${geom.key}|${size}|${template}|${origin.x.toFixed(3)},${origin.y.toFixed(3)}${heading}`;
 		})
 		.join(',');
 }

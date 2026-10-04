@@ -70,3 +70,56 @@ describe('grid level of detail on screen', () => {
 		]);
 	});
 });
+
+describe('the notebook header on screen', () => {
+	function paintWithHeader(theme: 'light' | 'dark'): { texts: [string, string][]; strokes: number } {
+		const texts: [string, string][] = [];
+		let strokes = 0;
+		const ctx = {
+			globalAlpha: 1,
+			fillStyle: '',
+			strokeStyle: '',
+			lineWidth: 1,
+			font: '',
+			textBaseline: '',
+			setTransform: () => undefined,
+			fillRect: () => undefined,
+			save: () => undefined,
+			restore: () => undefined,
+			beginPath: () => undefined,
+			moveTo: () => undefined,
+			lineTo: () => undefined,
+			arc: () => undefined,
+			fill: () => undefined,
+			stroke: () => {
+				strokes += 1;
+			},
+			fillText(this: { fillStyle: string }, text: string) {
+				texts.push([text, this.fillStyle]);
+			},
+		};
+		paintInsertedPage(
+			ctx as unknown as CanvasRenderingContext2D,
+			syntheticViewport(612, 792, 1.5),
+			{ ...page, template: 'blank' },
+			918,
+			1188,
+			[1, 0, 0, 1, 0, 0],
+			DEFAULT_PAGE_THEMES[theme],
+			{ title: 'Week 2', date: 'Saturday, October 3, 2026  2:02 PM' },
+		);
+		return { texts, strokes };
+	}
+
+	it('draws the title in base ink, the date muted, and a rule, in either theme', () => {
+		for (const theme of ['light', 'dark'] as const) {
+			const { texts, strokes } = paintWithHeader(theme);
+			expect(texts).toEqual([
+				['Week 2', DEFAULT_PAGE_THEMES[theme].baseInk],
+				['Saturday, October 3, 2026  2:02 PM', DEFAULT_PAGE_THEMES[theme].headerMuted],
+			]);
+			// A blank page has no ruling: the one stroke is the header's rule.
+			expect(strokes).toBe(1);
+		}
+	});
+});

@@ -346,6 +346,7 @@ export class PdfSidebar {
 					cssHeight,
 					[dpr, 0, 0, dpr, 0, 0],
 					this.callbacks.insertedTheme(),
+					geom.source.header,
 				);
 			} else {
 				await geom.source.page.render({

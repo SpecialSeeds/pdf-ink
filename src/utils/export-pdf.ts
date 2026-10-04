@@ -8,6 +8,7 @@ import { layerPages } from '../core/base-layer';
 import { exportPathFor, parentFolder } from '../core/export-path';
 import { isNotebookPath } from '../core/new-notebook';
 import type { PageThemes, ThemeName } from '../core/theme';
+import { type HeaderDateFormat, headerText } from '../core/header';
 
 export interface ExportSettings {
 	readonly suffix: string;
@@ -15,6 +16,8 @@ export interface ExportSettings {
 	/** The theme inserted and notebook pages export in. */
 	readonly theme: ThemeName;
 	readonly themes: PageThemes;
+	/** How a notebook header writes its date, unless the notebook says. */
+	readonly headerDateFormat: HeaderDateFormat;
 }
 
 /**
@@ -69,6 +72,10 @@ export async function exportAnnotatedCopy(
 			mode: settings.mode,
 			theme: settings.theme,
 			themes: settings.themes,
+			// The title is the notebook's name now, whatever it was when written.
+			...(notebook && parsed.data.header
+				? { header: headerText(file.path, parsed.data.header, settings.headerDateFormat) }
+				: {}),
 		});
 
 		// A notebook exports beside itself as a PDF of the same name.

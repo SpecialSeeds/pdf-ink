@@ -113,10 +113,10 @@ export class PageList {
 			const reused = leftover.get(geom.key);
 			if (reused) {
 				leftover.delete(geom.key);
-				// An inserted page's record changes when its template does, so the
-				// geometry is replaced even when the key matched — and the page is
-				// painted again, or it would keep its old ruling until the next zoom.
-				if (templateOf(reused.geom) !== templateOf(geom)) {
+				// An inserted page's record changes when its template or header does,
+				// so the geometry is replaced even when the key matched — and the page
+				// is painted again, or it would keep its old paper until the next zoom.
+				if (paperOf(reused.geom) !== paperOf(geom)) {
 					this.renderer.invalidate(reused);
 				}
 				reused.geom = geom;
@@ -480,6 +480,9 @@ export class PageList {
 	}
 }
 
-function templateOf(geom: PageGeometry): string | null {
-	return geom.source.kind === 'inserted' ? geom.source.page.template : null;
+/** What an inserted page's paper shows: its ruling, and its header if it has one. */
+function paperOf(geom: PageGeometry): string | null {
+	if (geom.source.kind !== 'inserted') return null;
+	const header = geom.source.header;
+	return `${geom.source.page.template}|${header?.title ?? ''}|${header?.date ?? ''}`;
 }

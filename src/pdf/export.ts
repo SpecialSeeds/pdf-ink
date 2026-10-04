@@ -17,6 +17,14 @@ import {
 	inZOrder,
 } from '../core/items';
 import { pathGeometry } from '../core/path';
+import {
+	HEADER_DATE_SIZE,
+	HEADER_RULE_WIDTH,
+	HEADER_TITLE_SIZE,
+	type HeaderText,
+	headerLayout,
+	reserveHeaderBand,
+} from '../core/header';
 import { type InsertedPage, type PageKey, orderPages, pageOrigin } from '../core/pages';
 import { type PathSegment, shapeGeometry } from '../core/shapes';
 import { type PageTemplate, templateGeometry, translateTemplate } from '../core/templates';
@@ -258,7 +266,12 @@ function drawItem(
 }
 
 /** An inserted page's paper and ruling, in its theme, under whatever is on it. */
-function drawTemplate(page: PDFPage, inserted: InsertedPage, theme: PageTheme): void {
+function drawTemplate(
+	page: PDFPage,
+	inserted: InsertedPage,
+	theme: PageTheme,
+	header?: { readonly text: HeaderText; readonly font: PDFFont },
+): void {
 	const { width, height } = inserted.size;
 	const origin = pageOrigin(inserted);
 	// A PDF page is white already, so white paper costs nothing to draw.
@@ -272,7 +285,41 @@ function drawTemplate(page: PDFPage, inserted: InsertedPage, theme: PageTheme): 
 			borderWidth: 0,
 		});
 	}
-	drawRuling(page, inserted.template, width, height, theme.grid, origin.x, origin.y);
+	const layout = headerLayout(inserted);
+	drawRuling(
+		page,
+		inserted.template,
+		width,
+		height,
+		theme.grid,
+		origin.x,
+		origin.y,
+		header ? layout.bandBottom : undefined,
+	);
+	if (!header) return;
+
+	// The same layout the screen draws: title in base ink, date muted, rule in
+	// the grid colour.
+	page.drawText(header.text.title, {
+		x: layout.x,
+		y: layout.titleBaseline,
+		size: HEADER_TITLE_SIZE,
+		font: header.font,
+		color: toRgb(theme.baseInk),
+	});
+	page.drawText(header.text.date, {
+		x: layout.x,
+		y: layout.dateBaseline,
+		size: HEADER_DATE_SIZE,
+		font: header.font,
+		color: toRgb(theme.headerMuted),
+	});
+	page.drawLine({
+		start: { x: layout.x, y: layout.ruleY },
+		end: { x: layout.ruleX2, y: layout.ruleY },
+		thickness: HEADER_RULE_WIDTH,
+		color: toRgb(theme.grid),
+	});
 }
 
 /**
@@ -296,8 +343,12 @@ export function drawRuling(
 	gridColor: string,
 	originX = 0,
 	originY = 0,
+	/** A notebook header's band on this page: nothing is ruled above it. */
+	headerBandBottom?: number,
 ): void {
-	const geometry = translateTemplate(templateGeometry(template, width, height), originX, originY);
+	const ruling = translateTemplate(templateGeometry(template, width, height), originX, originY);
+	const geometry =
+		headerBandBottom === undefined ? ruling : reserveHeaderBand(ruling, headerBandBottom);
 	const color = toRgb(gridColor);
 	// Not drawSvgPath: these are page-space primitives with no y-flip to undo, and
 	// an inserted page's MediaBox origin is (0, 0) by construction.
@@ -339,6 +390,8 @@ export interface ExportOptions {
 	readonly theme?: ThemeName;
 	/** The themes' colours, as configured. Defaults to the built-in ones. */
 	readonly themes?: PageThemes;
+	/** A notebook's title header, drawn on its first page. */
+	readonly header?: HeaderText;
 }
 
 /**
@@ -413,7 +466,10 @@ export async function exportAnnotatedPdfWithReport(
 		// A board that grew downward has its corner below (0, 0); its items are
 		// stored in that same space, so the MediaBox moves rather than the ink.
 		if (origin.x !== 0 || origin.y !== 0) page.setMediaBox(origin.x, origin.y, width, height);
-		drawTemplate(page, slot.page, themeFor('inserted'));
+		// A notebook's header goes on its first page.
+		const header =
+			options.header && slot.index === 0 ? { text: options.header, font } : undefined;
+		drawTemplate(page, slot.page, themeFor('inserted'), header);
 	}
 
 	const indexByKey = new Map<PageKey, number>();

@@ -15,8 +15,11 @@ import {
 	MOBILE_BUDGET,
 } from '../core/canvas-budget';
 import { maxBaseHeight, maxBaseWidth } from '../core/layout';
-import { type Bounds, itemBounds } from '../core/hit-test';
+import { type Bounds, boundsContain, itemBounds } from '../core/hit-test';
 import { grownBoardPage } from '../core/board';
+import { type HeaderText, headerText, headerTitleBox } from '../core/header';
+import { HeaderEditor } from './header-editor';
+import { renameNotebookFromTitle } from '../utils/rename-notebook';
 import type { Item } from '../core/items';
 import {
 	NOTEBOOK_EXTENSION,
@@ -74,6 +77,10 @@ export class PdfInkView extends FileView implements ZoomHost {
 	pagesEl!: HTMLElement;
 
 	private statusEl!: HTMLElement;
+	/** Renaming the notebook from its title. */
+	private readonly headerEditor = new HeaderEditor(this, (title) => {
+		void this.renameFromHeader(title);
+	});
 	/** The "no pages" notice of an empty notebook, while it shows. */
 	private emptyEl: HTMLElement | null = null;
 	private toolbar!: PdfInkToolbar;
@@ -330,6 +337,17 @@ export class PdfInkView extends FileView implements ZoomHost {
 				itemsCommitted: (pageKey, items) => {
 					this.growNotebook(pageKey, items);
 				},
+				headerTitleAt: (record, x, y) => {
+					const source = record.geom.source;
+					return (
+						source.kind === 'inserted' &&
+						source.header !== undefined &&
+						boundsContain(headerTitleBox(source.page), x, y)
+					);
+				},
+				editHeader: (record) => {
+					this.headerEditor.open(record, this.pageTheme(record));
+				},
 			},
 		);
 		this.scope = this.ink.scope;
@@ -428,6 +446,37 @@ export class PdfInkView extends FileView implements ZoomHost {
 			this.pageThemes = themes;
 			this.applyTheme();
 		}
+		// So does a change of the header's date format.
+		this.syncPages();
+	}
+
+	/**
+	 * The title header to draw, if this notebook has one. The title is the file's
+	 * name at this moment, so a rename shows as soon as it happens.
+	 */
+	private currentHeader(): HeaderText | undefined {
+		const file = this.file;
+		const header = this.annotations.header;
+		if (!file || !header || !this.isNotebook) return undefined;
+		return headerText(file.path, header, this.host.settings.headerDateFormat);
+	}
+
+	/** Renamed here or anywhere else: the header shows the new name at once. */
+	override async onRename(file: TFile): Promise<void> {
+		await super.onRename(file);
+		this.syncPages();
+	}
+
+	/**
+	 * Rename the notebook to what was typed into its title. Refused, with a
+	 * notice, for a name already taken or one a file cannot have; the title then
+	 * simply shows the old name again, since it is always the file's.
+	 */
+	async renameFromHeader(title: string): Promise<void> {
+		const file = this.file;
+		if (!file || !this.isNotebook) return;
+		await renameNotebookFromTitle(this.app, file, title);
+		this.syncPages();
 	}
 
 	/**
@@ -602,6 +651,8 @@ export class PdfInkView extends FileView implements ZoomHost {
 	}
 
 	applyZoom(zoom: number): void {
+		// The title editor is placed for the old zoom; finish the rename instead.
+		this.headerEditor.close(true);
 		this.pageList?.relayout(zoom);
 		// The selection box is positioned in CSS px, so it has to follow the zoom.
 		this.ink?.refreshSelectionBox();
@@ -630,6 +681,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 		this.composed = composePages(
 			loaded.geometry,
 			this.annotations.insertedPages(),
+			this.currentHeader(),
 		);
 		this.composedSignature = pagesSignature(this.composed);
 		this.toolbar.setPageCount(this.composed.length);
@@ -690,6 +742,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 		const composed = composePages(
 			loaded.geometry,
 			this.annotations.insertedPages(),
+			this.currentHeader(),
 		);
 		const signature = pagesSignature(composed);
 		if (signature === this.composedSignature) return;
@@ -790,6 +843,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 			mode: this.host.settings.exportMode,
 			theme,
 			themes: this.pageThemes,
+			headerDateFormat: this.host.settings.headerDateFormat,
 		});
 	}
 

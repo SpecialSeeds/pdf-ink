@@ -7,6 +7,7 @@ import {
 import { QUICK_COLORS, SIZED_ERASER_RANGE, WIDTH_RANGES } from './core/tools';
 import { PAGE_SIZE_LABELS, isNewPdfPageSize } from './core/new-pdf';
 import { PAGE_TEMPLATES, TEMPLATE_LABELS, isPageTemplate } from './core/templates';
+import { formatHeaderDate, isHeaderDateFormat } from './core/header';
 import { contrastRatio } from './core/color';
 import {
 	DEFAULT_PAGE_THEMES,
@@ -46,12 +47,22 @@ const THEME_LABELS: Record<ThemeName, string> = {
 	dark: 'Dark pages',
 };
 
+/** The setting's description, showing both formats on today's date. */
+function formatExample(): string {
+	const now = Date.now();
+	return `How the date under a notebook title is written: "${formatHeaderDate(now, 'onenote')}" or "${formatHeaderDate(now, 'iso')}".`;
+}
+
 const THEME_KEY_LABELS: Record<PageThemeKey, { name: string; desc: string }> = {
 	paper: { name: 'Paper', desc: 'The page background.' },
 	grid: { name: 'Grid', desc: 'Template lines and dots.' },
 	baseInk: {
 		name: 'Base ink',
 		desc: 'What black and white ink are drawn in. Every other colour shows as you chose it.',
+	},
+	headerMuted: {
+		name: 'Header date',
+		desc: "The date under a notebook's title.",
 	},
 };
 
@@ -207,6 +218,34 @@ export class PdfInkSettingTab extends PluginSettingTab {
 						}
 					});
 			});
+
+		new Setting(containerEl)
+			.setName('Add title header to new notebooks')
+			.setDesc(
+				"Notebooks and boards start with the file's name as a title, the date and time they were made, and a rule beneath. Double-click the title to rename the file.",
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.addTitleHeader).onChange((value) => {
+					this.plugin.settings.addTitleHeader = value;
+					this.save();
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName('Header date format')
+			.setDesc(formatExample())
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption('onenote', 'Weekday, date and time in words')
+					.addOption('iso', 'Numeric: 2026-10-03 14:02')
+					.setValue(this.plugin.settings.headerDateFormat)
+					.onChange((value) => {
+						if (isHeaderDateFormat(value)) {
+							this.plugin.settings.headerDateFormat = value;
+							this.save();
+						}
+					}),
+			);
 	}
 
 	private addDiagnosticsSection(): void {

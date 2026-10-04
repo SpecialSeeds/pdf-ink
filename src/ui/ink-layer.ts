@@ -207,7 +207,14 @@ export interface InkLayerOptions {
 	 * Anything it adds joins the same undo step.
 	 */
 	itemsCommitted(record: PageRecord, items: readonly Item[]): void;
+	/** Whether (x, y), in PDF space, is on a notebook header's title. */
+	headerTitleAt?(record: PageRecord, x: number, y: number): boolean;
+	/** The title was double tapped: open it for renaming. */
+	editHeader?(record: PageRecord): void;
 }
+
+/** What the double-tap tracker calls a press on the header's title. */
+const HEADER_TAP = '(header title)';
 
 /**
  * Pointer capture for drawing and erasing.
@@ -701,6 +708,18 @@ export class InkLayer {
 
 		const record = this.options.resolveRecord(evt.target);
 		if (!record || !isDrawable(record)) return;
+
+		// The header's title is not ink: no tool draws on it, erases it or
+		// selects it. A double tap opens it for renaming the notebook.
+		if (this.options.headerTitleAt) {
+			const [x, y] = this.toPdf(evt, record, record.inkCanvasEl.getBoundingClientRect());
+			if (this.options.headerTitleAt(record, x, y)) {
+				evt.preventDefault();
+				if (this.isDoubleTap(HEADER_TAP)) this.options.editHeader?.(record);
+				else this.noteTap(HEADER_TAP);
+				return;
+			}
+		}
 
 		evt.preventDefault();
 		this.gesturePointerType = evt.pointerType;
