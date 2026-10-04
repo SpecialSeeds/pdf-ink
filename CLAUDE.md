@@ -77,6 +77,34 @@ PageTemplate = "blank" | "lined" | "lined7.5" | "lined10" | "grid5" | "dot"
 - Stroke gains optional `taper: { start: boolean, end: boolean }` (default both
   true). Eraser fragments set taper false on any end created by a cut.
 
+## Notebooks (.inknote)
+- A `.inknote` file IS the v4 document (same schema, no sidecar). It has no PDF, so
+  every page is an inserted page in gap -1 (`afterPdfPage: -1`).
+- Never rename or delete an open notebook to save it: write `.tmp`, copy the notebook
+  as opened to `.bak` once per session, then `vault.modify` it in place and drop the
+  `.tmp`. Recovery is by content, never by rename. An empty file is an empty
+  notebook, not a corrupt one.
+- Ink near the bottom of the last page appends a page in the SAME undo step as the
+  ink (`InkHistory.pushJoined`), so one undo removes both.
+- A notebook has `docId` (uuid), set at creation and assigned on load if missing.
+  Merges keep ours; reconcile adopts a docId reassigned on disk. Any path that
+  creates a notebook from another must give it a new docId (`withNewDocId`).
+- `Notes 2.inknote` beside `Notes.inknote` with the SAME docId is offered for
+  merging in a modal (Merge: merge then trash; Keep separate: new docId on the
+  copy). Never merge a numbered copy silently; a different or missing docId is
+  never asked about.
+
+## Page themes
+- Theme is render-time only: never rewrite a stored colour. Only base ink (near
+  black or near white, per channel) maps to the theme's base ink; every other colour
+  renders exactly as stored.
+- Original PDF pages always use the light mapping, whatever the view's theme.
+- Default colours live in ONE place, `DEFAULT_PAGE_THEMES` in src/core/theme.ts.
+  Settings store only overrides; `effectiveThemes` lays them over the defaults. The
+  screen and the exporter both use the effective themes.
+- Highlighter blend comes from the paper's luminance (multiply on light, screen on
+  dark), never from the theme's name.
+
 ## Workflow
 - Small commits per feature. Run `npm run build` and fix all type errors before finishing.
 - Pure geometry and serialization logic goes in `src/core/` with unit tests (vitest).
