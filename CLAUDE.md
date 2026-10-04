@@ -119,6 +119,19 @@ PageTemplate = "blank" | "lined" | "lined7.5" | "lined10" | "grid5" | "dot"
 - Export: a board is one PDF page at its size. A side over 14,400 pt (PDF's limit)
   is scaled uniformly to fit, and the export notice says so.
 
+## OneNote importer (tools/onenote-pdf-import)
+- A Node command-line tool, never bundled into the plugin. It may use fs and
+  pdfjs-dist (a devDependency used only by the tool and tests); the plugin still
+  uses Obsidian's `loadPdfJs()` only.
+- OneNote exports draw in CSS px (a 20 pt title is 26.67 units); the importer
+  converts to points. The Mac export also scales the canvas down to fit the page,
+  and only its text's transform says by how much; that scale is undone, per axis.
+- Mac exports repeat nearly all ink on every sliced page. Each page's shift is
+  found by matching repeated paths, never assumed from the clip window (the slices
+  are 688.007 apart but the windows are 686 tall).
+- Imported ink is `path` items in its exact exported colours, simplified to
+  0.1 pt by default (`--simplify`) to keep files a sensible size.
+
 ## Page themes
 - Theme is render-time only: never rewrite a stored colour. Only base ink (near
   black or near white, per channel) maps to the theme's base ink; every other colour
