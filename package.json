@@ -14,6 +14,9 @@
 	},
 	"keywords": [],
 	"license": "0-BSD",
+	"engines": {
+		"node": ">=22"
+	},
 	"author": "specialseeds",
 	"repository": {
 		"type": "git",
