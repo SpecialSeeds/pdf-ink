@@ -52,13 +52,23 @@ jobs:
                       main.js
                       styles.css
 
+            # Published straight away, titled with the tag. Notes come from
+            # release-notes/<tag>.md when that file is in the tagged commit, and
+            # are generated from the commits since the previous release otherwise.
             - name: Create release
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   tag="${GITHUB_REF#refs/tags/}"
+                  notes_file="release-notes/${tag}.md"
+
+                  if [ -f "$notes_file" ]; then
+                    notes=(--notes-file "$notes_file")
+                  else
+                    notes=(--generate-notes)
+                  fi
 
                   gh release create "$tag" \
-                    --title="$tag" \
-                    --draft \
+                    --title "$tag" \
+                    "${notes[@]}" \
                     main.js manifest.json styles.css
