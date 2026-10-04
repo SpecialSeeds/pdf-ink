@@ -53,4 +53,18 @@ export default defineConfig(
 			'obsidianmd/no-nodejs-modules': 'off',
 		},
 	},
+	{
+		// The OneNote importer is a command-line tool run under node on a desktop.
+		// It is never bundled into the plugin, so it reads and writes files
+		// directly and reports to the terminal.
+		files: ['tools/**/*.ts'],
+		languageOptions: {
+			globals: { ...globals.node },
+		},
+		rules: {
+			'obsidianmd/no-nodejs-modules': 'off',
+			'obsidianmd/rule-custom-message': 'off',
+			'no-console': 'off',
+		},
+	},
 );

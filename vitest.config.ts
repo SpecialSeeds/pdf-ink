@@ -37,7 +37,7 @@ export default defineConfig({
 		 * `.obsidian/plugins/pdf-ink` — so vitest's default `**` glob walks into
 		 * them and discovers every test file three times over.
 		 */
-		include: ['src/**/*.test.ts'],
+		include: ['src/**/*.test.ts', 'tools/**/*.test.ts'],
 		exclude: ['node_modules', 'pdf-ink', '.obsidian'],
 	},
 });
