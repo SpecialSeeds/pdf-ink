@@ -1,10 +1,20 @@
 import { type InsertedPage, pageOrigin } from '../core/pages';
 import {
+	HEADER_DATE_SIZE,
+	HEADER_RULE_WIDTH,
+	HEADER_TITLE_SIZE,
+	type HeaderText,
+	headerLayout,
+	reserveHeaderBand,
+} from '../core/header';
+import {
+	type TemplateGeometry,
 	minorGridAlpha,
 	templateGeometry,
 	templateSpacing,
 	translateTemplate,
 } from '../core/templates';
+import { TEXT_FONT_STACK } from './item-renderers';
 import type { PageTheme } from '../core/theme';
 import type { Matrix, PageViewport } from '../types/pdfjs';
 
@@ -32,6 +42,8 @@ export function paintInsertedPage(
 	cssHeight: number,
 	transform: Matrix,
 	theme: PageTheme,
+	/** A notebook's title header, on its first page. */
+	header?: HeaderText,
 ): void {
 	// Resizing the canvas reset the transform, so it has to be re-applied here.
 	ctx.setTransform(...transform);
@@ -39,11 +51,61 @@ export function paintInsertedPage(
 	ctx.fillRect(0, 0, cssWidth, cssHeight);
 
 	const origin = pageOrigin(page);
-	const geometry = translateTemplate(
+	const ruling = translateTemplate(
 		templateGeometry(page.template, page.size.width, page.size.height),
 		origin.x,
 		origin.y,
 	);
+	// The header keeps its band clear: the writing area starts below it.
+	const geometry = header ? reserveHeaderBand(ruling, headerLayout(page).bandBottom) : ruling;
+	paintRuling(ctx, viewport, page, geometry, theme);
+	if (header) paintHeader(ctx, viewport, page, header, theme);
+}
+
+/**
+ * Title, date and rule, in the page theme: the title in its base ink, the date
+ * in its muted grey, the rule in its grid colour. The exporter draws the same
+ * layout from {@link headerLayout}.
+ */
+function paintHeader(
+	ctx: CanvasRenderingContext2D,
+	viewport: PageViewport,
+	page: InsertedPage,
+	header: HeaderText,
+	theme: PageTheme,
+): void {
+	const layout = headerLayout(page);
+	const scale = viewport.scale;
+	ctx.save();
+	ctx.textBaseline = 'alphabetic';
+	ctx.fillStyle = theme.baseInk;
+	ctx.font = `${String(HEADER_TITLE_SIZE * scale)}px ${TEXT_FONT_STACK}`;
+	const [tx, ty] = viewport.convertToViewportPoint(layout.x, layout.titleBaseline);
+	ctx.fillText(header.title, tx, ty);
+
+	ctx.fillStyle = theme.headerMuted;
+	ctx.font = `${String(HEADER_DATE_SIZE * scale)}px ${TEXT_FONT_STACK}`;
+	const [dx, dy] = viewport.convertToViewportPoint(layout.x, layout.dateBaseline);
+	ctx.fillText(header.date, dx, dy);
+
+	ctx.strokeStyle = theme.grid;
+	ctx.lineWidth = Math.max(MIN_SCREEN_WIDTH, HEADER_RULE_WIDTH * scale);
+	const [x1, y1] = viewport.convertToViewportPoint(layout.x, layout.ruleY);
+	const [x2, y2] = viewport.convertToViewportPoint(layout.ruleX2, layout.ruleY);
+	ctx.beginPath();
+	ctx.moveTo(x1, y1);
+	ctx.lineTo(x2, y2);
+	ctx.stroke();
+	ctx.restore();
+}
+
+function paintRuling(
+	ctx: CanvasRenderingContext2D,
+	viewport: PageViewport,
+	page: InsertedPage,
+	geometry: TemplateGeometry,
+	theme: PageTheme,
+): void {
 	if (geometry.lines.length === 0 && geometry.dots.length === 0) return;
 
 	const scale = viewport.scale;

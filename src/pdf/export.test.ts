@@ -5,6 +5,8 @@ import { BlendMode, PDFDocument, StandardFonts, degrees } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 import type { Item, PathItem, ShapeItem, TextItem } from '../core/items';
 import { pathCommands } from '../core/path';
+import { HEADER_BAND, HEADER_RULE } from '../core/header';
+import { DEFAULT_PAGE_THEMES } from '../core/theme';
 import type { InsertedPage } from '../core/pages';
 import type { PageTemplate } from '../core/templates';
 import { layoutTextLines, wrapText } from '../core/text-layout';
@@ -953,4 +955,77 @@ describe('board export', () => {
 		);
 		expect(scaledNote([])).toBe('');
 	});
+});
+
+describe('notebook header export', () => {
+	const notebookPage: InsertedPage = {
+		id: 'n1',
+		afterPdfPage: -1,
+		sortKey: 'a0',
+		template: 'grid5',
+		size: { width: 612, height: 792 },
+		updatedAt: 0,
+	};
+	const second: InsertedPage = { ...notebookPage, id: 'n2', sortKey: 'a1' };
+	const header = { title: 'Week 2 forces', date: 'Saturday, October 3, 2026  2:02 PM' };
+
+	/** Text and fill colours drawn on each page, via pdf.js. */
+	async function drawn(bytes: Uint8Array): Promise<{ text: string; fills: string[]; lineYs: number[] }[]> {
+		const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+		const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+		const pages: { text: string; fills: string[]; lineYs: number[] }[] = [];
+		for (let n = 1; n <= doc.numPages; n++) {
+			const page = await doc.getPage(n);
+			const content = await page.getTextContent();
+			const list = await page.getOperatorList();
+			const fills: string[] = [];
+			const lineYs: number[] = [];
+			list.fnArray.forEach((fn, i) => {
+				const args = list.argsArray[i] as unknown[];
+				if (fn === pdfjs.OPS.setFillRGBColor) fills.push(String(args[0]));
+				if (fn === pdfjs.OPS.constructPath && args[0] === pdfjs.OPS.stroke) {
+					// A stroked line: pdf-lib writes it as move, move, line. Every
+					// point's y, so a line reaching into the band is caught.
+					const data = Array.from((args[1] as ArrayLike<number>[])[0] ?? []);
+					for (let k = 0; k + 2 < data.length; k += 3) lineYs.push(data[k + 2] ?? 0);
+				}
+			});
+			pages.push({
+				text: content.items.map((item) => ('str' in item ? item.str : '')).join(' '),
+				fills,
+				lineYs,
+			});
+		}
+		return pages;
+	}
+
+	for (const theme of ['light', 'dark'] as const) {
+		it(`draws the title, date and rule on page 1 only, in the ${theme} theme`, async () => {
+			const bytes = await exportAnnotatedPdf({
+				pages: {},
+				insertedPages: [notebookPage, second],
+				theme,
+				header,
+			});
+			const [first, other] = await drawn(bytes);
+			expect(first?.text).toContain(header.title);
+			// pdf.js reads OneNote's double space back as one.
+			expect(first?.text).toContain(header.date.replace(/\s+/g, ' '));
+			expect(other?.text).not.toContain(header.title);
+
+			const colours = DEFAULT_PAGE_THEMES[theme];
+			// Title in base ink, date in the muted grey.
+			expect(first?.fills).toContain(colours.baseInk);
+			expect(first?.fills).toContain(colours.headerMuted);
+
+			// On page 1 nothing is ruled in the band but the header's own rule;
+			// page 2 is ruled right up to its top margin.
+			const band = 792 - HEADER_BAND;
+			const rule = 792 - HEADER_RULE;
+			const inBand = (first?.lineYs ?? []).filter((y) => y > band + 0.01 && Math.abs(y - rule) > 0.01);
+			expect(inBand).toEqual([]);
+			expect(first?.lineYs).toContain(rule);
+			expect((other?.lineYs ?? []).some((y) => y > band + 0.01)).toBe(true);
+		});
+	}
 });

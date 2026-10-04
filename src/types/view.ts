@@ -1,3 +1,4 @@
+import type { HeaderText } from '../core/header';
 import type { CssRect } from '../core/detail-region';
 import type { InsertedPage, PageKey } from '../core/pages';
 import type { PDFPageProxy, PageViewport, RenderTask } from './pdfjs';
@@ -17,7 +18,12 @@ export type PageSource =
 			readonly pdfIndex: number;
 			readonly page: PDFPageProxy;
 		}
-	| { readonly kind: 'inserted'; readonly page: InsertedPage };
+	| {
+			readonly kind: 'inserted';
+			readonly page: InsertedPage;
+			/** A notebook's title header, on its first page only. */
+			readonly header?: HeaderText;
+		};
 
 /**
  * A page's intrinsic metadata: what it is and how big, never where it sits.

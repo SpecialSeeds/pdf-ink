@@ -307,3 +307,17 @@ describe('page theme settings', () => {
 		expect(mergeSettings({ exportTheme: 'sepia' }).exportTheme).toBe('light');
 	});
 });
+
+describe('title header settings', () => {
+	it('add a header to new notebooks, OneNote style, by default', () => {
+		expect(DEFAULT_SETTINGS.addTitleHeader).toBe(true);
+		expect(DEFAULT_SETTINGS.headerDateFormat).toBe('onenote');
+	});
+
+	it('keep a stored choice and drop junk', () => {
+		const merged = mergeSettings({ addTitleHeader: false, headerDateFormat: 'iso' });
+		expect(merged.addTitleHeader).toBe(false);
+		expect(merged.headerDateFormat).toBe('iso');
+		expect(mergeSettings({ headerDateFormat: 'roman' }).headerDateFormat).toBe('onenote');
+	});
+});

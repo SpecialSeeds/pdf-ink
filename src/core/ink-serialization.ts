@@ -13,6 +13,7 @@
  */
 
 import type { BaseRef } from './base-layer';
+import { type NotebookHeader, isHeaderDateFormat } from './header';
 import { DEFAULT_PRESSURE } from './coords';
 import { FIRST_KEY, isValidKey } from './fracindex';
 import {
@@ -312,6 +313,7 @@ export function parseInkData(raw: string): ParseResult {
 	// Only a value this build knows is kept: an unknown layout reads as pages.
 	const layout = root['layout'] === 'board' ? ('board' as const) : undefined;
 	const base = parseBaseRef(root['base']);
+	const header = parseHeader(root['header']);
 	return {
 		ok: true,
 		data: {
@@ -321,6 +323,7 @@ export function parseInkData(raw: string): ParseResult {
 			...(typeof docId === 'string' && docId.length > 0 ? { docId } : {}),
 			...(layout === undefined ? {} : { layout }),
 			...(base ? { base } : {}),
+			...(header ? { header } : {}),
 		},
 		dropped,
 		sourceVersion: version,
@@ -386,6 +389,16 @@ function parseInsertedPage(value: unknown, stamp: number): InsertedPage | null {
 		updatedAt,
 	};
 	return deletedAt === undefined ? page : { ...page, deletedAt };
+}
+
+/** A notebook header, or null when absent or without a usable creation time. */
+function parseHeader(value: unknown): NotebookHeader | null {
+	if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+	const raw = value as Record<string, unknown>;
+	const createdAt = raw['createdAt'];
+	if (!isFiniteNumber(createdAt)) return null;
+	const dateFormat = raw['dateFormat'];
+	return isHeaderDateFormat(dateFormat) ? { createdAt, dateFormat } : { createdAt };
 }
 
 /** A base layer reference, or null when absent or not a SHA-256 hex digest. */

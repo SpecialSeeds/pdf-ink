@@ -53,6 +53,7 @@ export function rasterise(
 			viewport.height,
 			transform,
 			theme,
+			source.header,
 		);
 		return { canvas, task: { promise: DONE, cancel: () => undefined } };
 	}

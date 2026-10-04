@@ -205,6 +205,8 @@ export function mergeInkData(ours: InkData, theirs: InkData): MergeResult {
 	const layout = ours.layout ?? theirs.layout;
 	// The base layer is fixed at import, so both sides name the same one.
 	const base = ours.base ?? theirs.base;
+	// A header is added once and never edited, so either side's is the same one.
+	const header = ours.header ?? theirs.header;
 	const data: InkData = {
 		version: INK_DATA_VERSION,
 		pages,
@@ -212,6 +214,7 @@ export function mergeInkData(ours: InkData, theirs: InkData): MergeResult {
 		...(docId === undefined ? {} : { docId }),
 		...(layout === undefined ? {} : { layout }),
 		...(base === undefined ? {} : { base }),
+		...(header === undefined ? {} : { header }),
 	};
 	return {
 		data,
@@ -294,6 +297,7 @@ export function pruneTombstones(
 		...(data.docId === undefined ? {} : { docId: data.docId }),
 		...(data.layout === undefined ? {} : { layout: data.layout }),
 		...(data.base === undefined ? {} : { base: data.base }),
+		...(data.header === undefined ? {} : { header: data.header }),
 	};
 }
 

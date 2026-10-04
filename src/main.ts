@@ -40,7 +40,7 @@ export default class PdfInkPlugin extends Plugin {
 			void createPdf(this.app, this.settings);
 		});
 		this.addRibbonIcon(NOTEBOOK_ICON, 'New notebook', () => {
-			void createNotebook(this.app);
+			void createNotebook(this.app, { titleHeader: this.settings.addTitleHeader });
 		});
 
 		registerCommands(this);

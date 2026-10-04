@@ -27,11 +27,13 @@ export interface PageTheme {
 	readonly grid: string;
 	/** What near-black and near-white ink renders as. */
 	readonly baseInk: string;
+	/** A notebook header's date line: quieter than the title, still legible. */
+	readonly headerMuted: string;
 }
 
 export type PageThemeKey = keyof PageTheme;
 
-export const PAGE_THEME_KEYS: readonly PageThemeKey[] = ['paper', 'grid', 'baseInk'];
+export const PAGE_THEME_KEYS: readonly PageThemeKey[] = ['paper', 'grid', 'baseInk', 'headerMuted'];
 
 export type PageThemes = Readonly<Record<ThemeName, PageTheme>>;
 
@@ -40,9 +42,11 @@ export type PageThemes = Readonly<Record<ThemeName, PageTheme>>;
  * "reset to default" returns to.
  */
 export const DEFAULT_PAGE_THEMES: PageThemes = {
-	light: { paper: '#ffffff', grid: '#d5e1ec', baseInk: '#1a1a1a' },
-	// Dark grey rather than black, and white rather than grey ink.
-	dark: { paper: '#1e1e1e', grid: '#2c3a4a', baseInk: '#ffffff' },
+	// The light header grey is OneNote's own date colour.
+	light: { paper: '#ffffff', grid: '#d5e1ec', baseInk: '#1a1a1a', headerMuted: '#767676' },
+	// Dark grey rather than black, and white rather than grey ink. OneNote's
+	// grey would be too faint on dark paper, so the date is lighter there.
+	dark: { paper: '#1e1e1e', grid: '#2c3a4a', baseInk: '#ffffff', headerMuted: '#9a9a9a' },
 };
 
 /**

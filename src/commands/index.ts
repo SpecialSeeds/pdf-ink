@@ -46,7 +46,7 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 		name: 'New notebook',
 		icon: NOTEBOOK_ICON,
 		callback: () => {
-			void createNotebook(plugin.app);
+			void createNotebook(plugin.app, { titleHeader: plugin.settings.addTitleHeader });
 		},
 	});
 
@@ -55,7 +55,7 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 		name: 'New board',
 		icon: BOARD_ICON,
 		callback: () => {
-			void createBoard(plugin.app);
+			void createBoard(plugin.app, { titleHeader: plugin.settings.addTitleHeader });
 		},
 	});
 
@@ -254,6 +254,7 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 						mode: plugin.settings.exportMode,
 						theme,
 						themes: effectiveThemes(plugin.settings.pageThemes),
+						headerDateFormat: plugin.settings.headerDateFormat,
 					});
 				})();
 			}

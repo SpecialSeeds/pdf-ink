@@ -26,6 +26,7 @@ export const INK_DATA_VERSION = 5;
 export const OLDEST_SUPPORTED_VERSION = 1;
 
 import type { BaseRef } from './base-layer';
+import type { NotebookHeader } from './header';
 import type { InsertedPage, PageKey } from './pages';
 
 /** Axis-aligned box in PDF user space. */
@@ -165,6 +166,11 @@ export interface InkData {
 	 * here by content hash. See src/core/base-layer.ts.
 	 */
 	readonly base?: BaseRef;
+	/**
+	 * A notebook's title header: when it was created and how to write that. The
+	 * title itself is the file's name, never stored. See src/core/header.ts.
+	 */
+	readonly header?: NotebookHeader;
 }
 
 export type DocumentLayout = 'board';

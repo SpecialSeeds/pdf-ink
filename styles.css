@@ -978,3 +978,27 @@
 	white-space: pre-wrap;
 	word-break: break-word;
 }
+
+/*
+ * Renaming a notebook from its title: an input laid over the drawn title, in
+ * the same font and size, so the text does not jump as editing starts.
+ */
+.pdf-ink-header-editor {
+	position: absolute;
+	z-index: 6;
+	left: var(--pdf-ink-header-x, 0);
+	top: var(--pdf-ink-header-y, 0);
+	width: var(--pdf-ink-header-w, 200px);
+	height: auto;
+	padding: 0;
+	border: none;
+	border-radius: 0;
+	outline: 1px dashed var(--text-faint);
+	background: transparent;
+	color: var(--pdf-ink-header-color, inherit);
+	font-family: var(--pdf-ink-header-font, inherit);
+	font-size: var(--pdf-ink-header-size, 20px);
+	line-height: 1.3;
+	-webkit-user-select: text;
+	user-select: text;
+}
