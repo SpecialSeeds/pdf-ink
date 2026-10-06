@@ -168,6 +168,21 @@ PageTemplate = "blank" | "lined" | "lined7.5" | "lined10" | "grid5" | "dot"
 - Imported ink is `path` items in its exact exported colours, simplified to
   0.1 pt by default (`--simplify`) to keep files a sensible size.
 
+## Transcription
+- Transcripts are a hidden INDEX, never a destination: search results, opened
+  transcripts (setting on) and [[X.inknote#page=N&block=BX]] links all land on the
+  handwriting in the ink view. Notebooks, PDFs, sidecars and bases are never
+  modified by any of it.
+- Blocks (src/core/blocks.ts) are deterministic: the same items in any order give
+  the same ids. Every caller uses `segmentPage`, whose 5-20 target scales with page
+  area, so the render, a transcript's boxes and a live lookup agree on what B7 is.
+- Transcript paths mirror the vault under the transcript folder; a notebook drops
+  `.inknote`, a PDF keeps `.pdf` (src/core/transcripts.ts). Renames and moves follow,
+  deletes trash; the transcript's `source` frontmatter is repointed.
+- The render folder is a dot folder, so it is reached only through the vault
+  adapter. When a transcript is written, its source's block boxes are copied into
+  its `blocks` frontmatter, so lookups never need the renders.
+
 ## Page themes
 - Theme is render-time only: never rewrite a stored colour. Only base ink (near
   black or near white, per channel) maps to the theme's base ink; every other colour

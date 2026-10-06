@@ -68,3 +68,25 @@ export function debounce<T extends unknown[], V>(
 
 	return debounced;
 }
+
+/** Enough of the file classes for `instanceof` checks. */
+export class TAbstractFile {
+	path = '';
+	name = '';
+}
+export class TFile extends TAbstractFile {
+	basename = '';
+	extension = '';
+	stat = { mtime: 0, ctime: 0, size: 0 };
+}
+export class TFolder extends TAbstractFile {
+	isRoot(): boolean {
+		return this.path === '' || this.path === '/';
+	}
+}
+
+export function normalizePath(path: string): string {
+	return path.replace(/\\/g, '/').replace(/\/{2,}/g, '/').replace(/^\/+|\/+$/g, '');
+}
+
+export const Platform = { isMobile: false, isDesktop: true };

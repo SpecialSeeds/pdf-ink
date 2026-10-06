@@ -1,4 +1,4 @@
-import type { Plugin } from 'obsidian';
+import { Notice, type Plugin } from 'obsidian';
 import { BOARD_ICON, NOTEBOOK_ICON, PDF_INK_ICON } from '../constants';
 import {
 	openInInkViewSafely,
@@ -9,7 +9,9 @@ import { PdfInkView } from '../ui/pdf-ink-view';
 import { effectiveThemes } from '../core/theme';
 import { resolveExportTheme } from '../ui/export-theme-modal';
 import { createBoard, createNotebook } from '../utils/create-notebook';
-import { convertImportedTitles } from '../ui/convert-titles-modal';
+import { FolderPicker, convertImportedTitles } from '../ui/convert-titles-modal';
+import { NOTE_SEARCH_ICON } from '../ui/search-view';
+import { removeFolder, runRenderCommand } from '../transcription/render';
 import { createPdf } from '../utils/create-pdf';
 import { exportAnnotatedCopy } from '../utils/export-pdf';
 import { resolvePdfTarget } from '../utils/pdf-target';
@@ -66,6 +68,43 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 		icon: 'heading',
 		callback: () => {
 			convertImportedTitles(plugin.app);
+		},
+	});
+
+	plugin.addCommand({
+		id: 'render-for-transcription',
+		name: 'Render notebooks for transcription',
+		icon: 'scan-text',
+		callback: () => {
+			new FolderPicker(
+				plugin.app,
+				(folder) => {
+					void runRenderCommand(plugin.app, folder, plugin.settings);
+				},
+				'Render notebooks for transcription in which folder?',
+			).open();
+		},
+	});
+
+	plugin.addCommand({
+		id: 'clear-transcription-renders',
+		name: 'Clear transcription renders',
+		icon: 'trash-2',
+		callback: () => {
+			void (async () => {
+				const folder = plugin.settings.renderFolder;
+				const removed = await removeFolder(plugin.app.vault.adapter, folder);
+				new Notice(removed ? `Removed ${folder}.` : 'There were no transcription renders to clear.');
+			})();
+		},
+	});
+
+	plugin.addCommand({
+		id: 'search-notes',
+		name: 'Search notes',
+		icon: NOTE_SEARCH_ICON,
+		callback: () => {
+			void plugin.openNoteSearch();
 		},
 	});
 

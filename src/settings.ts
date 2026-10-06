@@ -9,6 +9,7 @@ import { PAGE_SIZE_LABELS, isNewPdfPageSize } from './core/new-pdf';
 import { PAGE_TEMPLATES, TEMPLATE_LABELS, isPageTemplate } from './core/templates';
 import { formatHeaderDate, isHeaderDateFormat } from './core/header';
 import { DEFAULT_TINT_COLOR, TINT_STRENGTH_RANGE } from './core/paper-tint';
+import { DEFAULT_RENDER_FOLDER, DEFAULT_TRANSCRIPT_FOLDER, normalizeFolder } from './core/transcripts';
 import { contrastRatio } from './core/color';
 import {
 	DEFAULT_PAGE_THEMES,
@@ -41,6 +42,8 @@ export interface PdfInkHost {
 	saveSettings(): Promise<void>;
 	/** The view type that shows a PDF without ink, for leaving the ink view. */
 	readonly plainPdfViewType: string;
+	/** Show the note search, searching transcripts of the handwriting. */
+	openNoteSearch(): Promise<void>;
 }
 
 const THEME_LABELS: Record<ThemeName, string> = {
@@ -92,6 +95,7 @@ export class PdfInkSettingTab extends PluginSettingTab {
 		this.addNewPdfSection();
 		this.addPageThemeSection();
 		this.addExportSection();
+		this.addTranscriptionSection();
 		this.addDiagnosticsSection();
 	}
 
@@ -503,6 +507,63 @@ export class PdfInkSettingTab extends PluginSettingTab {
 					this.plugin.settings.pageThemes = emptyThemeOverrides();
 					this.save();
 					this.display();
+				}),
+			);
+	}
+
+	private addTranscriptionSection(): void {
+		const { containerEl } = this;
+		new Setting(containerEl).setName('Transcription').setHeading();
+
+		new Setting(containerEl)
+			.setName('Transcript folder')
+			.setDesc(
+				'Where transcripts of your handwriting live, as a search index. Each mirrors its notebook or PDF path inside this folder.',
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder(DEFAULT_TRANSCRIPT_FOLDER)
+					.setValue(this.plugin.settings.transcriptFolder)
+					.onChange((value) => {
+						this.plugin.settings.transcriptFolder = normalizeFolder(value, DEFAULT_TRANSCRIPT_FOLDER);
+						this.save();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Render folder')
+			.setDesc(
+				'Where pages are rendered as images for transcription. A name starting with a dot keeps it out of the file explorer.',
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder(DEFAULT_RENDER_FOLDER)
+					.setValue(this.plugin.settings.renderFolder)
+					.onChange((value) => {
+						this.plugin.settings.renderFolder = normalizeFolder(value, DEFAULT_RENDER_FOLDER);
+						this.save();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Open sources instead of transcripts')
+			.setDesc(
+				"Opening a transcript, from Obsidian's search or a link, opens its notebook or PDF instead, at the handwriting the line came from.",
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.openSourcesInsteadOfTranscripts).onChange((value) => {
+					this.plugin.settings.openSourcesInsteadOfTranscripts = value;
+					this.save();
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName('Delete renders after transcription')
+			.setDesc("Remove a notebook's page images once its transcript is up to date with it.")
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.deleteRendersAfterTranscription).onChange((value) => {
+					this.plugin.settings.deleteRendersAfterTranscription = value;
+					this.save();
 				}),
 			);
 	}

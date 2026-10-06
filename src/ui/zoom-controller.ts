@@ -125,6 +125,12 @@ export class ZoomController {
 		this.setZoom(this.computeFitPage(), { kind: 'fit-page' });
 	}
 
+	/** Set a zoom outright, as a fixed zoom: what showing a found block needs. */
+	zoomTo(zoom: number): void {
+		if (this.locked) return;
+		this.setZoom(zoom, { kind: 'fixed', zoom: 0 });
+	}
+
 	/** Re-fit after a pane or window resize, but only while in a fit mode. */
 	recomputeFit(): void {
 		if (this.mode.kind === 'fixed') return;

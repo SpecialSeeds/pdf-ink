@@ -21,13 +21,15 @@ export function convertImportedTitles(app: App): void {
 	}).open();
 }
 
-class FolderPicker extends FuzzySuggestModal<TFolder> {
+/** Choose a folder of the vault, the root included. */
+export class FolderPicker extends FuzzySuggestModal<TFolder> {
 	constructor(
 		app: App,
 		private readonly chosen: (folder: TFolder) => void,
+		placeholder = 'Convert imported titles to headers in which folder?',
 	) {
 		super(app);
-		this.setPlaceholder('Convert imported titles to headers in which folder?');
+		this.setPlaceholder(placeholder);
 	}
 
 	getItems(): TFolder[] {

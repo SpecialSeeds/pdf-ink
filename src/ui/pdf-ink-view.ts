@@ -17,6 +17,17 @@ import {
 import { maxBaseHeight, maxBaseWidth } from '../core/layout';
 import { type Bounds, boundsContain, itemBounds } from '../core/hit-test';
 import { grownBoardPage } from '../core/board';
+import { type BlockBox, blockBox, segmentPage } from '../core/blocks';
+import { type InkTarget, blockBoxFrom, parseInkSubpath, transcriptPathFor } from '../core/transcripts';
+
+/** A place in the handwriting to show: a page, and a block on it by id or box. */
+export interface RevealTarget extends InkTarget {
+	/** `[x, y, w, h]` in PDF space, when already known. */
+	readonly box?: BlockBox;
+}
+
+/** How long a found block stays outlined. */
+const FLASH_MS = 1500;
 import { paperTintStyle } from '../core/paper-tint';
 import { type HeaderText, headerText, headerTitleBox } from '../core/header';
 import { HeaderEditor } from './header-editor';
@@ -64,6 +75,7 @@ import { ZoomController, type ZoomHost } from './zoom-controller';
 import { DprWatcher } from './dpr-watcher';
 import { InkController } from './ink-controller';
 import { attachZoomGestures } from './zoom-gestures';
+import { frontmatterOf } from '../transcription/frontmatter';
 
 /**
  * A PDF viewer with an ink layer stacked over every page.
@@ -134,6 +146,8 @@ export class PdfInkView extends FileView implements ZoomHost {
 	 * the wrong page as soon as anything has been inserted above it.
 	 */
 	private pendingPageKey: PageKey | null = null;
+	/** A place to show once the document is mounted. */
+	private pendingReveal: RevealTarget | null = null;
 
 	/**
 	 * Light or dark notebook and inserted pages, for this tab. Restored from the
@@ -754,6 +768,107 @@ export class PdfInkView extends FileView implements ZoomHost {
 			// which is better than refusing to restore the tab at all.
 			if (at >= 0) list.scrollToPage(at);
 		}
+		// A search result, transcript or link asked for a place in the handwriting.
+		const reveal = this.pendingReveal;
+		this.pendingReveal = null;
+		if (reveal) this.reveal(reveal);
+	}
+
+	/**
+	 * Show a place in the handwriting: scroll to the page, zoom out if the block
+	 * would not fit, centre it, and flash its outline. Waits for the document
+	 * if it is still loading.
+	 */
+	requestReveal(target: RevealTarget): void {
+		if (this.pageList) this.reveal(target);
+		else this.pendingReveal = target;
+	}
+
+	/** A link into this file: `#page=N`, or `#page=N&block=BX`. */
+	override setEphemeralState(state: unknown): void {
+		super.setEphemeralState(state);
+		const subpath = (state as { subpath?: unknown } | null)?.subpath;
+		if (typeof subpath !== 'string') return;
+		const target = parseInkSubpath(subpath);
+		if (target) this.requestReveal(target);
+	}
+
+	private reveal(target: RevealTarget): void {
+		const list = this.pageList;
+		if (!list || this.composed.length === 0) return;
+		const index = Math.min(Math.max(1, target.page), this.composed.length) - 1;
+		const geom = this.composed[index];
+		if (!geom) return;
+		const box = target.box ?? (target.block ? this.blockBoxFor(index, target.block) : null);
+		if (!box) {
+			list.scrollToPage(index);
+			return;
+		}
+
+		// Zoom out only as far as the block needs to fit, with a margin.
+		const [x, y, w, h] = box;
+		const pageBox = list.getLayout().pages[index];
+		const scale = pageBox?.scale ?? geom.baseViewport.scale;
+		const room = { w: this.scrollEl.clientWidth * 0.9, h: this.scrollEl.clientHeight * 0.8 };
+		const fit = Math.min(room.w / Math.max(1, w * scale), room.h / Math.max(1, h * scale));
+		if (fit < 1) this.zoom.zoomTo(this.zoom.getZoom() * fit);
+
+		const laid = list.getLayout().pages[index];
+		const record = list.recordAt(index);
+		if (!laid || !record) return;
+		const viewport = geom.baseViewport.clone({ scale: laid.scale });
+		const [left = 0, top = 0] = viewport.convertToViewportPoint(x, y + h);
+		const [right = 0, bottom = 0] = viewport.convertToViewportPoint(x + w, y);
+		const rect = {
+			x: Math.min(left, right),
+			y: Math.min(top, bottom),
+			w: Math.abs(right - left),
+			h: Math.abs(bottom - top),
+		};
+		this.scrollEl.scrollTop = laid.offsetTop + rect.y + rect.h / 2 - this.scrollEl.clientHeight / 2;
+		const pageLeft = this.sizerEl.offsetLeft + record.wrapperEl.offsetLeft;
+		this.scrollEl.scrollLeft = pageLeft + rect.x + rect.w / 2 - this.scrollEl.clientWidth / 2;
+		list.updateRetainSet();
+		this.flash(record.wrapperEl, rect);
+	}
+
+	/** Outline a found block for a moment, so the eye lands on it. */
+	private flash(wrapperEl: HTMLElement, rect: { x: number; y: number; w: number; h: number }): void {
+		const pad = 6;
+		const flashEl = wrapperEl.createDiv({ cls: 'pdf-ink-flash' });
+		flashEl.setCssProps({
+			'--pdf-ink-flash-x': `${String(rect.x - pad)}px`,
+			'--pdf-ink-flash-y': `${String(rect.y - pad)}px`,
+			'--pdf-ink-flash-w': `${String(rect.w + 2 * pad)}px`,
+			'--pdf-ink-flash-h': `${String(rect.h + 2 * pad)}px`,
+		});
+		window.setTimeout(() => {
+			flashEl.remove();
+		}, FLASH_MS);
+	}
+
+	/**
+	 * Where block `block` is on display page `index`: as its transcript recorded
+	 * it, since that is what the transcript's ids mean, or else worked out from
+	 * the page as it is now.
+	 */
+	private blockBoxFor(index: number, block: string): BlockBox | null {
+		const file = this.file;
+		if (!file) return null;
+		const transcript = this.app.vault.getFileByPath(
+			transcriptPathFor(file.path, this.host.settings.transcriptFolder),
+		);
+		const frontmatter = transcript
+			? frontmatterOf(this.app, transcript)
+			: undefined;
+		const recorded = blockBoxFrom(frontmatter?.['blocks'], index + 1, block);
+		if (recorded) return recorded;
+		const geom = this.composed[index];
+		if (!geom) return null;
+		const found = segmentPage(this.annotations.itemsFor(geom.key), geom.baseWidth, geom.baseHeight).find(
+			(b) => b.id === block,
+		);
+		return found ? blockBox(found.bounds) : null;
 	}
 
 	/**
