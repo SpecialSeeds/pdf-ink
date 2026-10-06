@@ -95,9 +95,11 @@ function strokeOptionsFor(
 	complete: boolean,
 	_tool: InkTool,
 	cut?: CutEnds,
+	/** The narrowest the stroke may draw, in the same units as `sizeCss`. */
+	minSize = MIN_VISIBLE_STROKE_CSS,
 ): StrokeOptions {
 	return {
-		size: Math.max(MIN_VISIBLE_STROKE_CSS, sizeCss),
+		size: Math.max(minSize, sizeCss),
 		// Constant width for every tool, whatever pressure an older stroke stored.
 		thinning: 0,
 		smoothing: 0.5,
@@ -136,6 +138,38 @@ export function strokeOutline(
 		samples.map(([x, y]) => [x, y, FLAT_PRESSURE]),
 		strokeOptionsFor(sizeCss, complete, tool, cut),
 	);
+}
+
+/**
+ * Units per point that a stroke's outline is worked out in, for the screen.
+ *
+ * perfect-freehand drops points that lie within one unit of each other, which
+ * in points would round the corners off handwriting; in quarter points it
+ * matches the outline worked out at the display's own scale, which is what the
+ * screen used to compute on every repaint.
+ */
+export const OUTLINE_UNITS = 4;
+
+/**
+ * A committed stroke's outline in PDF space, for drawing at any zoom: worked
+ * out once and drawn through the viewport, rather than again at every repaint
+ * and every zoom. `minWidth` is the narrowest it may draw, in points: the
+ * screen's minimum visible width at the current zoom.
+ */
+export function strokeOutlinePdf(stroke: Stroke, minWidth: number): Vec2[] {
+	if (stroke.points.length === 0) return [];
+	const k = OUTLINE_UNITS;
+	const outline = getStroke(
+		stroke.points.map(([x, y]) => [x * k, y * k, FLAT_PRESSURE]),
+		strokeOptionsFor(
+			stroke.width * k,
+			true,
+			stroke.tool,
+			{ start: stroke.cutStart, end: stroke.cutEnd },
+			minWidth * k,
+		),
+	);
+	return outline.map(([x, y]) => [x / k, y / k]);
 }
 
 /**

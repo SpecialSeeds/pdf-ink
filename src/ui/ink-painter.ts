@@ -27,7 +27,12 @@ export interface LiveItem {
 interface CachedLayers {
 	readonly ink: HTMLCanvasElement;
 	readonly highlight: HTMLCanvasElement;
+	/** Everything the bitmaps depend on but the items: size, zoom, theme. */
 	key: string;
+	/** The store version they were last brought up to date at. */
+	version: number;
+	/** The items drawn, in the order drawn. */
+	items: readonly Item[];
 }
 
 /**
@@ -65,6 +70,12 @@ const HOLE_INSET = 1;
 export class InkPainter {
 	/** Keyed by the surface's on-screen ink canvas. */
 	private readonly committed = new WeakMap<HTMLCanvasElement, CachedLayers>();
+	/**
+	 * What each on-screen ink canvas shows: its cached layers as of a version,
+	 * plus a live stroke inside `live`, in device px. While that holds, a frame
+	 * of the stroke only has to put back what is under the stroke.
+	 */
+	private readonly shown = new WeakMap<HTMLCanvasElement, Shown>();
 
 	constructor(
 		private readonly store: ItemStore,
@@ -104,6 +115,20 @@ export class InkPainter {
 
 		const theme = this.themeFor(record);
 		const layers = this.layersFor(record, surface, pending, theme);
+
+		// A frame of a stroke being written: the canvas already shows the cached
+		// layers, so only the stroke's own patch needs putting back. Copying the
+		// whole page twice a frame was most of what a pencil stroke cost.
+		const liveRect =
+			live?.samples && (preview?.length ?? 0) === 0 && (pending?.size ?? 0) === 0 && !surface.hole
+				? liveDeviceRect(live, record.viewport.scale, surface.transform, surface.ink)
+				: null;
+		const prior = this.shown.get(surface.ink);
+		const patch =
+			liveRect && layers && prior?.layers === layers && prior.version === layers.version
+				? clampRect(unionRect(prior.live, liveRect), surface.ink)
+				: null;
+
 		for (const [ctx, source] of [
 			[highlightCtx, layers?.highlight],
 			[inkCtx, layers?.ink],
@@ -111,9 +136,16 @@ export class InkPainter {
 			// Both bitmaps are the same size in device px, so this blit is pixel
 			// exact with no transform at all.
 			ctx.setTransform(1, 0, 0, 1, 0, 0);
-			ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-			if (source && source.width > 0 && source.height > 0) {
-				ctx.drawImage(source, 0, 0);
+			if (patch) {
+				ctx.clearRect(patch.x, patch.y, patch.w, patch.h);
+				if (source && source.width > 0 && source.height > 0 && patch.w > 0 && patch.h > 0) {
+					ctx.drawImage(source, patch.x, patch.y, patch.w, patch.h, patch.x, patch.y, patch.w, patch.h);
+				}
+			} else {
+				ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+				if (source && source.width > 0 && source.height > 0) {
+					ctx.drawImage(source, 0, 0);
+				}
 			}
 			ctx.setTransform(...surface.transform);
 			const hole = surface.hole;
@@ -151,6 +183,18 @@ export class InkPainter {
 				rendererFor(live.item)?.(live.item, target);
 			}
 		}
+
+		if (layers) {
+			this.shown.set(surface.ink, {
+				layers,
+				version: layers.version,
+				// Anything live drawn outside a known patch makes the next frame copy all.
+				live: live ? liveRect : null,
+			});
+		} else {
+			this.shown.delete(surface.ink);
+		}
+		if (live && !liveRect) this.shown.delete(surface.ink);
 	}
 
 	/** The in-progress lasso loop, in canvas CSS px. Dashed, and never cached. */
@@ -160,6 +204,8 @@ export class InkPainter {
 		for (const surface of surfacesFor(record, true)) {
 			const ctx = surface.ink.getContext('2d');
 			if (ctx) drawLasso(ctx, surface.transform, first, points);
+			// The loop is drawn outside any patch: the next paint copies everything.
+			this.shown.delete(surface.ink);
 		}
 	}
 
@@ -171,7 +217,6 @@ export class InkPainter {
 	): CachedLayers | null {
 		const { width, height } = surface.ink;
 		const key = [
-			this.store.version,
 			// Base ink is the only colour a theme changes.
 			theme.baseInk,
 			...surface.transform,
@@ -181,7 +226,34 @@ export class InkPainter {
 		].join(':');
 
 		const cached = this.committed.get(surface.ink);
-		if (cached && cached.key === key) return cached;
+		// Nothing changed anywhere: the commonest case by far, every frame of a stroke.
+		if (cached && cached.key === key && cached.version === this.store.version) return cached;
+
+		const items = inZOrder(this.store.itemsFor(record.geom.key)).filter(
+			// Items under the eraser vanish immediately, before the gesture ends.
+			(item) => !pending?.has(item),
+		);
+		if (cached && cached.key === key) {
+			// Something changed, perhaps on another page: this one may be as it was.
+			const drawn = cached.items;
+			const same = drawn.length <= items.length && drawn.every((item, i) => item === items[i]);
+			if (same) {
+				// Only new items on top, as a stroke just drawn is: add them to what
+				// is there rather than redrawing the whole page.
+				if (items.length > drawn.length) {
+					const inkCtx = cached.ink.getContext('2d');
+					const highlightCtx = cached.highlight.getContext('2d');
+					if (inkCtx && highlightCtx) {
+						inkCtx.setTransform(...surface.transform);
+						highlightCtx.setTransform(...surface.transform);
+						this.drawItems(record, items.slice(drawn.length), inkCtx, highlightCtx, theme);
+					}
+				}
+				cached.items = items;
+				cached.version = this.store.version;
+				return cached;
+			}
+		}
 
 		const doc = record.inkCanvasEl.doc;
 		const ink = cached?.ink ?? doc.createElement('canvas');
@@ -191,13 +263,22 @@ export class InkPainter {
 		const highlightCtx = resize(highlight, width, height, surface.transform);
 		if (!inkCtx || !highlightCtx) return null;
 
+		this.drawItems(record, items, inkCtx, highlightCtx, theme);
+
+		const layers: CachedLayers = { ink, highlight, key, version: this.store.version, items };
+		this.committed.set(surface.ink, layers);
+		return layers;
+	}
+
+	private drawItems(
+		record: PageRecord,
+		items: readonly Item[],
+		inkCtx: CanvasRenderingContext2D,
+		highlightCtx: CanvasRenderingContext2D,
+		theme: PageTheme,
+	): void {
 		const targets: Record<LayerName, RenderTarget> = {
-			ink: {
-				ctx: inkCtx,
-				viewport: record.viewport,
-				scale: record.viewport.scale,
-				theme,
-			},
+			ink: { ctx: inkCtx, viewport: record.viewport, scale: record.viewport.scale, theme },
 			highlight: {
 				ctx: highlightCtx,
 				viewport: record.viewport,
@@ -205,21 +286,86 @@ export class InkPainter {
 				theme,
 			},
 		};
-
-		for (const item of inZOrder(this.store.itemsFor(record.geom.key))) {
-			// Items under the eraser vanish immediately, before the gesture ends.
-			if (pending?.has(item)) continue;
+		for (const item of items) {
 			const render = rendererFor(item);
 			// No renderer yet for this type: skip it rather than guess. The store
 			// still round-trips it to disk untouched.
 			if (!render) continue;
 			render(item, targets[layerFor(item)]);
 		}
-
-		const layers: CachedLayers = { ink, highlight, key };
-		this.committed.set(surface.ink, layers);
-		return layers;
 	}
+}
+
+interface Shown {
+	readonly layers: CachedLayers;
+	readonly version: number;
+	readonly live: DeviceRect | null;
+}
+
+interface DeviceRect {
+	readonly x: number;
+	readonly y: number;
+	readonly w: number;
+	readonly h: number;
+}
+
+/**
+ * The device px a live stroke can touch on a surface: its samples' bounds,
+ * padded by its width and a margin for perfect-freehand's smoothing, whole
+ * pixels outward.
+ */
+function liveDeviceRect(
+	live: LiveItem,
+	scale: number,
+	transform: Matrix,
+	canvas: HTMLCanvasElement,
+): DeviceRect | null {
+	const samples = live.samples;
+	if (!samples || samples.length === 0 || live.item.type !== 'stroke') return null;
+	let minX = Infinity;
+	let minY = Infinity;
+	let maxX = -Infinity;
+	let maxY = -Infinity;
+	for (const [x, y] of samples) {
+		if (x < minX) minX = x;
+		if (x > maxX) maxX = x;
+		if (y < minY) minY = y;
+		if (y > maxY) maxY = y;
+	}
+	const pad = live.item.width * scale + 8;
+	const [a, , , d, e, f] = transform;
+	return clampRect(
+		{
+			x: Math.floor((minX - pad) * a + e),
+			y: Math.floor((minY - pad) * d + f),
+			w: Math.ceil((maxX - minX + 2 * pad) * a) + 2,
+			h: Math.ceil((maxY - minY + 2 * pad) * d) + 2,
+		},
+		canvas,
+	);
+}
+
+function unionRect(a: DeviceRect | null, b: DeviceRect): DeviceRect {
+	if (!a) return b;
+	const x = Math.min(a.x, b.x);
+	const y = Math.min(a.y, b.y);
+	return {
+		x,
+		y,
+		w: Math.max(a.x + a.w, b.x + b.w) - x,
+		h: Math.max(a.y + a.h, b.y + b.h) - y,
+	};
+}
+
+function clampRect(r: DeviceRect, canvas: HTMLCanvasElement): DeviceRect {
+	const x = Math.max(0, r.x);
+	const y = Math.max(0, r.y);
+	return {
+		x,
+		y,
+		w: Math.max(0, Math.min(canvas.width, r.x + r.w) - x),
+		h: Math.max(0, Math.min(canvas.height, r.y + r.h) - y),
+	};
 }
 
 /**
