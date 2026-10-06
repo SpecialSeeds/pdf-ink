@@ -1032,3 +1032,97 @@
 .pdf-ink-view.is-paper-tinted:not(.is-dark-pages) .pdf-ink-page.is-inserted > .pdf-ink-tint {
 	display: block;
 }
+
+/*
+ * A found block, outlined for a moment so the eye lands on it: a search
+ * result, a transcript or a link into the handwriting. Above everything on the
+ * page, never a pointer target.
+ */
+.pdf-ink-flash {
+	position: absolute;
+	z-index: 7;
+	left: var(--pdf-ink-flash-x, 0);
+	top: var(--pdf-ink-flash-y, 0);
+	width: var(--pdf-ink-flash-w, 0);
+	height: var(--pdf-ink-flash-h, 0);
+	pointer-events: none;
+	border: 2px solid var(--interactive-accent);
+	border-radius: 4px;
+	background-color: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+	animation: pdf-ink-flash 1.5s ease-out forwards;
+}
+
+@keyframes pdf-ink-flash {
+	0%,
+	60% {
+		opacity: 1;
+	}
+	100% {
+		opacity: 0;
+	}
+}
+
+/* ---- Search notes: the transcripts searched, the handwriting shown -------- */
+
+.pdf-ink-note-search {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+}
+
+.pdf-ink-note-search-input {
+	width: 100%;
+}
+
+.pdf-ink-note-search-results {
+	overflow-y: auto;
+}
+
+.pdf-ink-note-search-empty {
+	color: var(--text-muted);
+	padding: var(--size-4-2);
+}
+
+.pdf-ink-note-search-group {
+	margin-bottom: var(--size-4-4);
+}
+
+.pdf-ink-note-search-source {
+	font-weight: var(--font-semibold);
+	padding: var(--size-4-1) 0;
+	border-bottom: 1px solid var(--background-modifier-border);
+	margin-bottom: var(--size-4-1);
+}
+
+.pdf-ink-note-search-hit {
+	padding: var(--size-4-2);
+	border-radius: var(--radius-s);
+	cursor: pointer;
+}
+
+.pdf-ink-note-search-hit:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.pdf-ink-note-search-line {
+	font-size: var(--font-ui-small);
+}
+
+.pdf-ink-note-search-page {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.pdf-ink-note-search-thumb {
+	margin-top: var(--size-4-1);
+}
+
+/* Drawn at device resolution, shown at CSS size. */
+.pdf-ink-note-search-canvas {
+	display: block;
+	width: var(--pdf-ink-result-w, auto);
+	max-width: 100%;
+	height: auto;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+}

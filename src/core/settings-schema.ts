@@ -6,6 +6,7 @@
 
 import { BUFFER_PAGES } from '../constants';
 import { normalizeHex } from './color';
+import { DEFAULT_RENDER_FOLDER, DEFAULT_TRANSCRIPT_FOLDER, normalizeFolder } from './transcripts';
 import { DEFAULT_TINT_COLOR, DEFAULT_TINT_STRENGTH, clampTintStrength } from './paper-tint';
 import { type HeaderDateFormat, isHeaderDateFormat } from './header';
 import { type NewPdfPageSize, isNewPdfPageSize } from './new-pdf';
@@ -113,6 +114,14 @@ export interface PdfInkSettings {
 	paperTintColor: string;
 	/** How much of it shows, 0.1 to 1. */
 	paperTintStrength: number;
+	/** Where transcripts of handwriting live, mirroring their sources' paths. */
+	transcriptFolder: string;
+	/** Where pages are rendered for transcription; a dot folder, hidden from the file explorer. */
+	renderFolder: string;
+	/** Open a transcript's source, at the matching handwriting, in place of the transcript. */
+	openSourcesInsteadOfTranscripts: boolean;
+	/** Delete a source's renders once its transcript is up to date with it. */
+	deleteRendersAfterTranscription: boolean;
 	/** Give new notebooks and boards a title header, as OneNote pages have. */
 	addTitleHeader: boolean;
 	/** How a header writes its date, unless the notebook says otherwise. */
@@ -175,6 +184,10 @@ export const DEFAULT_SETTINGS: PdfInkSettings = {
 	paperTint: false,
 	paperTintColor: DEFAULT_TINT_COLOR,
 	paperTintStrength: DEFAULT_TINT_STRENGTH,
+	transcriptFolder: DEFAULT_TRANSCRIPT_FOLDER,
+	renderFolder: DEFAULT_RENDER_FOLDER,
+	openSourcesInsteadOfTranscripts: true,
+	deleteRendersAfterTranscription: true,
 	addTitleHeader: true,
 	headerDateFormat: 'onenote',
 };
@@ -312,6 +325,19 @@ export function mergeSettings(stored: unknown): PdfInkSettings {
 
 	const tintStrength = raw['paperTintStrength'];
 	if (typeof tintStrength === 'number') merged.paperTintStrength = clampTintStrength(tintStrength);
+
+	const transcriptFolder = raw['transcriptFolder'];
+	if (typeof transcriptFolder === 'string') {
+		merged.transcriptFolder = normalizeFolder(transcriptFolder, DEFAULT_TRANSCRIPT_FOLDER);
+	}
+	const renderFolder = raw['renderFolder'];
+	if (typeof renderFolder === 'string') {
+		merged.renderFolder = normalizeFolder(renderFolder, DEFAULT_RENDER_FOLDER);
+	}
+	const openSources = raw['openSourcesInsteadOfTranscripts'];
+	if (typeof openSources === 'boolean') merged.openSourcesInsteadOfTranscripts = openSources;
+	const deleteRenders = raw['deleteRendersAfterTranscription'];
+	if (typeof deleteRenders === 'boolean') merged.deleteRendersAfterTranscription = deleteRenders;
 
 	const addTitleHeader = raw['addTitleHeader'];
 	if (typeof addTitleHeader === 'boolean') merged.addTitleHeader = addTitleHeader;

@@ -11,6 +11,9 @@ import {
 	mergeSettings,
 } from './settings';
 import { PdfInkView } from './ui/pdf-ink-view';
+import { NOTE_SEARCH_ICON, NoteSearchView, VIEW_TYPE_NOTE_SEARCH } from './ui/search-view';
+import { transcriptRedirectHandler } from './transcription/redirect';
+import { transcriptHandlers } from './transcription/transcript-sync';
 import { createNotebook } from './utils/create-notebook';
 import { createPdf } from './utils/create-pdf';
 import { DefaultPdfViewer } from './utils/default-viewer';
@@ -43,6 +46,20 @@ export default class PdfInkPlugin extends Plugin {
 			void createNotebook(this.app, { titleHeader: this.settings.addTitleHeader });
 		});
 
+		// Transcription: searching the handwriting, and keeping transcripts with
+		// their notebooks.
+		this.registerView(VIEW_TYPE_NOTE_SEARCH, (leaf) => new NoteSearchView(leaf, this));
+		this.addRibbonIcon(NOTE_SEARCH_ICON, 'Search notes', () => {
+			void this.openNoteSearch();
+		});
+		const transcripts = transcriptHandlers(this.app, () => this.settings);
+		this.registerEvent(this.app.vault.on('rename', transcripts.rename));
+		this.registerEvent(this.app.vault.on('delete', transcripts.remove));
+		this.registerEvent(this.app.metadataCache.on('changed', transcripts.changed));
+		this.registerEvent(
+			this.app.workspace.on('file-open', transcriptRedirectHandler(this.app, () => this.settings)),
+		);
+
 		registerCommands(this);
 		registerFileMenu(this);
 		// Vault-wide, so a PDF renamed while closed does not orphan its sidecar.
@@ -51,6 +68,17 @@ export default class PdfInkPlugin extends Plugin {
 		this.settings = mergeSettings(await this.loadData());
 		this.defaultViewer.apply(this.settings.openByDefault);
 		this.addSettingTab(new PdfInkSettingTab(this.app, this));
+	}
+
+	/** Show the note search, in the right sidebar beside Obsidian's own search. */
+	async openNoteSearch(): Promise<void> {
+		const workspace = this.app.workspace;
+		let leaf = workspace.getLeavesOfType(VIEW_TYPE_NOTE_SEARCH)[0] ?? null;
+		if (!leaf) {
+			leaf = workspace.getRightLeaf(false);
+			await leaf?.setViewState({ type: VIEW_TYPE_NOTE_SEARCH, active: true });
+		}
+		if (leaf) await workspace.revealLeaf(leaf);
 	}
 
 	/** The view type that shows a PDF without ink, for leaving the ink view. */
