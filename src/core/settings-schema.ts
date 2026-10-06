@@ -5,6 +5,8 @@
  */
 
 import { BUFFER_PAGES } from '../constants';
+import { normalizeHex } from './color';
+import { DEFAULT_TINT_COLOR, DEFAULT_TINT_STRENGTH, clampTintStrength } from './paper-tint';
 import { type HeaderDateFormat, isHeaderDateFormat } from './header';
 import { type NewPdfPageSize, isNewPdfPageSize } from './new-pdf';
 import { type PageTemplate, isPageTemplate } from './templates';
@@ -102,6 +104,15 @@ export interface PdfInkSettings {
 	exportTheme: ThemeName;
 	/** Ask which theme to export in; off exports in {@link exportTheme} directly. */
 	askExportTheme: boolean;
+	/**
+	 * Lay a tinted sheet over every light page on screen, to soften white paper.
+	 * Never changes the PDF, the ink or an export. See src/core/paper-tint.ts.
+	 */
+	paperTint: boolean;
+	/** The sheet's colour. */
+	paperTintColor: string;
+	/** How much of it shows, 0.1 to 1. */
+	paperTintStrength: number;
 	/** Give new notebooks and boards a title header, as OneNote pages have. */
 	addTitleHeader: boolean;
 	/** How a header writes its date, unless the notebook says otherwise. */
@@ -161,6 +172,9 @@ export const DEFAULT_SETTINGS: PdfInkSettings = {
 	pageThemes: emptyThemeOverrides(),
 	exportTheme: 'light',
 	askExportTheme: true,
+	paperTint: false,
+	paperTintColor: DEFAULT_TINT_COLOR,
+	paperTintStrength: DEFAULT_TINT_STRENGTH,
 	addTitleHeader: true,
 	headerDateFormat: 'onenote',
 };
@@ -288,6 +302,16 @@ export function mergeSettings(stored: unknown): PdfInkSettings {
 
 	const askExportTheme = raw['askExportTheme'];
 	if (typeof askExportTheme === 'boolean') merged.askExportTheme = askExportTheme;
+
+	const paperTint = raw['paperTint'];
+	if (typeof paperTint === 'boolean') merged.paperTint = paperTint;
+
+	const tintColor = raw['paperTintColor'];
+	const tintHex = typeof tintColor === 'string' ? normalizeHex(tintColor) : null;
+	if (tintHex !== null) merged.paperTintColor = tintHex;
+
+	const tintStrength = raw['paperTintStrength'];
+	if (typeof tintStrength === 'number') merged.paperTintStrength = clampTintStrength(tintStrength);
 
 	const addTitleHeader = raw['addTitleHeader'];
 	if (typeof addTitleHeader === 'boolean') merged.addTitleHeader = addTitleHeader;

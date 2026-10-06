@@ -43,6 +43,20 @@ describe('styles.css and the code agree on custom properties', () => {
 		expect(unused).toEqual([]);
 	});
 
+	it('the paper tint is a multiplied sheet the pen writes through', () => {
+		const rule = /\.pdf-ink-tint\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';
+		expect(rule).toContain('pointer-events: none');
+		expect(rule).toContain('mix-blend-mode: multiply');
+		expect(rule).toContain('display: none');
+		// Above the ink (z-index 2), below the selection box (4) and editors (6).
+		expect(rule).toContain('z-index: 3');
+		// Shown on PDF pages always, and on notebook pages only while light.
+		expect(css).toContain('.pdf-ink-view.is-paper-tinted .pdf-ink-page:not(.is-inserted) > .pdf-ink-tint');
+		expect(css).toContain(
+			'.pdf-ink-view.is-paper-tinted:not(.is-dark-pages) .pdf-ink-page.is-inserted > .pdf-ink-tint',
+		);
+	});
+
 	it('the colour swatch reads its colour on the fill element', () => {
 		expect(css).toMatch(/\.pdf-ink-swatch-fill\s*\{[^}]*var\(--pdf-ink-swatch/);
 	});

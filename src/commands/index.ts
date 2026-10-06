@@ -70,6 +70,17 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 	});
 
 	plugin.addCommand({
+		id: 'toggle-paper-tint',
+		name: 'Toggle paper tint',
+		icon: 'glasses',
+		callback: () => {
+			plugin.settings.paperTint = !plugin.settings.paperTint;
+			// Saving refreshes every open ink view.
+			void plugin.saveSettings();
+		},
+	});
+
+	plugin.addCommand({
 		id: 'toggle-page-theme',
 		name: 'Toggle light or dark pages',
 		icon: 'sun-moon',

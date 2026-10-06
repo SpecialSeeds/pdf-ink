@@ -8,6 +8,7 @@ import { QUICK_COLORS, SIZED_ERASER_RANGE, WIDTH_RANGES } from './core/tools';
 import { PAGE_SIZE_LABELS, isNewPdfPageSize } from './core/new-pdf';
 import { PAGE_TEMPLATES, TEMPLATE_LABELS, isPageTemplate } from './core/templates';
 import { formatHeaderDate, isHeaderDateFormat } from './core/header';
+import { DEFAULT_TINT_COLOR, TINT_STRENGTH_RANGE } from './core/paper-tint';
 import { contrastRatio } from './core/color';
 import {
 	DEFAULT_PAGE_THEMES,
@@ -112,6 +113,52 @@ export class PdfInkSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.openByDefault)
 					.onChange((value) => {
 						this.plugin.settings.openByDefault = value;
+						this.save();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Paper tint')
+			.setDesc(
+				'Lay a soft tint over white pages, like tinted clear plastic over paper, to make them easier on the eyes. You still write straight onto the page. On screen only: the PDF and exports are never changed. Dark notebook pages are left as they are.',
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.paperTint).onChange((value) => {
+					this.plugin.settings.paperTint = value;
+					this.save();
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName('Tint colour')
+			.setDesc('The colour of the sheet. White paper takes this colour; black stays black.')
+			.addColorPicker((picker) =>
+				picker.setValue(this.plugin.settings.paperTintColor).onChange((value) => {
+					this.plugin.settings.paperTintColor = value;
+					this.save();
+				}),
+			)
+			.addExtraButton((button) =>
+				button
+					.setIcon('rotate-ccw')
+					.setTooltip('Back to the default beige')
+					.onClick(() => {
+						this.plugin.settings.paperTintColor = DEFAULT_TINT_COLOR;
+						this.save();
+						this.display();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Tint strength')
+			.setDesc('How much of the tint shows.')
+			.addSlider((slider) =>
+				slider
+					.setLimits(TINT_STRENGTH_RANGE.min * 100, TINT_STRENGTH_RANGE.max * 100, 5)
+					.setValue(Math.round(this.plugin.settings.paperTintStrength * 100))
+					.setDynamicTooltip()
+					.onChange((value) => {
+						this.plugin.settings.paperTintStrength = value / 100;
 						this.save();
 					}),
 			);
