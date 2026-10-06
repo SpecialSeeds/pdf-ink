@@ -12,10 +12,12 @@ import { pathGeometry } from '../core/path';
 import { type PathSegment, shapeGeometry } from '../core/shapes';
 import { layoutTextLines } from '../core/text-layout';
 import { type PageTheme, renderColor } from '../core/theme';
+import type { Vec2 } from 'perfect-freehand';
 import {
+	MIN_VISIBLE_STROKE_CSS,
 	outlineToPathData,
 	strokeOutline,
-	toCanvasSamples,
+	strokeOutlinePdf,
 } from '../core/stroke';
 
 /** Everything a renderer needs to put one item on a canvas. */
@@ -74,13 +76,54 @@ function paintStrokeOutline(
 	ctx.restore();
 }
 
+/**
+ * Each committed stroke's outline as a canvas path in PDF space, built once.
+ *
+ * Working the outline out again on every repaint is what used to make each
+ * new stroke stall the page: a full page of handwriting is over a thousand
+ * outlines. Built once, a stroke is redrawn at any zoom through the viewport's
+ * transform, as path items are. Rebuilt only when the screen's minimum width
+ * is what sets the stroke's width, which depends on the zoom.
+ */
+const strokePaths = new WeakMap<Stroke, { readonly floor: string; readonly path: Path2D }>();
+
+function strokePath(stroke: Stroke, scale: number): Path2D {
+	const minWidth = scale > 0 ? MIN_VISIBLE_STROKE_CSS / scale : 0;
+	const floor = stroke.width < minWidth ? minWidth.toFixed(4) : 'nib';
+	const cached = strokePaths.get(stroke);
+	if (cached && cached.floor === floor) return cached.path;
+	const path = outlinePath(strokeOutlinePdf(stroke, minWidth));
+	strokePaths.set(stroke, { floor, path });
+	return path;
+}
+
+/** A closed outline as a canvas path, smoothed as {@link outlineToPathData} smooths it. */
+function outlinePath(outline: readonly Vec2[]): Path2D {
+	const path = new Path2D();
+	const first = outline[0];
+	if (!first) return path;
+	path.moveTo(first[0], first[1]);
+	// A single tap still has to leave a mark.
+	if (outline.length === 1) path.lineTo(first[0] + 0.01, first[1]);
+	for (let i = 0; i < outline.length; i++) {
+		const a = outline[i];
+		const b = outline[(i + 1) % outline.length];
+		if (!a || !b) continue;
+		path.quadraticCurveTo(a[0], a[1], (a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
+	}
+	path.closePath();
+	return path;
+}
+
 const renderStroke: ItemRenderer<Stroke> = (stroke, target) => {
-	paintStrokeOutline(
-		stroke,
-		toCanvasSamples(stroke, target.viewport),
-		target,
-		true,
-	);
+	const path = strokePath(stroke, target.scale);
+	const { ctx } = target;
+	ctx.save();
+	ctx.transform(...viewportMatrix(target.viewport));
+	ctx.globalAlpha = stroke.opacity;
+	ctx.fillStyle = renderColor(stroke.color, target.theme);
+	ctx.fill(path);
+	ctx.restore();
 };
 
 /**
