@@ -135,7 +135,8 @@ export interface RenderSummary {
 	pages: number;
 	upToDate: number;
 	transcribed: number;
-	failed: string[];
+	/** Sources that could not be rendered, with why. */
+	failed: { readonly path: string; readonly reason: string }[];
 }
 
 /**
@@ -230,7 +231,7 @@ export async function renderForTranscription(
 			}
 		} catch (err) {
 			console.error(`pdf-ink: could not render ${file.path}`, err);
-			summary.failed.push(file.path);
+			summary.failed.push({ path: file.path, reason: err instanceof Error ? err.message : String(err) });
 		}
 	}
 
@@ -258,7 +259,12 @@ export async function runRenderCommand(app: App, folder: TFolder, folders: Trans
 			`Rendered ${String(summary.rendered)} source(s), ${String(summary.pages)} page(s).`,
 			summary.upToDate > 0 ? `${String(summary.upToDate)} already rendered.` : '',
 			summary.transcribed > 0 ? `${String(summary.transcribed)} already transcribed.` : '',
-			summary.failed.length > 0 ? `Could not render: ${summary.failed.join(', ')}.` : '',
+			summary.failed.length > 0
+				? `Could not render ${String(summary.failed.length)} note(s), ${summary.failed
+						.slice(0, 3)
+						.map((f) => f.path)
+						.join(', ')}${summary.failed.length > 3 ? '…' : ''}: ${summary.failed[0]?.reason ?? ''}`
+				: '',
 			`Ask Claudian to "transcribe notes".`,
 		];
 		notice.setMessage(parts.filter((p) => p.length > 0).join(' '));
