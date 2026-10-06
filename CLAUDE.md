@@ -178,6 +178,9 @@ PageTemplate = "blank" | "lined" | "lined7.5" | "lined10" | "grid5" | "dot"
   screen and the exporter both use the effective themes.
 - Highlighter blend comes from the paper's luminance (multiply on light, screen on
   dark), never from the theme's name.
+- Paper tint is SCREEN ONLY: a multiplied, pointer-transparent layer over each PDF
+  page (and light notebook pages), above the ink and below the editing UI. It never
+  touches the PDF, stored colours or exports (src/core/paper-tint.ts).
 
 ## Workflow
 - Small commits per feature. Run `npm run build` and fix all type errors before finishing.

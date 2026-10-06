@@ -1008,3 +1008,27 @@
 	max-height: 40vh;
 	overflow-y: auto;
 }
+
+/*
+ * Paper tint: a sheet of tinted clear plastic over the page. Multiplied, so
+ * white paper takes the tint's colour, black stays black, and ink keeps its
+ * hue. Above the page and its ink (the sharp detail layers included), below
+ * the selection box, cursor and editors, which should stay crisp. No pointer
+ * events: the pen writes through it. Screen only; exports never see it.
+ */
+.pdf-ink-tint {
+	display: none;
+	position: absolute;
+	inset: 0;
+	z-index: 3;
+	pointer-events: none;
+	background-color: var(--pdf-ink-tint-color, #f2e3c6);
+	opacity: var(--pdf-ink-tint-strength, 0.6);
+	mix-blend-mode: multiply;
+}
+
+/* On every PDF page, and on notebook pages while they are light. */
+.pdf-ink-view.is-paper-tinted .pdf-ink-page:not(.is-inserted) > .pdf-ink-tint,
+.pdf-ink-view.is-paper-tinted:not(.is-dark-pages) .pdf-ink-page.is-inserted > .pdf-ink-tint {
+	display: block;
+}

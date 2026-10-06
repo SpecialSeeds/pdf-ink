@@ -314,6 +314,9 @@ export class PageList {
 			cls: 'pdf-ink-highlight',
 		});
 		const inkCanvasEl = wrapperEl.createEl('canvas', { cls: 'pdf-ink-ink' });
+		// The paper tint: a blended sheet over the page and its ink, shown only
+		// while the tint is on. It takes no input, so writing goes through it.
+		wrapperEl.createDiv({ cls: 'pdf-ink-tint' });
 		// A canvas defaults to 300x150; start at zero so an unmounted page costs
 		// no backing store.
 		for (const canvasEl of [renderCanvasEl, highlightCanvasEl, inkCanvasEl]) {

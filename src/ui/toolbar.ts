@@ -18,6 +18,8 @@ export interface ToolbarCallbacks {
 	pageOptions(at: { x: number; y: number }): void;
 	/** Switch notebook and inserted pages between light and dark. */
 	toggleTheme(): void;
+	/** Lay a soft tint over the pages, or take it off. */
+	togglePaperTint(): void;
 	exportPdf(): void;
 }
 
@@ -43,6 +45,7 @@ export class PdfInkToolbar {
 	private readonly fitPageButtonEl: HTMLButtonElement;
 	private readonly zoomLockButtonEl: HTMLButtonElement;
 	private readonly themeButtonEl: HTMLButtonElement;
+	private readonly tintButtonEl: HTMLButtonElement;
 	/** Every control that changes the zoom, disabled while it is locked. */
 	private readonly zoomButtonEls: HTMLButtonElement[] = [];
 	private pageCount = 0;
@@ -183,6 +186,15 @@ export class PdfInkToolbar {
 				callbacks.toggleTheme();
 			},
 		);
+		this.tintButtonEl = this.addButton(
+			actionsGroupEl,
+			component,
+			'glasses',
+			'Turn on paper tint',
+			() => {
+				callbacks.togglePaperTint();
+			},
+		);
 		this.addButton(
 			actionsGroupEl,
 			component,
@@ -237,6 +249,13 @@ export class PdfInkToolbar {
 			'aria-label',
 			dark ? 'Switch to light pages' : 'Switch to dark pages',
 		);
+	}
+
+	/** Show whether the paper tint is on. */
+	setPaperTint(on: boolean): void {
+		this.tintButtonEl.toggleClass('is-active', on);
+		this.tintButtonEl.setAttribute('aria-pressed', String(on));
+		this.tintButtonEl.setAttribute('aria-label', on ? 'Turn off paper tint' : 'Turn on paper tint');
 	}
 
 	setPageCount(count: number): void {
