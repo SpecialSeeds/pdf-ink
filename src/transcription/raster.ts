@@ -63,7 +63,10 @@ export async function rasterisePage(page: SourcePage, options: RasterOptions): P
 	const width = Math.max(1, Math.ceil(box.maxX - box.minX));
 	const height = Math.max(1, Math.ceil(box.maxY - box.minY));
 	const viewport: PageViewport = base.clone({ scale, offsetX: -box.minX, offsetY: -box.minY });
-	const canvas = activeDocument.createEl('canvas');
+	// The global createEl makes a detached element. Called on a node it also
+	// appends to that node, and on the document that throws: it already has
+	// its one element.
+	const canvas = createEl('canvas');
 	canvas.width = width;
 	canvas.height = height;
 	const ctx = canvas.getContext('2d');
