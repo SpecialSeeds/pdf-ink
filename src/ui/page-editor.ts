@@ -1,4 +1,5 @@
-import { type Component, Menu, Platform, setIcon } from 'obsidian';
+import { type App, type Component, Menu, Platform, setIcon } from 'obsidian';
+import { askPagePosition } from './move-page-modal';
 import { pageSizes, sizeLookup } from '../core/page-composition';
 import {
 	type InsertedPage,
@@ -33,10 +34,12 @@ export interface PageEditorHost {
 	scrollToPage(index: number): void;
 	/** The ruling the document declares for new pages, or null. */
 	documentRuling(): PageTemplate | null;
+	/** For the dialogs this opens. */
+	app(): App;
 }
 
 /**
- * Inserting, deleting and re-ruling pages.
+ * Inserting, moving, deleting and re-ruling pages.
  *
  * Two entry points, because they suit different hardware: a "+" that follows the
  * pointer into the gap between pages, and a context menu on the page itself, which
@@ -149,6 +152,27 @@ export class PageEditor {
 	insertBelow(key: PageKey): void {
 		const index = this.indexOf(key);
 		if (index !== null) this.insertAt(index + 1);
+	}
+
+	/**
+	 * Move an inserted page to display position `to` and bring it into view.
+	 * Original pages do not move: the source document is never modified.
+	 */
+	movePage(key: PageKey, to: number): void {
+		const parsed = parsePageKey(key);
+		if (parsed?.kind !== 'inserted') return;
+		if (!this.store.movePage(parsed.id, to, this.host.pdfPageCount())) return;
+		// The list has already been rebuilt by the store's change callback.
+		const at = this.indexOf(key);
+		if (at !== null) this.host.scrollToPage(at);
+	}
+
+	/** Ask where to, then move the page there. */
+	private async movePageTo(key: PageKey): Promise<void> {
+		const at = this.indexOf(key);
+		if (at === null) return;
+		const to = await askPagePosition(this.host.app(), at, this.host.geometry().length);
+		if (to !== null) this.movePage(key, to);
 	}
 
 	setTemplate(key: PageKey, template: PageTemplate): void {
@@ -298,6 +322,39 @@ export class PageEditor {
 		);
 
 		if (geom.source.kind === 'inserted') {
+			const at = this.indexOf(key) ?? 0;
+			const last = this.host.geometry().length - 1;
+			menu.addItem((item) =>
+				item
+					.setTitle('Move page up')
+					.setIcon('arrow-up')
+					.setSection('move')
+					.setDisabled(at === 0)
+					.onClick(() => {
+						this.movePage(key, at - 1);
+					}),
+			);
+			menu.addItem((item) =>
+				item
+					.setTitle('Move page down')
+					.setIcon('arrow-down')
+					.setSection('move')
+					.setDisabled(at >= last)
+					.onClick(() => {
+						this.movePage(key, at + 1);
+					}),
+			);
+			menu.addItem((item) =>
+				item
+					.setTitle('Move page to…')
+					.setIcon('arrow-up-down')
+					.setSection('move')
+					.setDisabled(last < 1)
+					.onClick(() => {
+						void this.movePageTo(key);
+					}),
+			);
+
 			const current = geom.source.page.template;
 			// A flat checked group rather than a submenu: Obsidian's Menu has no
 			// submenu in the public API, and six items is not worth nesting anyway.

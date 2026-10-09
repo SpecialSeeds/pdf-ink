@@ -12,6 +12,8 @@ import {
 	insertionAt,
 	isInsertedPageKey,
 	isPdfPageKey,
+	dropPosition,
+	movedPage,
 	orderPages,
 	parsePageKey,
 	pdfPageKey,
@@ -368,5 +370,78 @@ describe('deep links', () => {
 			tombstonedPage(page('a', BEFORE_FIRST_PAGE, 'a0'), 2000),
 		]);
 		expect(indexOfKey(order, 'pdf:3')).toBe(3);
+	});
+});
+
+describe('movedPage', () => {
+	/** A document of `pdf` original pages with these inserted pages, as display keys. */
+	function keys(pdf: number, pages: InsertedPage[]): string[] {
+		return orderPages(pdf, pages).map((slot) => slot.key);
+	}
+
+	function insertedAt(order: ReturnType<typeof orderPages>, at: number, id: string, pages: InsertedPage[]): InsertedPage[] {
+		return [...pages, createInsertedPage(order, at, 'blank', A4, 1000, id)];
+	}
+
+	/** Three original pages, a page inserted after page 1 and one after page 3. */
+	function document(): InsertedPage[] {
+		let pages: InsertedPage[] = [];
+		pages = insertedAt(orderPages(3, pages), 1, 'x', pages);
+		pages = insertedAt(orderPages(3, pages), 5, 'y', pages);
+		return pages;
+	}
+
+	it('puts an inserted page at any position, and the originals keep their order', () => {
+		const pages = document();
+		const before = keys(3, pages);
+		expect(before).toEqual(['pdf:0', 'ins:x', 'pdf:1', 'pdf:2', 'ins:y']);
+		for (let to = 0; to < before.length; to++) {
+			const moved = movedPage(orderPages(3, pages), 'x', to, 2000);
+			const after = keys(3, pages.map((p) => (p.id === 'x' && moved ? moved : p)));
+			expect(after.indexOf('ins:x')).toBe(to);
+			expect(after.filter((k) => k.startsWith('pdf:'))).toEqual(['pdf:0', 'pdf:1', 'pdf:2']);
+		}
+	});
+
+	it('moves a page before the first page and after the last', () => {
+		const pages = document();
+		const first = movedPage(orderPages(3, pages), 'y', 0, 2000);
+		expect(first?.afterPdfPage).toBe(-1);
+		expect(keys(3, pages.map((p) => (p.id === 'y' && first ? first : p)))[0]).toBe('ins:y');
+		const last = movedPage(orderPages(3, pages), 'x', 4, 2000);
+		expect(keys(3, pages.map((p) => (p.id === 'x' && last ? last : p))).at(-1)).toBe('ins:x');
+	});
+
+	it('reorders pages sharing a gap, as in a notebook', () => {
+		let pages: InsertedPage[] = [];
+		for (const id of ['a', 'b', 'c', 'd']) pages = insertedAt(orderPages(0, pages), pages.length, id, pages);
+		expect(keys(0, pages)).toEqual(['ins:a', 'ins:b', 'ins:c', 'ins:d']);
+		const moved = movedPage(orderPages(0, pages), 'd', 1, 2000);
+		expect(keys(0, pages.map((p) => (p.id === 'd' && moved ? moved : p)))).toEqual(['ins:a', 'ins:d', 'ins:b', 'ins:c']);
+	});
+
+	it('stamps the move, so it wins a merge like any other edit', () => {
+		expect(movedPage(orderPages(3, document()), 'x', 0, 2000)?.updatedAt).toBe(2000);
+	});
+
+	it('does nothing for an original page, or for a page already where it is asked to go', () => {
+		const pages = document();
+		expect(movedPage(orderPages(3, pages), 'nope', 0, 2000)).toBeNull();
+		expect(movedPage(orderPages(3, pages), 'x', 1, 2000)).toBeNull();
+	});
+});
+
+describe('dropPosition', () => {
+	it('counts where a dragged page lands after it leaves its place', () => {
+		// Five pages; drag the one at 1.
+		expect(dropPosition(1, 3, false)).toBe(2); // before page 3: it lands third of the rest
+		expect(dropPosition(1, 3, true)).toBe(3); // after page 3
+		expect(dropPosition(1, 0, false)).toBe(0); // before the first
+		expect(dropPosition(1, 4, true)).toBe(4); // after the last
+		expect(dropPosition(3, 1, true)).toBe(2); // dragged upwards, after page 1
+		// Dropped on either side of itself: it stays put.
+		expect(dropPosition(2, 2, false)).toBe(2);
+		expect(dropPosition(2, 2, true)).toBe(2);
+		expect(dropPosition(2, 1, true)).toBe(2);
 	});
 });

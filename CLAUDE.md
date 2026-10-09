@@ -53,8 +53,10 @@ PageTemplate = "blank" | "lined" | "lined7.5" | "lined10" | "grid5" | "dot"
 - Deleting a page tombstones the page and every item on it as ONE history
   operation, so a single undo restores both. A page that came back empty would be
   worse than no undo at all.
-- Only inserted pages can be deleted or re-ruled. The source PDF is never modified
-  and there is no record that could represent a missing original page.
+- Only inserted pages can be deleted, re-ruled or moved. The source PDF is never
+  modified and there is no record that could represent a missing original page.
+  Moving a page (`movedPage` in src/core/pages.ts) changes only its `afterPdfPage`
+  and `sortKey`, as one undoable page edit; original pages keep their order.
 - Every template has ONE geometry function in src/core/templates.ts returning lines
   and dots in PDF space. Canvas rendering and pdf-lib export both consume it.
 - Grid level of detail is screen only: below 8 px spacing only every 5th grid line

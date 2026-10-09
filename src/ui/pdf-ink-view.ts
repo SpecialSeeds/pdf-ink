@@ -306,6 +306,9 @@ export class PdfInkView extends FileView implements ZoomHost {
 				this.pageList?.scrollToPage(index);
 			},
 			insertedTheme: () => this.insertedTheme(),
+			movePage: (key, to) => {
+				this.pageEditor?.movePage(key, to);
+			},
 		});
 
 		this.scrollEl = bodyEl.createDiv({ cls: 'pdf-ink-scroll' });
@@ -757,6 +760,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 					list.scrollToPage(index);
 				},
 				documentRuling: () => loaded.ruling,
+				app: () => this.app,
 			},
 		);
 

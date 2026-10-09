@@ -30,6 +30,8 @@ import {
 	type InsertedPage,
 	insertedPageKey,
 	isLivePage,
+	movedPage,
+	orderPages,
 } from '../core/pages';
 import type { PageTemplate } from '../core/templates';
 import type { DocumentLayout, InkData } from '../core/items';
@@ -293,6 +295,22 @@ export class AnnotationStore implements ItemStore {
 		this.ink.replacePage(change.after);
 		this.history.pushJoined({ kind: 'page-transform', changes: [change] });
 		this.afterMutation();
+	}
+
+	/**
+	 * Move inserted page `id` to display position `to`, as one undoable step.
+	 * Only its gap and sort key change; original pages keep their order. Returns
+	 * false when there was nothing to move.
+	 */
+	movePage(id: string, to: number, pdfPageCount: number): boolean {
+		const next = movedPage(orderPages(pdfPageCount, this.ink.insertedPages()), id, to, Date.now());
+		if (!next) return false;
+		const change = this.ink.pageChangeFor(id, () => next);
+		if (!change) return false;
+		this.ink.replacePage(change.after);
+		this.history.push({ kind: 'page-transform', changes: [change] });
+		this.afterMutation();
+		return true;
 	}
 
 	setPageTemplate(id: string, template: PageTemplate): void {

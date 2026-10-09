@@ -20,7 +20,7 @@ import { transformItem, translation } from '../core/transform';
 import { itemBounds } from '../core/hit-test';
 import type { InkData, PathItem, Stroke } from '../core/items';
 import { INK_DATA_VERSION } from '../core/items';
-import { type InsertedPage, insertedPageKey } from '../core/pages';
+import { type InsertedPage, insertedPageKey, orderPages } from '../core/pages';
 import { TOMBSTONE_MAX_AGE_MS, pruneTombstones } from '../core/merge';
 import { newNotebookData, newNotebookText } from '../core/new-notebook';
 import type { AskAboutCopy, CopyDecision } from './annotation-store';
@@ -1290,6 +1290,32 @@ describe('inserted pages', () => {
 		expect(store.redo()).toBe(true);
 		expect(store.insertedPages().map((page) => page.id)).toEqual(['p2']);
 		expect(store.itemsFor(KEY).map((item) => item.id)).toEqual(['s1']);
+	});
+
+	it('moves an inserted page as one undoable step, leaving the originals alone', async () => {
+		const harness = setup();
+		const { store } = harness;
+		await store.load(pdfFile(harness.vault));
+		// A two-page PDF with a page inserted after page 1: pdf:0, ins:p1, pdf:1.
+		store.insertPage(newPage());
+		const order = (): string[] => orderPages(2, store.insertedPages()).map((s) => s.key);
+		expect(order()).toEqual(['pdf:0', 'ins:p1', 'pdf:1']);
+
+		expect(store.movePage('p1', 0, 2)).toBe(true);
+		expect(order()).toEqual(['ins:p1', 'pdf:0', 'pdf:1']);
+		expect(store.movePage('p1', 2, 2)).toBe(true);
+		expect(order()).toEqual(['pdf:0', 'pdf:1', 'ins:p1']);
+
+		expect(store.undo()).toBe(true);
+		expect(order()).toEqual(['ins:p1', 'pdf:0', 'pdf:1']);
+		expect(store.undo()).toBe(true);
+		expect(order()).toEqual(['pdf:0', 'ins:p1', 'pdf:1']);
+		expect(store.redo()).toBe(true);
+		expect(order()).toEqual(['ins:p1', 'pdf:0', 'pdf:1']);
+
+		// Nowhere to go, or not an inserted page: nothing recorded.
+		expect(store.movePage('p1', 0, 2)).toBe(false);
+		expect(store.movePage('pdf:0', 1, 2)).toBe(false);
 	});
 
 	it('changes a template as one undoable step', async () => {
