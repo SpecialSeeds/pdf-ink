@@ -302,6 +302,43 @@ export function insertionAt(
 	return { afterPdfPage, sortKey: keyBetween(lower, upper) };
 }
 
+/**
+ * Inserted page `id` moved to display position `to`: its record with the gap
+ * and sort key that put it there, or null when it is not an inserted page or
+ * is already there.
+ *
+ * `to` counts positions in the order after the move, so 0 is before everything
+ * and the last position is the end. Only an inserted page moves; original pages
+ * keep their order, and the move is just a new place among them. Nothing about
+ * the order is stored beyond the page's own gap and key, so a move merges like
+ * any other edit to the record.
+ */
+export function movedPage(
+	order: readonly PageSlot[],
+	id: string,
+	to: number,
+	now: number,
+): InsertedPage | null {
+	const from = order.findIndex((slot) => slot.kind === 'inserted' && slot.page.id === id);
+	const slot = order[from];
+	if (!slot || slot.kind !== 'inserted') return null;
+	const rest = order.filter((_, i) => i !== from);
+	const target = Math.min(Math.max(0, Math.trunc(to)), rest.length);
+	if (target === from) return null;
+	const { afterPdfPage, sortKey } = insertionAt(rest, target);
+	return { ...slot.page, afterPdfPage, sortKey, updatedAt: now };
+}
+
+/**
+ * Where a page dragged from position `from` lands when dropped before or after
+ * the page at position `at`, counted the way {@link movedPage} counts: in the
+ * order after the move, the page having left its own place first.
+ */
+export function dropPosition(from: number, at: number, after: boolean): number {
+	const to = at + (after ? 1 : 0);
+	return from < to ? to - 1 : to;
+}
+
 /** The smallest sort key in a gap that is strictly above `key`, if any. */
 function nextKeyAbove(
 	order: readonly PageSlot[],

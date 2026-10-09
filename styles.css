@@ -1126,3 +1126,19 @@
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-s);
 }
+
+/*
+ * Rearranging pages in the sidebar: the page being dragged fades, and a line
+ * shows where it will land.
+ */
+.pdf-ink-thumbnail.is-dragging {
+	opacity: 0.4;
+}
+
+.pdf-ink-thumbnail.is-drop-before {
+	box-shadow: 0 -3px 0 0 var(--interactive-accent);
+}
+
+.pdf-ink-thumbnail.is-drop-after {
+	box-shadow: 0 3px 0 0 var(--interactive-accent);
+}

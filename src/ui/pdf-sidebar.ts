@@ -6,6 +6,7 @@ import type {
 	PDFOutlineNode,
 	PDFRef,
 } from '../types/pdfjs';
+import { dropPosition } from '../core/pages';
 import type { PageTheme } from '../core/theme';
 import type { PageGeometry } from '../types/view';
 import { paintInsertedPage } from './template-painter';
@@ -21,6 +22,8 @@ export interface SidebarCallbacks {
 	goToIndex(index: number): void;
 	/** The colours an inserted page is painted in, under the view's theme. */
 	insertedTheme(): PageTheme;
+	/** Move an inserted page to display position `to`, counted after the move. */
+	movePage(key: string, to: number): void;
 }
 
 type Tab = 'thumbnails' | 'outline';
@@ -62,6 +65,10 @@ export class PdfSidebar {
 	private outlineLoaded = false;
 	/** Bumped on teardown, so a render that lands late cannot touch the DOM. */
 	private epoch = 0;
+	/** The inserted page being dragged to a new place, if any. */
+	private dragKey: string | null = null;
+	/** Where it would land: before or after this thumbnail. */
+	private dropTarget: { entry: ThumbnailEntry; after: boolean } | null = null;
 
 	constructor(
 		parentEl: HTMLElement,
@@ -280,9 +287,64 @@ export class PdfSidebar {
 			const at = this.geometry.findIndex((page) => page.key === entry.key);
 			if (at >= 0) this.callbacks.goToIndex(at);
 		});
+
+		// Rearranging: an inserted page can be dragged to a new place. Original
+		// pages keep their order, so they only take drops, never move.
+		if (geom.source.kind === 'inserted') {
+			el.draggable = true;
+			el.setAttribute('aria-roledescription', 'draggable page');
+			this.component.registerDomEvent(el, 'dragstart', (evt) => {
+				this.dragKey = entry.key;
+				evt.dataTransfer?.setData('text/plain', entry.key);
+				if (evt.dataTransfer) evt.dataTransfer.effectAllowed = 'move';
+				el.addClass('is-dragging');
+			});
+			this.component.registerDomEvent(el, 'dragend', () => {
+				el.removeClass('is-dragging');
+				this.endDrag();
+			});
+		}
+		this.component.registerDomEvent(el, 'dragover', (evt) => {
+			if (this.dragKey === null) return;
+			evt.preventDefault();
+			const box = el.getBoundingClientRect();
+			this.showDrop(entry, evt.clientY > box.top + box.height / 2);
+		});
+		this.component.registerDomEvent(el, 'drop', (evt) => {
+			if (this.dragKey === null) return;
+			evt.preventDefault();
+			this.drop();
+		});
 		this.byEl.set(el, entry);
 		this.observer?.observe(el);
 		return entry;
+	}
+
+	private showDrop(entry: ThumbnailEntry, after: boolean): void {
+		const current = this.dropTarget;
+		if (current?.entry === entry && current.after === after) return;
+		current?.entry.el.removeClass('is-drop-before', 'is-drop-after');
+		entry.el.addClass(after ? 'is-drop-after' : 'is-drop-before');
+		this.dropTarget = { entry, after };
+	}
+
+	private endDrag(): void {
+		this.dropTarget?.entry.el.removeClass('is-drop-before', 'is-drop-after');
+		this.dropTarget = null;
+		this.dragKey = null;
+	}
+
+	/** Move the dragged page to where it was dropped. */
+	private drop(): void {
+		const key = this.dragKey;
+		const target = this.dropTarget;
+		this.endDrag();
+		if (key === null || !target) return;
+		const from = this.geometry.findIndex((page) => page.key === key);
+		const at = this.geometry.findIndex((page) => page.key === target.entry.key);
+		if (from < 0 || at < 0) return;
+		const to = dropPosition(from, at, target.after);
+		if (to !== from) this.callbacks.movePage(key, to);
 	}
 
 	private setLabel(
