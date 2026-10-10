@@ -10,10 +10,11 @@ export const EXPORT_FOLDER = 'annotated';
  *
  * Exports get a folder of their own so they do not pile up beside the PDFs and
  * their annotation files. The suffix still goes before the extension, so the
- * result is a `.pdf`, and an empty one falls back to the default.
+ * result is a `.pdf`, and an empty one falls back to the default. A `variant`
+ * follows the suffix, so a differently made export does not replace the usual one.
  */
-export function exportPathFor(pdfPath: string, suffix: string): string {
-	const safe = suffix.trim().length > 0 ? suffix : ' (annotated)';
+export function exportPathFor(pdfPath: string, suffix: string, variant = ''): string {
+	const safe = (suffix.trim().length > 0 ? suffix : ' (annotated)') + variant;
 	const slash = pdfPath.lastIndexOf('/');
 	const folder = slash < 0 ? '' : pdfPath.slice(0, slash + 1);
 	const name = pdfPath.slice(slash + 1);
@@ -28,3 +29,6 @@ export function parentFolder(path: string): string {
 	const slash = path.lastIndexOf('/');
 	return slash < 0 ? '' : path.slice(0, slash);
 }
+
+/** What an export of the original pages alone adds to its name. */
+export const ORIGINAL_PAGES_VARIANT = ' (original pages)';

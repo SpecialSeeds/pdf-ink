@@ -62,7 +62,7 @@ import { exportAnnotatedCopy } from '../utils/export-pdf';
 import { type PdfInkHost } from '../settings';
 import type { ToolKind } from '../core/tools';
 import type { PageGeometry, PageRecord, ZoomMode } from '../types/view';
-import { resolveExportTheme } from './export-theme-modal';
+import { resolveExportChoice } from './export-theme-modal';
 import { askAboutSyncCopy } from './sync-copy-modal';
 import { confirm } from './confirm-modal';
 import { PageEditor } from './page-editor';
@@ -984,12 +984,15 @@ export class PdfInkView extends FileView implements ZoomHost {
 		if (!file) return;
 		this.ink?.flushText();
 		await this.annotations.flush();
-		const theme = await resolveExportTheme(this.app, this.host);
-		if (theme === null) return;
+		// Leaving out inserted pages is only worth offering when there are some.
+		const offerOriginal = !this.isNotebook && this.annotations.insertedPages().length > 0;
+		const choice = await resolveExportChoice(this.app, this.host, offerOriginal);
+		if (choice === null) return;
 		await exportAnnotatedCopy(this.app, file, {
 			suffix: this.host.settings.exportSuffix,
 			mode: this.host.settings.exportMode,
-			theme,
+			theme: choice.theme,
+			insertedPages: choice.insertedPages,
 			themes: this.pageThemes,
 			headerDateFormat: this.host.settings.headerDateFormat,
 		});

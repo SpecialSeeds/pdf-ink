@@ -727,6 +727,24 @@ describe('inserted pages are spliced into the export', () => {
 		]);
 	});
 
+	it('exports the original pages alone, with their ink, when inserted records are left out', async () => {
+		// "Original pages only": the records are dropped, so their ink goes with
+		// them while the original pages keep theirs.
+		const exported = await exportAnnotatedPdf({
+			pdfBytes: await sizedPdf(),
+			pages: { 'ins:a': inkFor(0), 'pdf:1': inkFor(1) },
+			insertedPages: [],
+		});
+		expect(await sizesOf(exported)).toEqual([
+			[100, 200],
+			[300, 400],
+			[500, 600],
+		]);
+		const doc = await PDFDocument.load(exported);
+		expect(doc.getPage(0).node.Contents()).toBeUndefined();
+		expect(doc.getPage(1).node.Contents()).toBeDefined();
+	});
+
 	it('rules an inserted page, and rules a blank one with nothing', async () => {
 		const sizeFor = async (template: PageTemplate): Promise<number> => {
 			const exported = await exportAnnotatedPdf({

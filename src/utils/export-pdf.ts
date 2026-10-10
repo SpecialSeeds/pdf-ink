@@ -5,7 +5,7 @@ import { parseInkData, sidecarPathFor } from '../core/ink-serialization';
 import { exportAnnotatedPdfWithReport, scaledNote } from '../pdf/export';
 import { readBaseLayer } from '../pdf/base-file';
 import { layerPages } from '../core/base-layer';
-import { exportPathFor, parentFolder } from '../core/export-path';
+import { ORIGINAL_PAGES_VARIANT, exportPathFor, parentFolder } from '../core/export-path';
 import { isNotebookPath } from '../core/new-notebook';
 import type { PageThemes, ThemeName } from '../core/theme';
 import { type HeaderDateFormat, headerText } from '../core/header';
@@ -16,6 +16,8 @@ export interface ExportSettings {
 	/** The theme inserted and notebook pages export in. */
 	readonly theme: ThemeName;
 	readonly themes: PageThemes;
+	/** False leaves out a PDF's inserted pages, and their ink, keeping its own. */
+	readonly insertedPages?: boolean;
 	/** How a notebook header writes its date, unless the notebook says. */
 	readonly headerDateFormat: HeaderDateFormat;
 }
@@ -51,6 +53,7 @@ export async function exportAnnotatedCopy(
 			return;
 		}
 
+		const originalOnly = !notebook && settings.insertedPages === false;
 		const pdfBytes = notebook
 			? undefined
 			: new Uint8Array(await app.vault.readBinary(file));
@@ -68,7 +71,9 @@ export async function exportAnnotatedCopy(
 		const { bytes: flattened, scaledPages } = await exportAnnotatedPdfWithReport({
 			pdfBytes,
 			pages,
-			insertedPages: parsed.data.insertedPages,
+			// Ink keyed to a page not in the export is skipped, so dropping the
+			// records drops their ink too.
+			insertedPages: originalOnly ? [] : parsed.data.insertedPages,
 			mode: settings.mode,
 			theme: settings.theme,
 			themes: settings.themes,
@@ -81,7 +86,7 @@ export async function exportAnnotatedCopy(
 		// A notebook exports beside itself as a PDF of the same name.
 		const target = notebook
 			? exportPathFor(`${file.path.slice(0, -file.extension.length)}pdf`, settings.suffix)
-			: exportPathFor(file.path, settings.suffix);
+			: exportPathFor(file.path, settings.suffix, originalOnly ? ORIGINAL_PAGES_VARIANT : '');
 		const existing = app.vault.getFileByPath(target);
 		if (existing) {
 			// Re-exporting is normal, but it silently replaced the previous file.
