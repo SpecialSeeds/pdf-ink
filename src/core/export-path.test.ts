@@ -8,6 +8,15 @@ describe('exportPathFor', () => {
 		);
 	});
 
+	it('puts a variant after the suffix, the default one included', () => {
+		expect(exportPathFor('notes/paper.pdf', ' (annotated)', ' (original pages)')).toBe(
+			'notes/annotated/paper (annotated) (original pages).pdf',
+		);
+		expect(exportPathFor('paper.pdf', '  ', ' (original pages)')).toBe(
+			'annotated/paper (annotated) (original pages).pdf',
+		);
+	});
+
 	it('works at the vault root', () => {
 		expect(exportPathFor('paper.pdf', '-marked')).toBe('annotated/paper-marked.pdf');
 	});

@@ -575,7 +575,7 @@ export class PdfInkSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Ask for theme on export')
 			.setDesc(
-				'Choose light or dark pages each time you export. When off, exports use the theme you chose last.',
+				"Choose light or dark pages, or a PDF's original pages only, each time you export. When off, exports use the theme you chose last and include every page.",
 			)
 			.addToggle((toggle) =>
 				toggle
