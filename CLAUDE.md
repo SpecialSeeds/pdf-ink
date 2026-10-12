@@ -25,7 +25,8 @@ PageKey = "pdf:<0-based index>" for a page of the source PDF
         | "ins:<uuid>"          for an inserted page
 Item = Stroke | Shape | TextBox | Path, all coordinates in PDF user space
 Base  = { id, type, color, opacity, rotation, z, updatedAt, deletedAt? }
-Stroke  = Base & { type: "stroke", tool: "pen"|"highlighter", width, points: [x,y,p][] }
+Stroke  = Base & { type: "stroke", tool: "pen"|"highlighter", width, points: [x,y,p][],
+                   dynamic?: true }
 Shape   = Base & { type: "shape", kind: ShapeKind, box: {x,y,w,h}, width, fill: null|color }
 ShapeKind = "line" | "arrow" | "rect" | "ellipse" | "triangle"
           | "axes2d_q" | "axes2d_c" | "axes3d_c"
@@ -91,6 +92,11 @@ PageTemplate = "blank" | "lined" | "lined7.5" | "lined10" | "grid5" | "dot"
   migrated to "axes3d_c" on load.
 - Stroke gains optional `taper: { start: boolean, end: boolean }` (default both
   true). Eraser fragments set taper false on any end created by a cut.
+- Width is constant unless a stroke has `dynamic: true`, which only pencil pen
+  strokes written with "Dynamic pen thickness" on carry. Its pressure is smoothed
+  at capture, and screen, hit testing and export all thin it through the same
+  `strokeOutline`. The setting never changes ink already written; eraser
+  fragments keep the flag.
 
 ## Notebooks (.inknote)
 - A `.inknote` file IS the v4 document (same schema, no sidecar). It has no PDF, so

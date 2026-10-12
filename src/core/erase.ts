@@ -330,6 +330,8 @@ export function fragmentToStroke(
 		// A cut end is blunt: the renderer must not taper it.
 		cutStart: fragment.cutStart,
 		cutEnd: fragment.cutEnd,
+		// A piece of a pressure stroke keeps its pressure, so it keeps its shape.
+		...(source.type === 'stroke' && source.dynamic === true ? { dynamic: true as const } : {}),
 	};
 }
 

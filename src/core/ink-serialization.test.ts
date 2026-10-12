@@ -850,3 +850,20 @@ describe('isNotebookLeftover', () => {
 		}
 	});
 });
+
+describe('dynamic strokes', () => {
+	it('keep their flag through a save and a load', () => {
+		const parsed = parseInkData(doc({ 'pdf:0': [{ ...validStroke(), dynamic: true }] }));
+		expect(parsed.ok).toBe(true);
+		if (!parsed.ok) return;
+		const again = parseInkData(serializeInkData(parsed.data));
+		expect(again.ok && again.data.pages['pdf:0']?.[0]).toMatchObject({ dynamic: true });
+	});
+
+	it('are written only when set, so other strokes save as before', () => {
+		const parsed = parseInkData(doc({ 'pdf:0': [validStroke()] }));
+		expect(parsed.ok).toBe(true);
+		if (!parsed.ok) return;
+		expect(serializeInkData(parsed.data)).not.toContain('dynamic');
+	});
+});

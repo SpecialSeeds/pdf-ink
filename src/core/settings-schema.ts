@@ -55,6 +55,8 @@ export interface PdfInkSettings {
 	 * with no stylus, where every touch is meant to draw.
 	 */
 	palmRejection: boolean;
+	/** Pencil strokes with the pen follow pressure: lighter is thinner. */
+	dynamicPenWidth: boolean;
 	/**
 	 * Whether a stylus has ever been used in this vault.
 	 *
@@ -171,6 +173,7 @@ export const DEFAULT_SETTINGS: PdfInkSettings = {
 	exportSuffix: DEFAULT_EXPORT_SUFFIX,
 	exportMode: 'flatten',
 	palmRejection: true,
+	dynamicPenWidth: false,
 	penSeen: false,
 	inputDiagnostics: false,
 	toolbarSide: 'left',
@@ -286,6 +289,8 @@ export function mergeSettings(stored: unknown): PdfInkSettings {
 
 	const palm = raw['palmRejection'];
 	if (typeof palm === 'boolean') merged.palmRejection = palm;
+	const dynamicPenWidth = raw['dynamicPenWidth'];
+	if (typeof dynamicPenWidth === 'boolean') merged.dynamicPenWidth = dynamicPenWidth;
 
 	const penSeen = raw['penSeen'];
 	if (typeof penSeen === 'boolean') merged.penSeen = penSeen;

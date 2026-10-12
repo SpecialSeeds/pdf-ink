@@ -230,6 +230,18 @@ export class PdfInkSettingTab extends PluginSettingTab {
 						this.save();
 					}),
 			);
+
+		new Setting(containerEl)
+			.setName('Dynamic pen thickness')
+			.setDesc(
+				'Pen strokes written with a pencil get thinner as you press lighter and thicker as you press harder. Applies to new strokes; ink already written keeps its shape.',
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.dynamicPenWidth).onChange((value) => {
+					this.plugin.settings.dynamicPenWidth = value;
+					this.save();
+				}),
+			);
 	}
 
 	private addNewPdfSection(): void {

@@ -12,7 +12,10 @@ import {
 } from './items';
 import {
 	DEFAULT_PEN,
+	DYNAMIC_THINNING,
+	MIN_DYNAMIC_PRESSURE,
 	MIN_VISIBLE_STROKE_CSS,
+	smoothPressure,
 	strokeOptions,
 	createStroke,
 	createStrokeId,
@@ -347,5 +350,47 @@ describe('ink is constant width', () => {
 		expect(thickness(strokeOutline(line(1), 0.2, true, 'pen'))).toBeGreaterThanOrEqual(
 			MIN_VISIBLE_STROKE_CSS - 1e-9,
 		);
+	});
+});
+
+describe('dynamic strokes follow pressure', () => {
+	const thickness = (outline: [number, number][]): number => {
+		const ys = outline.map(([, y]) => y);
+		return Math.max(...ys) - Math.min(...ys);
+	};
+	const line = (pressure: number): [number, number, number][] => [
+		[0, 0, pressure],
+		[10, 0, pressure],
+		[20, 0, pressure],
+		[30, 0, pressure],
+	];
+
+	it('draws lighter thinner and heavier thicker, with the nib at half pressure', () => {
+		const light = thickness(strokeOutline(line(0.1), 8, true, 'pen', undefined, true));
+		const half = thickness(strokeOutline(line(0.5), 8, true, 'pen', undefined, true));
+		const heavy = thickness(strokeOutline(line(1), 8, true, 'pen', undefined, true));
+		expect(light).toBeLessThan(half);
+		expect(heavy).toBeGreaterThan(half);
+		expect(half).toBeCloseTo(8, 0);
+		expect(heavy).toBeLessThanOrEqual(8 * (1 + DYNAMIC_THINNING) + 0.5);
+	});
+
+	it('only thins when asked', () => {
+		expect(strokeOptions(6, true, 'pen', undefined, true).thinning).toBe(DYNAMIC_THINNING);
+		expect(strokeOptions(6, true, 'pen').thinning).toBe(0);
+	});
+});
+
+describe('smoothPressure', () => {
+	it('starts at the first reading, never at nothing', () => {
+		expect(smoothPressure(null, 0.4)).toBe(0.4);
+		expect(smoothPressure(null, 0)).toBe(MIN_DYNAMIC_PRESSURE);
+		expect(smoothPressure(null, 3)).toBe(1);
+	});
+
+	it('moves only part way toward a jump, so jitter does not show', () => {
+		const next = smoothPressure(0.2, 1);
+		expect(next).toBeGreaterThan(0.2);
+		expect(next).toBeLessThan(0.6);
 	});
 });

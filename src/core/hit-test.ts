@@ -193,7 +193,7 @@ export function itemHitShape(item: Item): ItemHitShape | null {
 	const outline = isStroke(item)
 		? // Width is in PDF points, so this outline is the real rendered shape at
 			// any zoom level.
-			strokeOutline(item.points, item.width, true, item.tool)
+			strokeOutline(item.points, item.width, true, item.tool, undefined, item.dynamic === true)
 		: boxOutline(item.box);
 	const bounds = outlineBounds(outline);
 	if (!bounds) return null;

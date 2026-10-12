@@ -530,6 +530,7 @@ function readStrokeFields(
 		points: samples,
 		cutStart,
 		cutEnd,
+		...(raw['dynamic'] === true ? { dynamic: true as const } : {}),
 	};
 }
 

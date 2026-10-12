@@ -78,6 +78,12 @@ export interface Stroke extends ItemBase {
 	 */
 	cutStart?: boolean;
 	cutEnd?: boolean;
+	/**
+	 * True when the width follows each sample's pressure. Only strokes written
+	 * with "Dynamic pen thickness" on carry it; every other stroke is drawn at
+	 * constant width whatever pressure it stored.
+	 */
+	dynamic?: true;
 }
 
 export type ShapeKind =
