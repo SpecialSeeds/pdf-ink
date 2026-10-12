@@ -73,14 +73,41 @@ export function toCanvasSamples(
 }
 
 /**
- * The pressure every sample is recorded at.
+ * The pressure every sample is recorded at, unless the stroke is dynamic.
  *
- * Ink is constant width: stylus pressure made strokes lurch between hairline and
- * full weight as the reading wandered, which read as glitchy handwriting rather
- * than expression. The third coordinate stays in the schema so older sidecars
- * still load, but nothing varies with it.
+ * Ink is constant width by default: raw stylus pressure made strokes lurch
+ * between hairline and full weight as the reading wandered, which read as
+ * glitchy handwriting rather than expression.
  */
 export const FLAT_PRESSURE = 1;
+
+/**
+ * How far a dynamic stroke's width follows pressure. perfect-freehand draws a
+ * diameter of `size * (1 - t + 2tp)`: at 0.5 that is half the nib at no
+ * pressure, the nib itself at half pressure, and one and a half nibs at full.
+ */
+export const DYNAMIC_THINNING = 0.5;
+
+/** The lightest pressure a dynamic stroke records; a stored pressure must be above 0. */
+export const MIN_DYNAMIC_PRESSURE = 0.05;
+
+/**
+ * How much of each new reading a dynamic stroke takes. Raw stylus pressure
+ * jitters from one event to the next; following it exactly is the lurching that
+ * made constant width the default.
+ */
+export const PRESSURE_SMOOTHING = 0.3;
+
+/**
+ * The pressure to record for a reading, given the last one recorded (null for
+ * a stroke's first sample). A reading of 0, which a stylus can report as it
+ * lands, is taken as the lightest touch rather than as nothing.
+ */
+export function smoothPressure(previous: number | null, reading: number): number {
+	const raw = Math.min(1, Math.max(MIN_DYNAMIC_PRESSURE, Number.isFinite(reading) ? reading : 0.5));
+	if (previous === null) return raw;
+	return previous + (raw - previous) * PRESSURE_SMOOTHING;
+}
 
 /** No stroke is ever drawn thinner than this, in CSS px. Below it, ink dots. */
 export const MIN_VISIBLE_STROKE_CSS = 1.4;
@@ -97,11 +124,12 @@ function strokeOptionsFor(
 	cut?: CutEnds,
 	/** The narrowest the stroke may draw, in the same units as `sizeCss`. */
 	minSize = MIN_VISIBLE_STROKE_CSS,
+	dynamic = false,
 ): StrokeOptions {
 	return {
 		size: Math.max(minSize, sizeCss),
-		// Constant width for every tool, whatever pressure an older stroke stored.
-		thinning: 0,
+		// Constant width unless the stroke was written to follow pressure.
+		thinning: dynamic ? DYNAMIC_THINNING : 0,
 		smoothing: 0.5,
 		streamline: 0.5,
 		// Nor may perfect-freehand invent pressure from velocity.
@@ -121,8 +149,9 @@ export function strokeOptions(
 	complete: boolean,
 	tool: InkTool,
 	cut?: CutEnds,
+	dynamic = false,
 ): StrokeOptions {
-	return strokeOptionsFor(sizeCss, complete, tool, cut);
+	return strokeOptionsFor(sizeCss, complete, tool, cut, MIN_VISIBLE_STROKE_CSS, dynamic);
 }
 
 /** The filled outline of a stroke, in whatever space `samples` are given in. */
@@ -132,11 +161,13 @@ export function strokeOutline(
 	complete: boolean,
 	tool: InkTool = 'pen',
 	cut?: CutEnds,
+	/** Follow each sample's pressure; see {@link Stroke.dynamic}. */
+	dynamic = false,
 ): Vec2[] {
 	if (samples.length === 0) return [];
 	return getStroke(
-		samples.map(([x, y]) => [x, y, FLAT_PRESSURE]),
-		strokeOptionsFor(sizeCss, complete, tool, cut),
+		samples.map(([x, y, p]) => [x, y, dynamic ? p : FLAT_PRESSURE]),
+		strokeOptionsFor(sizeCss, complete, tool, cut, MIN_VISIBLE_STROKE_CSS, dynamic),
 	);
 }
 
@@ -159,14 +190,16 @@ export const OUTLINE_UNITS = 4;
 export function strokeOutlinePdf(stroke: Stroke, minWidth: number): Vec2[] {
 	if (stroke.points.length === 0) return [];
 	const k = OUTLINE_UNITS;
+	const dynamic = stroke.dynamic === true;
 	const outline = getStroke(
-		stroke.points.map(([x, y]) => [x * k, y * k, FLAT_PRESSURE]),
+		stroke.points.map(([x, y, p]) => [x * k, y * k, dynamic ? p : FLAT_PRESSURE]),
 		strokeOptionsFor(
 			stroke.width * k,
 			true,
 			stroke.tool,
 			{ start: stroke.cutStart, end: stroke.cutEnd },
 			minWidth * k,
+			dynamic,
 		),
 	);
 	return outline.map(([x, y]) => [x / k, y / k]);

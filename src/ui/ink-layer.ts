@@ -50,6 +50,7 @@ import {
 } from '../core/transform';
 import {
 	FLAT_PRESSURE,
+	smoothPressure,
 	createStroke,
 	createStrokeId,
 	type ToolPreset,
@@ -180,6 +181,8 @@ export interface InkLayerOptions {
 	 * expose to the page at all.
 	 */
 	multiTouchTap(fingers: number): void;
+	/** Whether pencil strokes with the pen follow pressure. */
+	dynamicPenWidth(): boolean;
 	/** Record an input event, when diagnostics are switched on. */
 	traceInput(event: string, fields: Record<string, string | number | boolean>): void;
 	/** Whether anything is listening, so nothing is formatted needlessly. */
@@ -818,10 +821,15 @@ export class InkLayer {
 
 		const preset = this.options.preset();
 		if (!preset) return;
+		const stroke = createStroke(preset);
+		// Only the pencil reports real pressure; a mouse or a finger stays even.
+		if (preset.tool === 'pen' && evt.pointerType === 'pen' && this.options.dynamicPenWidth()) {
+			stroke.dynamic = true;
+		}
 		this.active = {
 			pointerId: evt.pointerId,
 			record,
-			stroke: createStroke(preset),
+			stroke,
 			canvasSamples: [],
 			captureEl,
 		};
@@ -1473,7 +1481,7 @@ export class InkLayer {
 			record.cssWidth,
 			record.cssHeight,
 		);
-		const pressure = FLAT_PRESSURE;
+		const pressure = active.stroke.dynamic === true ? this.pressureOf(evt) : FLAT_PRESSURE;
 		// Stored in PDF user space, so the stroke is independent of zoom, device
 		// pixel ratio and page rotation.
 		const [pdfX, pdfY] = record.viewport.convertToPdfPoint(cssX, cssY);
@@ -1488,6 +1496,16 @@ export class InkLayer {
 		}
 		active.canvasSamples.push([cssX, cssY, pressure]);
 		active.stroke.points.push([pdfX, pdfY, pressure]);
+	}
+
+	/** The pressure to record for a dynamic stroke's next sample. */
+	private pressureOf(evt: PenSample): number {
+		const points = this.active?.stroke.points ?? [];
+		const previous = points[points.length - 1]?.[2] ?? null;
+		const reading = evt.pressure ?? evt.force ?? 0.5;
+		// The lift reports no pressure at all; the stroke ends as it was going.
+		if (reading <= 0 && previous !== null) return previous;
+		return smoothPressure(previous, reading);
 	}
 
 	/** Queue a repaint of `record` for the next frame. */
@@ -1559,8 +1577,14 @@ function hiddenItems(
 	return hidden;
 }
 
-/** What a stroke sample needs, whether it came from a pointer or a touch. */
-type PenSample = Pick<PointerEvent, 'clientX' | 'clientY'>;
+/**
+ * What a stroke sample needs, whether it came from a pointer or a touch: a
+ * pointer reports `pressure`, a touch `force`.
+ */
+type PenSample = Pick<PointerEvent, 'clientX' | 'clientY'> & {
+	readonly pressure?: number;
+	readonly force?: number;
+};
 
 /**
  * How long a stroke carried on touch events waits for the next one before it is

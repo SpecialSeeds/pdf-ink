@@ -70,10 +70,14 @@ function toSvgSpace(pathData: string): string {
 
 function drawStroke(page: PDFPage, stroke: Stroke, blend: HighlighterBlend): void {
 	// The same outline generator the screen uses, in PDF points.
-	const outline = strokeOutline(stroke.points, stroke.width, true, stroke.tool, {
-		start: stroke.cutStart,
-		end: stroke.cutEnd,
-	});
+	const outline = strokeOutline(
+		stroke.points,
+		stroke.width,
+		true,
+		stroke.tool,
+		{ start: stroke.cutStart, end: stroke.cutEnd },
+		stroke.dynamic === true,
+	);
 	if (outline.length === 0) return;
 	page.drawSvgPath(toSvgSpace(outlineToPathData(outline)), {
 		// drawSvgPath reads its path y-DOWN from the anchor, so the path is emitted

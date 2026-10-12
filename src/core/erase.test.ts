@@ -293,6 +293,12 @@ describe('fragmentToStroke', () => {
 		expect(built?.cutEnd).toBe(false);
 	});
 
+	it('keeps a pressure stroke dynamic, and leaves others even', () => {
+		const fragment = { points: [[0, 0, 0.3], [50, 0, 0.8]] as [number, number, number][], cutStart: false, cutEnd: true };
+		expect(fragmentToStroke({ ...source, dynamic: true }, fragment, 'f1')?.dynamic).toBe(true);
+		expect(fragmentToStroke(source, fragment, 'f2')?.dynamic).toBeUndefined();
+	});
+
 	it('discards a fragment with fewer than two points', () => {
 		expect(
 			fragmentToStroke(source, { points: [[0, 0, 1]], cutStart: true, cutEnd: true }, 'f'),

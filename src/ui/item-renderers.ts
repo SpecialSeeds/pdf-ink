@@ -64,6 +64,7 @@ function paintStrokeOutline(
 		stroke.tool,
 		// Ends cut by the eraser are blunt, not tapered.
 		{ start: stroke.cutStart, end: stroke.cutEnd },
+		stroke.dynamic === true,
 	);
 	if (outline.length === 0) return;
 
