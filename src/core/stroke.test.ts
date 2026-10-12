@@ -365,14 +365,22 @@ describe('dynamic strokes follow pressure', () => {
 		[30, 0, pressure],
 	];
 
-	it('draws lighter thinner and heavier thicker, with the nib at half pressure', () => {
-		const light = thickness(strokeOutline(line(0.1), 8, true, 'pen', undefined, true));
-		const half = thickness(strokeOutline(line(0.5), 8, true, 'pen', undefined, true));
+	it('draws lighter thinner and heavier thicker', () => {
+		const light = thickness(strokeOutline(line(0.05), 8, true, 'pen', undefined, true));
+		const usual = thickness(strokeOutline(line(0.15), 8, true, 'pen', undefined, true));
 		const heavy = thickness(strokeOutline(line(1), 8, true, 'pen', undefined, true));
-		expect(light).toBeLessThan(half);
-		expect(heavy).toBeGreaterThan(half);
-		expect(half).toBeCloseTo(8, 0);
+		expect(light).toBeLessThan(usual);
+		expect(heavy).toBeGreaterThan(usual);
 		expect(heavy).toBeLessThanOrEqual(8 * (1 + DYNAMIC_THINNING) + 0.5);
+	});
+
+	it('draws ordinary pencil pressure close to the nib, not thin enough to look fuzzy', () => {
+		// An Apple Pencil writing normally reports 0.05 to 0.2.
+		for (const pressure of [0.05, 0.1, 0.2]) {
+			const width = thickness(strokeOutline(line(pressure), 8, true, 'pen', undefined, true));
+			expect(width).toBeGreaterThan(8 * 0.75);
+			expect(width).toBeLessThan(8 * 1.1);
+		}
 	});
 
 	it('only thins when asked', () => {

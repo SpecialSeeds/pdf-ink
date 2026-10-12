@@ -83,10 +83,26 @@ export const FLAT_PRESSURE = 1;
 
 /**
  * How far a dynamic stroke's width follows pressure. perfect-freehand draws a
- * diameter of `size * (1 - t + 2tp)`: at 0.5 that is half the nib at no
- * pressure, the nib itself at half pressure, and one and a half nibs at full.
+ * diameter of `size * (1 - t + 2tp)` for a curved pressure p: at 0.5 that runs
+ * from half the nib to one and a half nibs.
  */
 export const DYNAMIC_THINNING = 0.5;
+
+/**
+ * The curve stored pressure goes through before it sets the width.
+ *
+ * An Apple Pencil writing normally reports about 0.1, rarely above 0.2. Taken
+ * as it comes, that drew handwriting at 60% of the nib, thin enough to look
+ * fuzzy. Raised to this power, ordinary writing (0.05 to 0.2) draws at 80% to
+ * 100% of the nib, and pressing hard still reaches one and a half. Applied when
+ * drawing, not when recording, so strokes already written follow it too.
+ */
+export const DYNAMIC_PRESSURE_EXPONENT = 0.4;
+
+/** Stored pressure to the pressure that sets a dynamic stroke's width. */
+export function dynamicPressure(stored: number): number {
+	return Math.pow(Math.min(1, Math.max(0, stored)), DYNAMIC_PRESSURE_EXPONENT);
+}
 
 /** The lightest pressure a dynamic stroke records; a stored pressure must be above 0. */
 export const MIN_DYNAMIC_PRESSURE = 0.05;
@@ -166,7 +182,7 @@ export function strokeOutline(
 ): Vec2[] {
 	if (samples.length === 0) return [];
 	return getStroke(
-		samples.map(([x, y, p]) => [x, y, dynamic ? p : FLAT_PRESSURE]),
+		samples.map(([x, y, p]) => [x, y, dynamic ? dynamicPressure(p) : FLAT_PRESSURE]),
 		strokeOptionsFor(sizeCss, complete, tool, cut, MIN_VISIBLE_STROKE_CSS, dynamic),
 	);
 }
@@ -192,7 +208,7 @@ export function strokeOutlinePdf(stroke: Stroke, minWidth: number): Vec2[] {
 	const k = OUTLINE_UNITS;
 	const dynamic = stroke.dynamic === true;
 	const outline = getStroke(
-		stroke.points.map(([x, y, p]) => [x * k, y * k, dynamic ? p : FLAT_PRESSURE]),
+		stroke.points.map(([x, y, p]) => [x * k, y * k, dynamic ? dynamicPressure(p) : FLAT_PRESSURE]),
 		strokeOptionsFor(
 			stroke.width * k,
 			true,

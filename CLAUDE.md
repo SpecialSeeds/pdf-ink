@@ -94,8 +94,9 @@ PageTemplate = "blank" | "lined" | "lined7.5" | "lined10" | "grid5" | "dot"
   true). Eraser fragments set taper false on any end created by a cut.
 - Width is constant unless a stroke has `dynamic: true`, which only pencil pen
   strokes written with "Dynamic pen thickness" on carry. Its pressure is smoothed
-  at capture, and screen, hit testing and export all thin it through the same
-  `strokeOutline`. The setting never changes ink already written; eraser
+  at capture and curved when drawn (`dynamicPressure`, so ordinary pencil pressure
+  of about 0.1 draws near the nib), and screen, hit testing and export all thin
+  it through the same `strokeOutline`. The setting never changes ink already written; eraser
   fragments keep the flag.
 
 ## Notebooks (.inknote)
