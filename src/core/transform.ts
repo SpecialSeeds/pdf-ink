@@ -10,6 +10,8 @@ import type { ItemChange, ItemRef } from './history';
 import type { Box, Item } from './items';
 import { mapPath } from './path';
 import { selectionBounds } from './lasso';
+import type { Bounds } from './hit-test';
+import { shiftInside } from './page-bounds';
 import type { Vec2 } from 'perfect-freehand';
 
 /**
@@ -158,17 +160,67 @@ export function transformChanges(
  * the result would just select both. Offsetting by the selection's full size puts
  * the duplicate clear of it, diagonally down-right — which in PDF space (y up) is
  * one width across and one height *down*.
+ *
+ * Given the page's rectangle, the copy never leaves it: a copy of something near
+ * the bottom-right corner that went off the page was simply lost. The other clear
+ * placements are tried in turn, and when none fits the copy is pulled back inside.
  */
 export function duplicateItems(
 	refs: readonly ItemRef[],
 	nextId: () => string,
+	page?: Bounds,
 ): Item[] {
-	const bounds = selectionBounds(refs);
-	const dx = bounds ? bounds.maxX - bounds.minX : 0;
-	const dy = bounds ? -(bounds.maxY - bounds.minY) : 0;
+	const [dx, dy] = duplicateOffset(selectionBounds(refs), page);
 	const offset = translation(dx, dy);
 	return refs.map((ref) =>
 		transformItem({ ...ref.item, id: nextId() }, offset),
+	);
+}
+
+/** Where a duplicate goes, relative to the original. */
+export function duplicateOffset(
+	bounds: Bounds | null,
+	page?: Bounds,
+): [number, number] {
+	if (!bounds) return [0, 0];
+	const w = bounds.maxX - bounds.minX;
+	const h = bounds.maxY - bounds.minY;
+	// Down-right first, then the other diagonals, then straight beside.
+	const candidates: [number, number][] = [
+		[w, -h],
+		[-w, -h],
+		[w, h],
+		[-w, h],
+		[w, 0],
+		[0, -h],
+		[-w, 0],
+		[0, h],
+	];
+	const first = candidates[0] ?? [0, 0];
+	if (!page) return first;
+	for (const [dx, dy] of candidates) {
+		if (fitsInside(shifted(bounds, dx, dy), page)) return [dx, dy];
+	}
+	// Nothing clear of the original fits, so overlap it rather than lose it.
+	const [sx, sy] = shiftInside(shifted(bounds, first[0], first[1]), page);
+	return [first[0] + sx, first[1] + sy];
+}
+
+function shifted(bounds: Bounds, dx: number, dy: number): Bounds {
+	return {
+		minX: bounds.minX + dx,
+		minY: bounds.minY + dy,
+		maxX: bounds.maxX + dx,
+		maxY: bounds.maxY + dy,
+	};
+}
+
+function fitsInside(inner: Bounds, page: Bounds): boolean {
+	return (
+		inner.minX >= page.minX &&
+		inner.maxX <= page.maxX &&
+		inner.minY >= page.minY &&
+		inner.maxY <= page.maxY
 	);
 }
 

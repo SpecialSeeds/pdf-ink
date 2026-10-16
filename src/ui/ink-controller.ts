@@ -5,6 +5,7 @@ import type { PageKey } from '../core/pages';
 import type { PageTheme } from '../core/theme';
 import { recolorChanges } from '../core/selection';
 import { createStrokeId } from '../core/stroke';
+import { pageBounds } from '../core/page-bounds';
 import { TextEditor } from './text-editor';
 import {
 	type SelectionTransform,
@@ -524,9 +525,14 @@ export class InkController {
 
 	private duplicateSelection(): void {
 		if (this.selection.length === 0) return;
-		const copies = duplicateItems(this.selection, createStrokeId);
 		const pageKey = this.selection[0]?.pageKey;
 		if (pageKey === undefined) return;
+		// The page is the frame: a copy that landed off it could not be found again.
+		const geom = this.options.recordForPage(pageKey)?.geom;
+		const page = geom
+			? pageBounds(geom.baseViewport, geom.baseWidth, geom.baseHeight)
+			: undefined;
+		const copies = duplicateItems(this.selection, createStrokeId, page);
 		const added: ItemRef[] = copies.map((item, offset) => ({
 			pageKey,
 			index: this.store.itemsFor(pageKey).length + offset,
