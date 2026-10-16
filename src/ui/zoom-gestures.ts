@@ -56,21 +56,38 @@ export function attachZoomGestures(
 		{ passive: false },
 	);
 
+	/*
+	 * A pinch that ends without a commit leaves `is-zooming` on the pages, which
+	 * takes the ink canvas out of hit testing: the pen then draws nothing until
+	 * something else settles the zoom. Every way out of a pinch goes through here.
+	 */
+	const endPinch = (): void => {
+		pinch = null;
+		if (zoom.isGesturing) zoom.commit();
+	};
+
 	component.registerDomEvent(
 		scrollEl,
 		'touchstart',
 		(evt) => {
-			// Locked, two fingers are left to the browser, which pans with them.
-			if (evt.touches.length !== 2 || zoom.isLocked) {
-				pinch = null;
+			/*
+			 * Fingers only, and never while the pen is down. The Pencil is a touch
+			 * too, so a pen and a resting palm used to count as a pinch mid-stroke;
+			 * and a palm adding a third contact to a pinch dropped it without the
+			 * commit, freezing the page until the app was backgrounded.
+			 */
+			const fingers = fingerTouches(evt);
+			if (fingers.length !== 2 || hasStylus(evt) || zoom.isLocked) {
+				// Locked, two fingers are left to the browser, which pans with them.
+				if (pinch) endPinch();
 				return;
 			}
-			const distance = touchDistance(evt);
-			const midpoint = touchMidpoint(evt);
-			if (distance === null || midpoint === null) return;
+			const [a, b] = fingers;
+			if (!a || !b) return;
 			evt.preventDefault();
+			const midpoint = touchMidpoint(a, b);
 			pinch = {
-				startDistance: distance,
+				startDistance: touchDistance(a, b),
 				startZoom: zoom.getZoom(),
 				startX: midpoint.x,
 				startY: midpoint.y,
@@ -86,10 +103,11 @@ export function attachZoomGestures(
 		scrollEl,
 		'touchmove',
 		(evt) => {
-			if (!pinch || evt.touches.length !== 2) return;
-			const distance = touchDistance(evt);
-			const midpoint = touchMidpoint(evt);
-			if (distance === null || midpoint === null || pinch.startDistance === 0) return;
+			if (!pinch) return;
+			const [a, b] = fingerTouches(evt);
+			if (!a || !b || pinch.startDistance === 0) return;
+			const distance = touchDistance(a, b);
+			const midpoint = touchMidpoint(a, b);
 			// Only two-finger moves are swallowed, so one-finger panning still
 			// scrolls natively. Two fingers both zoom and pan: the page follows
 			// their midpoint, which is how a wide board is moved around by touch.
@@ -102,40 +120,48 @@ export function attachZoomGestures(
 		{ passive: false },
 	);
 
-	const endPinch = (evt: TouchEvent): void => {
-		if (!pinch || evt.touches.length >= 2) return;
-		pinch = null;
-		zoom.commit();
+	const liftFinger = (evt: TouchEvent): void => {
+		if (!pinch || fingerTouches(evt).length >= 2) return;
+		endPinch();
 	};
-	component.registerDomEvent(scrollEl, 'touchend', endPinch);
-	component.registerDomEvent(scrollEl, 'touchcancel', endPinch);
+	component.registerDomEvent(scrollEl, 'touchend', liftFinger);
+	component.registerDomEvent(scrollEl, 'touchcancel', liftFinger);
+
+	/*
+	 * Backstops for a lift iOS never reported, which otherwise leaves a phantom
+	 * finger holding the pinch open: the pen landing, and the app losing focus.
+	 * Captured, so it runs before the ink layer looks at the pen.
+	 */
+	component.registerDomEvent(
+		scrollEl,
+		'pointerdown',
+		(evt) => {
+			if (evt.pointerType === 'pen' && (pinch || zoom.isGesturing)) endPinch();
+		},
+		{ capture: true },
+	);
+	component.registerDomEvent(scrollEl.doc, 'visibilitychange', () => {
+		if (scrollEl.doc.visibilityState === 'hidden') endPinch();
+	});
+	component.registerDomEvent(scrollEl.win, 'blur', endPinch);
 
 	zoom.registerCleanup();
 }
 
-/**
- * TouchList is read through `item()`, which returns `Touch | null`. The
- * subscript form is widened to `Touch | undefined` by noUncheckedIndexedAccess
- * anyway, and `item()` states the contract honestly.
- */
-function touchPair(evt: TouchEvent): [Touch, Touch] | null {
-	const a = evt.touches.item(0);
-	const b = evt.touches.item(1);
-	if (!a || !b) return null;
-	return [a, b];
+/** The fingers on the glass: every touch except a stylus. */
+function fingerTouches(evt: TouchEvent): Touch[] {
+	return Array.from(evt.touches).filter((touch) => touch.touchType !== 'stylus');
 }
 
-function touchDistance(evt: TouchEvent): number | null {
-	const pair = touchPair(evt);
-	if (!pair) return null;
-	const [a, b] = pair;
+function hasStylus(evt: TouchEvent): boolean {
+	return Array.from(evt.touches).some((touch) => touch.touchType === 'stylus');
+}
+
+function touchDistance(a: Touch, b: Touch): number {
 	return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
 }
 
-function touchMidpoint(evt: TouchEvent): { x: number; y: number } | null {
-	const pair = touchPair(evt);
-	if (!pair) return null;
-	const [a, b] = pair;
+function touchMidpoint(a: Touch, b: Touch): { x: number; y: number } {
 	return {
 		x: (a.clientX + b.clientX) / 2,
 		y: (a.clientY + b.clientY) / 2,

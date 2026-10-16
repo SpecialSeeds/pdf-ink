@@ -78,6 +78,11 @@ export class ZoomController {
 		return this.locked;
 	}
 
+	/** Whether a pinch or wheel zoom is mid-gesture, with its preview showing. */
+	get isGesturing(): boolean {
+		return this.anchor !== null;
+	}
+
 	setLocked(locked: boolean): void {
 		this.locked = locked;
 		// A gesture in flight when the lock lands is settled where it is.
