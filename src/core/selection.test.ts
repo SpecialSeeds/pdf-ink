@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ItemRef } from './history';
 import type { Item, ShapeItem } from './items';
-import { recolorChanges } from './selection';
+import { colorLayerOf, recolorChanges, selectionLayers } from './selection';
 import { DEFAULT_PEN, createStroke } from './stroke';
 
 function strokeRef(id: string, color: string, index = 0): ItemRef {
@@ -90,5 +90,48 @@ describe('recolorChanges', () => {
 
 	it('an empty selection produces no changes', () => {
 		expect(recolorChanges([], '#ff0000')).toEqual([]);
+	});
+});
+
+function highlightRef(id: string, color: string): ItemRef {
+	const item: Item = {
+		...createStroke({ ...DEFAULT_PEN, tool: 'highlighter' }, id),
+		color,
+	};
+	return { pageKey: 'pdf:0', index: 0, item };
+}
+
+describe('colour layers', () => {
+	it('puts highlighter strokes and highlight paths on the highlight layer', () => {
+		expect(colorLayerOf(highlightRef('h', '#ff0').item)).toBe('highlight');
+		expect(colorLayerOf(strokeRef('s', '#000').item)).toBe('ink');
+		expect(colorLayerOf(shapeRef('r', '#000', null).item)).toBe('ink');
+	});
+
+	it('lists ink before highlight, and only the layers present', () => {
+		expect(selectionLayers([strokeRef('s', '#000')])).toEqual([
+			{ layer: 'ink', color: '#000' },
+		]);
+		expect(
+			selectionLayers([highlightRef('h', '#FF0'), strokeRef('s', '#000')]),
+		).toEqual([
+			{ layer: 'ink', color: '#000' },
+			{ layer: 'highlight', color: '#ff0' },
+		]);
+	});
+
+	it('reports no shared colour for a mixed layer', () => {
+		expect(
+			selectionLayers([strokeRef('a', '#000'), strokeRef('b', '#f00')]),
+		).toEqual([{ layer: 'ink', color: null }]);
+	});
+
+	it('recolours only the chosen layer', () => {
+		const changes = recolorChanges(
+			[highlightRef('h', '#ff0'), strokeRef('s', '#000')],
+			'#0f0',
+			'highlight',
+		);
+		expect(changes.map((change) => change.after.id)).toEqual(['h']);
 	});
 });

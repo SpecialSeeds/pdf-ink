@@ -91,6 +91,26 @@ export const EXTRA_COLORS: readonly NamedColor[] = [
 	{ name: 'Pink', value: '#db2777' },
 ];
 
+/** The selection's ink palette. */
+export const SELECTION_INK_COLORS: readonly NamedColor[] = [
+	{ name: 'Black', value: '#1f1f1f' },
+	{ name: 'Red', value: '#c0392b' },
+	{ name: 'Blue', value: '#1f6feb' },
+	{ name: 'Green', value: '#158f48' },
+	{ name: 'Purple', value: '#8250df' },
+	{ name: 'Orange', value: '#ea580c' },
+];
+
+/** The selection's highlighter palette: colours that read through as a wash. */
+export const SELECTION_HIGHLIGHT_COLORS: readonly NamedColor[] = [
+	{ name: 'Yellow', value: '#e6b800' },
+	{ name: 'Lime', value: '#84cc16' },
+	{ name: 'Cyan', value: '#06b6d4' },
+	{ name: 'Pink', value: '#db2777' },
+	{ name: 'Orange', value: '#ea580c' },
+	{ name: 'Purple', value: '#8250df' },
+];
+
 /** Translucent enough to read through, per the highlighter spec. */
 export const HIGHLIGHTER_OPACITY = 0.35;
 

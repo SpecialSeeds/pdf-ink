@@ -69,6 +69,7 @@ import {
 	SelectionOverlay,
 	type SelectionOverlayCallbacks,
 } from './selection-overlay';
+import { type ColorLayer, selectionLayers } from '../core/selection';
 
 /**
  * Bit 5 of `PointerEvent.buttons`: the stylus eraser. Reported by an Apple
@@ -201,6 +202,8 @@ export interface InkLayerOptions {
 	commitTransform(t: SelectionTransform): void;
 	deleteSelection(): void;
 	duplicateSelection(): void;
+	/** Recolour the selected items on one layer: ink, or highlighter. */
+	recolorSelection(layer: ColorLayer, color: string): void;
 	bringSelectionForward(): void;
 	sendSelectionBack(): void;
 	/** The theme a page's ink renders under. */
@@ -315,6 +318,9 @@ export class InkLayer {
 			sendBack: () => {
 				this.options.sendSelectionBack();
 			},
+			recolor: (layer, color) => {
+				this.options.recolorSelection(layer, color);
+			},
 		};
 		this.overlay = new SelectionOverlay(component, overlayCallbacks);
 	}
@@ -333,7 +339,7 @@ export class InkLayer {
 			this.overlay.hide();
 			return;
 		}
-		this.overlay.show(record, bounds);
+		this.overlay.show(record, bounds, selectionLayers(refs));
 	}
 
 	clearSelection(): void {
