@@ -1,5 +1,12 @@
 import { type Component, setIcon } from 'obsidian';
+import { sameColor } from '../core/color';
 import type { Bounds } from '../core/hit-test';
+import type { ColorLayer, LayerColor } from '../core/selection';
+import {
+	type NamedColor,
+	SELECTION_HIGHLIGHT_COLORS,
+	SELECTION_INK_COLORS,
+} from '../core/tools';
 import type { PageRecord } from '../types/view';
 
 /** Which part of the selection box a pointer landed on. */
@@ -12,7 +19,13 @@ export interface SelectionOverlayCallbacks {
 	duplicate(): void;
 	bringForward(): void;
 	sendBack(): void;
+	recolor(layer: ColorLayer, color: string): void;
 }
+
+const LAYER_COLORS: Record<ColorLayer, readonly NamedColor[]> = {
+	ink: SELECTION_INK_COLORS,
+	highlight: SELECTION_HIGHLIGHT_COLORS,
+};
 
 /**
  * The dashed selection box, its handles, and its context bar.
@@ -24,25 +37,43 @@ export interface SelectionOverlayCallbacks {
 export class SelectionOverlay {
 	private boxEl: HTMLElement | null = null;
 	private host: PageRecord | null = null;
+	private barEl: HTMLElement | null = null;
+	private palettesEl: HTMLElement | null = null;
+	/** The layers the palettes were last built for, so a refresh can reuse them. */
+	private paletteKey = '';
+	private readonly swatches: {
+		layer: ColorLayer;
+		color: string;
+		el: HTMLElement;
+	}[] = [];
 
 	constructor(
 		private readonly component: Component,
 		private readonly callbacks: SelectionOverlayCallbacks,
 	) {}
 
-	/** Show the box on `record`, moving it between pages if needed. */
-	show(record: PageRecord, bounds: Bounds): void {
+	/**
+	 * Show the box on `record`, moving it between pages if needed, with one
+	 * colour palette per layer in `layers` (ink above, highlighter below). Without
+	 * `layers`, as mid-drag, the palettes stay as they were.
+	 */
+	show(record: PageRecord, bounds: Bounds, layers?: readonly LayerColor[]): void {
 		if (this.host !== record) {
 			this.hide();
 			this.boxEl = this.build(record);
 			this.host = record;
 		}
 		this.place(record, bounds);
+		if (layers) this.updatePalettes(layers);
 	}
 
 	hide(): void {
 		this.boxEl?.remove();
 		this.boxEl = null;
+		this.barEl = null;
+		this.palettesEl = null;
+		this.paletteKey = '';
+		this.swatches.length = 0;
 		this.host = null;
 	}
 
@@ -121,20 +152,86 @@ export class SelectionOverlay {
 		setIcon(rotateEl, 'rotate-cw');
 
 		const barEl = boxEl.createDiv({ cls: 'pdf-ink-selection-bar' });
-		this.addAction(barEl, 'trash-2', 'Delete', () => {
+		this.barEl = barEl;
+		const actionsEl = barEl.createDiv({ cls: 'pdf-ink-selection-actions' });
+		this.addAction(actionsEl, 'trash-2', 'Delete', () => {
 			this.callbacks.delete();
 		});
-		this.addAction(barEl, 'copy', 'Duplicate', () => {
+		this.addAction(actionsEl, 'copy', 'Duplicate', () => {
 			this.callbacks.duplicate();
 		});
-		this.addAction(barEl, 'bring-to-front', 'Bring forward', () => {
+		this.addAction(actionsEl, 'bring-to-front', 'Bring forward', () => {
 			this.callbacks.bringForward();
 		});
-		this.addAction(barEl, 'send-to-back', 'Send back', () => {
+		this.addAction(actionsEl, 'send-to-back', 'Send back', () => {
 			this.callbacks.sendBack();
 		});
 
 		return boxEl;
+	}
+
+	/**
+	 * One unlabelled row of swatches per layer the selection has. Rebuilt only when
+	 * the set of layers changes; otherwise just the active swatch moves.
+	 */
+	private updatePalettes(layers: readonly LayerColor[]): void {
+		const barEl = this.barEl;
+		if (!barEl) return;
+		const key = layers.map((entry) => entry.layer).join(',');
+		if (key !== this.paletteKey) {
+			this.paletteKey = key;
+			this.palettesEl?.remove();
+			this.swatches.length = 0;
+			this.palettesEl = barEl.createDiv({ cls: 'pdf-ink-selection-palettes' });
+			for (const { layer } of layers) {
+				const rowEl = this.palettesEl.createDiv({
+					cls: 'pdf-ink-selection-palette',
+				});
+				for (const color of LAYER_COLORS[layer]) {
+					this.swatches.push({
+						layer,
+						color: color.value,
+						el: this.addSwatch(rowEl, layer, color),
+					});
+				}
+			}
+		}
+		for (const swatch of this.swatches) {
+			const current = layers.find((entry) => entry.layer === swatch.layer)?.color;
+			swatch.el.toggleClass(
+				'is-active',
+				current != null && sameColor(current, swatch.color),
+			);
+		}
+	}
+
+	/** A div, not a button, for the same reason as the palette's swatches. */
+	private addSwatch(
+		parentEl: HTMLElement,
+		layer: ColorLayer,
+		color: NamedColor,
+	): HTMLElement {
+		const swatchEl = parentEl.createDiv({
+			cls: 'pdf-ink-swatch',
+			attr: {
+				role: 'button',
+				tabindex: '0',
+				'aria-label': color.name,
+				title: color.name,
+			},
+		});
+		const fillEl = swatchEl.createSpan({ cls: 'pdf-ink-swatch-fill' });
+		fillEl.setCssProps({ '--pdf-ink-swatch': color.value });
+		const choose = (): void => {
+			this.callbacks.recolor(layer, color.value);
+		};
+		this.component.registerDomEvent(swatchEl, 'click', choose);
+		this.component.registerDomEvent(swatchEl, 'keydown', (evt) => {
+			if (evt.key !== 'Enter' && evt.key !== ' ') return;
+			evt.preventDefault();
+			choose();
+		});
+		return swatchEl;
 	}
 
 	private addAction(

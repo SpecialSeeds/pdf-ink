@@ -813,6 +813,39 @@
 	height: 26px;
 }
 
+/* Actions on top, then one unlabelled palette per layer: ink, then highlighter. */
+.pdf-ink-selection-bar {
+	flex-direction: column;
+	align-items: center;
+}
+
+.pdf-ink-selection-actions,
+.pdf-ink-selection-palette {
+	display: flex;
+	gap: var(--size-4-1);
+}
+
+.pdf-ink-selection-palettes {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-1);
+	padding-top: var(--size-4-1);
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.pdf-ink-selection-palettes:empty {
+	display: none;
+}
+
+.pdf-ink-selection-palette .pdf-ink-swatch {
+	width: 26px;
+	min-width: 26px;
+	max-width: 26px;
+	height: 26px;
+	min-height: 26px;
+	max-height: 26px;
+}
+
 /* ---- text ---------------------------------------------------------------- */
 
 /*

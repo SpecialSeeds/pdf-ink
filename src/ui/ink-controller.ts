@@ -3,7 +3,7 @@ import type { ItemRef } from '../core/history';
 import type { Item, ShapeKind, TextItem } from '../core/items';
 import type { PageKey } from '../core/pages';
 import type { PageTheme } from '../core/theme';
-import { recolorChanges } from '../core/selection';
+import { type ColorLayer, recolorChanges } from '../core/selection';
 import { createStrokeId } from '../core/stroke';
 import { pageBounds } from '../core/page-bounds';
 import { TextEditor } from './text-editor';
@@ -72,10 +72,7 @@ export interface InkControllerOptions {
  */
 export class InkController {
 	private readonly toolState: ToolState = defaultToolState();
-	/**
-	 * Items a colour click would recolour. Nothing populates this yet — there is no
-	 * select tool — so the recolour path is present and correct but unreachable.
-	 */
+	/** Items the select tool has selected, which a colour click recolours. */
 	private selection: readonly ItemRef[] = [];
 	private readonly textEditor: TextEditor;
 	/** Boxes not yet in the store, so an empty commit discards rather than deletes. */
@@ -175,6 +172,9 @@ export class InkController {
 			},
 			duplicateSelection: () => {
 				this.duplicateSelection();
+			},
+			recolorSelection: (layer, color) => {
+				this.recolorSelection(layer, color);
 			},
 			bringSelectionForward: () => {
 				this.changeZ('front');
@@ -390,23 +390,28 @@ export class InkController {
 			void this.host.saveSettings();
 		}
 
-		if (this.selection.length > 0) {
-			const changes = recolorChanges(this.selection, color);
-			if (changes.length > 0) {
-				this.store.transformItems(changes);
-				// The refs now hold stale items, so re-point them at the new ones.
-				this.selection = changes.map((change) => ({
-					pageKey: change.pageKey,
-					index:
-						this.selection.find((ref) => ref.item.id === change.after.id)
-							?.index ?? 0,
-					item: change.after,
-				}));
-				this.options.repaint();
-			}
-		}
+		if (this.selection.length > 0) this.recolorSelection(undefined, color);
 
 		this.refresh();
+	}
+
+	/**
+	 * Recolour the selection, or only its items on `layer`, as one undoable
+	 * operation. The tools' own colours are left alone.
+	 */
+	private recolorSelection(layer: ColorLayer | undefined, color: string): void {
+		const changes = recolorChanges(this.selection, color, layer);
+		if (changes.length === 0) return;
+		this.store.transformItems(changes);
+		// The changed refs now hold stale items, so re-point them at the new ones.
+		// Items that were already this colour stay selected as they were.
+		const after = new Map(changes.map((change) => [change.after.id, change.after]));
+		this.selection = this.selection.map((ref) => {
+			const item = after.get(ref.item.id);
+			return item ? { ...ref, item } : ref;
+		});
+		this.layer.refreshSelection();
+		this.options.repaint();
 	}
 
 	/** Re-read settings that change how the palette is laid out. */
