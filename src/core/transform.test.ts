@@ -333,3 +333,48 @@ describe('zChanges', () => {
 		expect(zChanges([ref(a)], [], 'front')).toEqual([]);
 	});
 });
+
+describe('duplicateItems on a page', () => {
+	let n = 0;
+	const nextId = (): string => `copy-${String(n++)}`;
+	// Box (10,20) 40x60 spans x 10..50, y 20..80.
+	const page = (maxX: number, maxY: number) => ({
+		minX: 0,
+		minY: 0,
+		maxX,
+		maxY,
+	});
+
+	it('keeps the usual down-right placement when it fits', () => {
+		// Down-right would need y down to -40, off a page starting at 0, so a page
+		// with room below is simulated by a negative minimum.
+		const [copy] = duplicateItems([ref(shape('o'))], nextId, {
+			minX: 0,
+			minY: -100,
+			maxX: 200,
+			maxY: 200,
+		});
+		if (!copy || copy.type !== 'shape') throw new Error('no copy');
+		expect(copy.box.x).toBe(50);
+		expect(copy.box.y).toBe(-40);
+	});
+
+	it('goes elsewhere clear of the original when down-right would leave the page', () => {
+		const bounds = page(200, 200);
+		const [copy] = duplicateItems([ref(shape('o'))], nextId, bounds);
+		if (!copy || copy.type !== 'shape') throw new Error('no copy');
+		// Up-right: x 50..90, y 80..140.
+		expect(copy.box.x).toBe(50);
+		expect(copy.box.y).toBe(80);
+	});
+
+	it('pulls the copy back onto the page when nothing clear of it fits', () => {
+		const bounds = page(60, 90);
+		const [copy] = duplicateItems([ref(shape('o'))], nextId, bounds);
+		if (!copy || copy.type !== 'shape') throw new Error('no copy');
+		expect(copy.box.x).toBeGreaterThanOrEqual(0);
+		expect(copy.box.x + copy.box.w).toBeLessThanOrEqual(60);
+		expect(copy.box.y).toBeGreaterThanOrEqual(0);
+		expect(copy.box.y + copy.box.h).toBeLessThanOrEqual(90);
+	});
+});
