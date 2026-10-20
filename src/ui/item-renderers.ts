@@ -233,7 +233,7 @@ function pdfSpacePath(item: PathItem): Path2D {
 }
 
 /** The viewport as an affine matrix, probed from three points. */
-function viewportMatrix(viewport: PointConverter): [number, number, number, number, number, number] {
+export function viewportMatrix(viewport: PointConverter): [number, number, number, number, number, number] {
 	const [e, f] = viewport.convertToViewportPoint(0, 0);
 	const [ax, ay] = viewport.convertToViewportPoint(1, 0);
 	const [cx, cy] = viewport.convertToViewportPoint(0, 1);

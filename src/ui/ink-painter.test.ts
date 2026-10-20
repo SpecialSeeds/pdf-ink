@@ -121,6 +121,30 @@ describe('painting committed ink', () => {
 		expect(ops.fills).toBe(0);
 	});
 
+	it('leaves alone a page that already shows what it should', () => {
+		const { store, painter, ops, page, other } = setup(10);
+		painter.paint(page, null, null);
+		painter.paint(other, null, null);
+		ops.reset();
+		// An undo or a stroke on one page repaints every page in view.
+		store.add('pdf:0', stroke('elsewhere', 11));
+		painter.paint(other, null, null);
+		expect(ops.copies).toEqual([]);
+		expect(ops.clears).toEqual([]);
+		painter.paint(page, null, null);
+		expect(ops.copies).toEqual([3, 3]);
+	});
+
+	it('copies everything back once told the canvas was cleared', () => {
+		const { painter, ops, page } = setup(10);
+		painter.paint(page, null, null);
+		ops.reset();
+		painter.forget(page);
+		painter.paint(page, null, null);
+		expect(ops.fills).toBe(0);
+		expect(ops.copies).toEqual([3, 3]);
+	});
+
 	it('draws the page again when an item is removed or changed', () => {
 		const { store, painter, ops, page } = setup(20);
 		painter.paint(page, null, null);

@@ -531,6 +531,16 @@ export class InkLayer {
 
 	/** Repaint a page's ink. Called whenever its canvases were resized/cleared. */
 	redraw(record: PageRecord): void {
+		this.painter.forget(record);
+		this.paint(record);
+	}
+
+	/**
+	 * Bring a page's ink up to date after the items changed. A page that already
+	 * shows what it should is left alone, so this is cheap on every page an edit
+	 * did not reach.
+	 */
+	repaint(record: PageRecord): void {
 		this.paint(record);
 	}
 
