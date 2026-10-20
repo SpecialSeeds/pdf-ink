@@ -84,11 +84,7 @@ export class ZoomController {
 		return this.anchor !== null;
 	}
 
-	/** Which ways scrolling may move the page; see {@link ScrollAxis}. */
-	get scrollAxis(): ScrollAxis {
-		return this.axis;
-	}
-
+	/** Which ways a two-finger pan may move the page; see {@link ScrollAxis}. */
 	setScrollAxis(axis: ScrollAxis): void {
 		this.axis = axis;
 	}

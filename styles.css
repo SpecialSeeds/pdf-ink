@@ -73,16 +73,18 @@
 }
 
 /*
- * Scroll lock. A touch's panning is the intersection of touch-action up to the
- * scroller, so narrowing it here holds every finger on the pages to one axis,
- * and a swipe that wanders sideways still only scrolls down.
+ * Scroll lock. The locked axis is not scrollable by the user at all, so nothing
+ * can move it: not a crooked swipe, not the fling after a fast one (which
+ * touch-action alone does not hold on iOS), not the trackpad or the wheel.
+ * Script can still set it, so zooming keeps its anchor and a found block can
+ * still be brought into view.
  */
 .pdf-ink-scroll.is-scroll-vertical {
-	touch-action: pan-y;
+	overflow-x: hidden;
 }
 
 .pdf-ink-scroll.is-scroll-horizontal {
-	touch-action: pan-x;
+	overflow-y: hidden;
 }
 
 /*
