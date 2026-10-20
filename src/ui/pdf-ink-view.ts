@@ -1040,12 +1040,15 @@ export class PdfInkView extends FileView implements ZoomHost {
 		this.emptyEl = emptyEl;
 	}
 
-	/** Repaint every live page's ink from PDF space at the current viewport. */
+	/**
+	 * Bring every live page's ink up to date with the store. Only pages whose
+	 * items changed are drawn again; the rest are left as they are.
+	 */
 	private repaintInk(): void {
 		const ink = this.ink;
 		if (!ink) return;
 		this.pageList?.eachRecord((record) => {
-			ink.redraw(record);
+			ink.repaint(record);
 		});
 	}
 

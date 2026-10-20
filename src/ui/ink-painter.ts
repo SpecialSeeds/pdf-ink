@@ -11,6 +11,7 @@ import {
 	layerFor,
 	renderLiveStroke,
 	rendererFor,
+	viewportMatrix,
 } from './item-renderers';
 
 /**
@@ -29,8 +30,10 @@ interface CachedLayers {
 	readonly highlight: HTMLCanvasElement;
 	/** Everything the bitmaps depend on but the items: size, zoom, theme. */
 	key: string;
-	/** The store version they were last brought up to date at. */
+	/** The page version they were last brought up to date at. */
 	version: number;
+	/** Counts every change to the bitmaps, so a canvas can tell it is behind. */
+	drawn: number;
 	/** The items drawn, in the order drawn. */
 	items: readonly Item[];
 }
@@ -102,6 +105,16 @@ export class InkPainter {
 		}
 	}
 
+	/**
+	 * Forget what a page's canvases show, after they were cleared behind the
+	 * painter's back by a resize, so the next paint copies everything back.
+	 */
+	forget(record: PageRecord): void {
+		this.shown.delete(record.inkCanvasEl);
+		const detail = record.detail;
+		if (detail) this.shown.delete(detail.inkCanvasEl);
+	}
+
 	private paintSurface(
 		record: PageRecord,
 		surface: Surface,
@@ -115,6 +128,23 @@ export class InkPainter {
 
 		const theme = this.themeFor(record);
 		const layers = this.layersFor(record, surface, pending, theme);
+		const prior = this.shown.get(surface.ink);
+		const hole = holeKey(surface.hole);
+		const clean = live === null && (preview?.length ?? 0) === 0 && (pending?.size ?? 0) === 0;
+
+		// The canvas already shows exactly this. An undo, a zoom or a stroke
+		// repaints every page in view, and clearing and copying each untouched
+		// one back, twice over, was what made those feel slow.
+		if (
+			clean &&
+			layers &&
+			prior?.clean === true &&
+			prior.layers === layers &&
+			prior.drawn === layers.drawn &&
+			prior.hole === hole
+		) {
+			return;
+		}
 
 		// A frame of a stroke being written: the canvas already shows the cached
 		// layers, so only the stroke's own patch needs putting back. Copying the
@@ -123,9 +153,8 @@ export class InkPainter {
 			live?.samples && (preview?.length ?? 0) === 0 && (pending?.size ?? 0) === 0 && !surface.hole
 				? liveDeviceRect(live, record.viewport.scale, surface.transform, surface.ink)
 				: null;
-		const prior = this.shown.get(surface.ink);
 		const patch =
-			liveRect && layers && prior?.layers === layers && prior.version === layers.version
+			liveRect && layers && prior?.layers === layers && prior.drawn === layers.drawn
 				? clampRect(unionRect(prior.live, liveRect), surface.ink)
 				: null;
 
@@ -187,9 +216,11 @@ export class InkPainter {
 		if (layers) {
 			this.shown.set(surface.ink, {
 				layers,
-				version: layers.version,
+				drawn: layers.drawn,
 				// Anything live drawn outside a known patch makes the next frame copy all.
 				live: live ? liveRect : null,
+				clean,
+				hole,
 			});
 		} else {
 			this.shown.delete(surface.ink);
@@ -219,15 +250,20 @@ export class InkPainter {
 		const key = [
 			// Base ink is the only colour a theme changes.
 			theme.baseInk,
-			...surface.transform,
+			// PDF space to bitmap px, not the CSS transform alone: a detail keeps its
+			// bitmap through a zoom until a sharp one lands, and the ink on it is still
+			// right, so it is not drawn again for a scale nobody can see yet.
+			...deviceMatrix(surface.transform, record.viewport).map((n) => n.toFixed(4)),
 			width,
 			height,
 			pending?.size ?? 0,
 		].join(':');
 
+		const version = this.store.pageVersion(record.geom.key);
 		const cached = this.committed.get(surface.ink);
-		// Nothing changed anywhere: the commonest case by far, every frame of a stroke.
-		if (cached && cached.key === key && cached.version === this.store.version) return cached;
+		// Nothing changed on this page: the commonest case by far, every frame of a
+		// stroke and every page an edit elsewhere did not touch.
+		if (cached && cached.key === key && cached.version === version) return cached;
 
 		const items = inZOrder(this.store.itemsFor(record.geom.key)).filter(
 			// Items under the eraser vanish immediately, before the gesture ends.
@@ -248,9 +284,10 @@ export class InkPainter {
 						highlightCtx.setTransform(...surface.transform);
 						this.drawItems(record, items.slice(drawn.length), inkCtx, highlightCtx, theme);
 					}
+					cached.drawn += 1;
 				}
 				cached.items = items;
-				cached.version = this.store.version;
+				cached.version = version;
 				return cached;
 			}
 		}
@@ -265,7 +302,7 @@ export class InkPainter {
 
 		this.drawItems(record, items, inkCtx, highlightCtx, theme);
 
-		const layers: CachedLayers = { ink, highlight, key, version: this.store.version, items };
+		const layers: CachedLayers = { ink, highlight, key, version, drawn: 0, items };
 		this.committed.set(surface.ink, layers);
 		return layers;
 	}
@@ -298,8 +335,31 @@ export class InkPainter {
 
 interface Shown {
 	readonly layers: CachedLayers;
-	readonly version: number;
+	/** `layers.drawn` when they were copied here. */
+	readonly drawn: number;
 	readonly live: DeviceRect | null;
+	/** Nothing but the layers: no live item, no preview, nothing hidden. */
+	readonly clean: boolean;
+	/** The hole cut for a detail, as {@link holeKey} gives it. */
+	readonly hole: string;
+}
+
+function holeKey(hole: CssRect | null): string {
+	return hole ? `${String(hole.x)},${String(hole.y)},${String(hole.w)},${String(hole.h)}` : '';
+}
+
+/** Where a surface puts a PDF point: its own transform after the viewport's. */
+function deviceMatrix(surface: Matrix, viewport: PageRecord['viewport']): Matrix {
+	const [a, b, c, d, e, f] = surface;
+	const [va, vb, vc, vd, ve, vf] = viewportMatrix(viewport);
+	return [
+		a * va + c * vb,
+		b * va + d * vb,
+		a * vc + c * vd,
+		b * vc + d * vd,
+		a * ve + c * vf + e,
+		b * ve + d * vf + f,
+	];
 }
 
 interface DeviceRect {

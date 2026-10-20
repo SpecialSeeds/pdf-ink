@@ -30,6 +30,11 @@ import {
 export interface ItemStore {
 	/** Bumped on every mutation, so renderers can cache against it. */
 	readonly version: number;
+	/**
+	 * Moves on only when this page's items may have changed, so a page an edit
+	 * elsewhere did not touch can keep what it has drawn without looking.
+	 */
+	pageVersion(pageKey: PageKey): number;
 	itemsFor(pageKey: PageKey): readonly Item[];
 	/** Add an item and record it as one undoable operation. */
 	addItem(pageKey: PageKey, item: Item): void;
@@ -67,13 +72,34 @@ export class InkStore {
 	private readonly base = new Map<PageKey, readonly Item[]>();
 	/** The page each base item is on, by id. */
 	private readonly baseIds = new Map<string, PageKey>();
-	/** Each page's combined layers, rebuilt when the revision moves on. */
+	/** Each page's combined layers, rebuilt when its page version moves on. */
 	private readonly combined = new Map<PageKey, { revision: number; items: readonly Item[] }>();
+	/** The revision each page's items last changed at. */
+	private readonly pageRevisions = new Map<PageKey, number>();
+	/** The revision every page last changed at together: a load, a clear, a new base. */
+	private allPagesRevision = 0;
 
 	constructor(private readonly now: Clock = systemClock) {}
 
 	get version(): number {
 		return this.revision;
+	}
+
+	pageVersion(pageKey: PageKey): number {
+		return Math.max(this.allPagesRevision, this.pageRevisions.get(pageKey) ?? 0);
+	}
+
+	/** A change to one page's items. */
+	private touchPage(pageKey: PageKey): void {
+		this.revision += 1;
+		this.pageRevisions.set(pageKey, this.revision);
+	}
+
+	/** A change that may reach every page's items. */
+	private touchAllPages(): void {
+		this.revision += 1;
+		this.allPagesRevision = this.revision;
+		this.pageRevisions.clear();
 	}
 
 	get docId(): string | undefined {
@@ -111,7 +137,7 @@ export class InkStore {
 			this.base.set(key, items);
 			for (const item of items) this.baseIds.set(item.id, key);
 		}
-		this.revision += 1;
+		this.touchAllPages();
 	}
 
 	/** Give the document an identity, or a new one. Marks the store changed. */
@@ -133,10 +159,11 @@ export class InkStore {
 		const user = this.pages.get(pageKey);
 		const base = this.base.get(pageKey);
 		if (!base) return user ? liveItems(user) : [];
+		const revision = this.pageVersion(pageKey);
 		const cached = this.combined.get(pageKey);
-		if (cached?.revision === this.revision) return cached.items;
+		if (cached?.revision === revision) return cached.items;
 		const items = liveItems(layerItems(base, user ?? []));
-		this.combined.set(pageKey, { revision: this.revision, items });
+		this.combined.set(pageKey, { revision, items });
 		return items;
 	}
 
@@ -178,7 +205,7 @@ export class InkStore {
 		const existing = this.pages.get(pageKey);
 		if (existing) existing.push(stamped);
 		else this.pages.set(pageKey, [stamped]);
-		this.revision += 1;
+		this.touchPage(pageKey);
 	}
 
 	/**
@@ -192,7 +219,7 @@ export class InkStore {
 		const existing = this.pages.get(pageKey);
 		if (!existing) {
 			this.pages.set(pageKey, [revived(item, now)]);
-			this.revision += 1;
+			this.touchPage(pageKey);
 			return;
 		}
 		const at = existing.findIndex((candidate) => candidate.id === item.id);
@@ -201,7 +228,7 @@ export class InkStore {
 			const where = Math.min(Math.max(0, index), existing.length);
 			existing.splice(where, 0, revived(item, now));
 		}
-		this.revision += 1;
+		this.touchPage(pageKey);
 	}
 
 	/**
@@ -216,7 +243,7 @@ export class InkStore {
 		const base = this.untouchedBase(pageKey, id);
 		if (base) {
 			const at = this.pushUser(pageKey, tombstoned(base, this.now()));
-			this.revision += 1;
+			this.touchPage(pageKey);
 			return at;
 		}
 		const existing = this.pages.get(pageKey);
@@ -228,7 +255,7 @@ export class InkStore {
 		const item = existing[at];
 		if (!item) return -1;
 		existing[at] = tombstoned(item, this.now());
-		this.revision += 1;
+		this.touchPage(pageKey);
 		return at;
 	}
 
@@ -238,7 +265,7 @@ export class InkStore {
 		// under the same id, and from then on stands in for it.
 		if (this.untouchedBase(pageKey, item.id)) {
 			this.pushUser(pageKey, touched(item, this.now()));
-			this.revision += 1;
+			this.touchPage(pageKey);
 			return true;
 		}
 		const existing = this.pages.get(pageKey);
@@ -246,7 +273,7 @@ export class InkStore {
 		const at = existing.findIndex((candidate) => candidate.id === item.id);
 		if (at < 0) return false;
 		existing[at] = touched(item, this.now());
-		this.revision += 1;
+		this.touchPage(pageKey);
 		return true;
 	}
 
@@ -333,7 +360,7 @@ export class InkStore {
 		this.layoutValue = data.layout;
 		this.baseRefValue = data.base;
 		this.headerValue = data.header;
-		this.revision += 1;
+		this.touchAllPages();
 	}
 
 	clear(): void {
@@ -346,7 +373,7 @@ export class InkStore {
 		this.layoutValue = undefined;
 		this.baseRefValue = undefined;
 		this.headerValue = undefined;
-		this.revision += 1;
+		this.touchAllPages();
 	}
 
 	/** Serialise to the `<file>.ink.json` schema, tombstones included. */

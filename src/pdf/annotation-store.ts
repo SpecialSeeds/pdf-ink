@@ -149,6 +149,10 @@ export class AnnotationStore implements ItemStore {
 		return this.frozen;
 	}
 
+	pageVersion(pageKey: PageKey): number {
+		return this.ink.pageVersion(pageKey);
+	}
+
 	itemsFor(pageKey: PageKey): readonly Item[] {
 		return this.ink.itemsFor(pageKey);
 	}

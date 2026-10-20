@@ -432,8 +432,14 @@ export class InkController {
 		this.toolbar.update(this.toolState, this.store.canUndo, this.store.canRedo);
 	}
 
+	/** Paint a page's ink from scratch, after its canvases were cleared. */
 	redraw(record: PageRecord): void {
 		this.layer.redraw(record);
+	}
+
+	/** Bring a page's ink up to date with the store; free when nothing changed. */
+	repaint(record: PageRecord): void {
+		this.layer.repaint(record);
 	}
 
 	/** The items a colour click or a transform would affect. */
