@@ -10,7 +10,6 @@ import { effectiveThemes } from '../core/theme';
 import { resolveExportChoice } from '../ui/export-theme-modal';
 import { createBoard, createNotebook } from '../utils/create-notebook';
 import { FolderPicker, convertImportedTitles } from '../ui/convert-titles-modal';
-import { NOTE_SEARCH_ICON } from '../ui/search-view';
 import { removeFolder, runRenderCommand } from '../transcription/render';
 import { createPdf } from '../utils/create-pdf';
 import { exportAnnotatedCopy } from '../utils/export-pdf';
@@ -100,38 +99,6 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 	});
 
 	plugin.addCommand({
-		id: 'search-notes',
-		name: 'Search notes',
-		icon: NOTE_SEARCH_ICON,
-		callback: () => {
-			void plugin.openNoteSearch();
-		},
-	});
-
-	plugin.addCommand({
-		id: 'toggle-paper-tint',
-		name: 'Toggle paper tint',
-		icon: 'glasses',
-		callback: () => {
-			plugin.settings.paperTint = !plugin.settings.paperTint;
-			// Saving refreshes every open ink view.
-			void plugin.saveSettings();
-		},
-	});
-
-	plugin.addCommand({
-		id: 'toggle-page-theme',
-		name: 'Toggle light or dark pages',
-		icon: 'sun-moon',
-		checkCallback: (checking: boolean): boolean => {
-			const view = plugin.app.workspace.getActiveViewOfType(PdfInkView);
-			if (!view?.file) return false;
-			if (!checking) view.toggleTheme();
-			return true;
-		},
-	});
-
-	plugin.addCommand({
 		id: 'open-in-plain-viewer',
 		name: "Open current PDF in Obsidian's viewer",
 		icon: 'file-text',
@@ -145,144 +112,6 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 				target.leaf,
 				plugin.plainPdfViewType,
 			);
-			return true;
-		},
-	});
-
-	// Also reachable as Mod+Z / Mod+Shift+Z while the ink view has focus, via the
-	// view's own Scope. These exist so the actions are discoverable in the palette
-	// and rebindable, without claiming a default hotkey globally.
-	plugin.addCommand({
-		id: 'undo-stroke',
-		name: 'Undo stroke',
-		icon: 'undo',
-		checkCallback: (checking: boolean): boolean => {
-			const view = plugin.app.workspace.getActiveViewOfType(PdfInkView);
-			if (!view?.canUndoInk()) return false;
-			if (!checking) view.undoInk();
-			return true;
-		},
-	});
-
-	plugin.addCommand({
-		id: 'redo-stroke',
-		name: 'Redo stroke',
-		icon: 'redo',
-		checkCallback: (checking: boolean): boolean => {
-			const view = plugin.app.workspace.getActiveViewOfType(PdfInkView);
-			if (!view?.canRedoInk()) return false;
-			if (!checking) view.redoInk();
-			return true;
-		},
-	});
-
-	plugin.addCommand({
-		id: 'toggle-eraser-mode',
-		name: 'Toggle eraser mode',
-		icon: 'eraser',
-		// No hotkey, here or in the view's Scope: an eraser key is too easy to hit
-		// by accident mid-page. Users who want one can bind it.
-		checkCallback: (checking: boolean): boolean => {
-			const view = plugin.app.workspace.getActiveViewOfType(PdfInkView);
-			if (!view) return false;
-			if (!checking) view.toggleEraserMode();
-			return true;
-		},
-	});
-
-	/*
-	 * Tool toggles, as commands as well as gestures.
-	 *
-	 * The Apple Pencil's double-tap and squeeze are delivered to native code and
-	 * never reach the page, so there is nothing to bind them to directly. These
-	 * give the same effect from a keyboard, and from the two- and three-finger taps
-	 * the ink layer recognises.
-	 */
-	for (const [tool, name, icon] of [
-		['eraser', 'Toggle eraser', 'eraser'],
-		['lasso', 'Toggle selection tool', 'lasso'],
-	] as const) {
-		plugin.addCommand({
-			id: `toggle-${tool}-tool`,
-			name,
-			icon,
-			checkCallback: (checking: boolean): boolean => {
-				const view = plugin.app.workspace.getActiveViewOfType(PdfInkView);
-				if (!view) return false;
-				if (!checking) view.toggleTool(tool);
-				return true;
-			},
-		});
-	}
-
-	/*
-	 * Page management, as commands as well as the "+" between pages and the page
-	 * context menu. Neither of those is reachable on a tablet — the "+" follows a
-	 * hovering pointer, and iOS does not reliably raise a context menu on a long
-	 * press — so without these there is no way to add a page on an iPad.
-	 */
-	for (const [id, name, icon, run, available] of [
-		[
-			'insert-page-below',
-			'Insert page below',
-			'arrow-down-to-line',
-			(view: PdfInkView) => {
-				view.insertPageBelowCurrent();
-			},
-			(view: PdfInkView) => view.canInsertPage(),
-		],
-		[
-			'insert-page-above',
-			'Insert page above',
-			'arrow-up-to-line',
-			(view: PdfInkView) => {
-				view.insertPageAboveCurrent();
-			},
-			(view: PdfInkView) => view.canInsertPage(),
-		],
-		[
-			'page-options',
-			'Page options',
-			'file-cog',
-			(view: PdfInkView) => {
-				view.openPageMenu();
-			},
-			(view: PdfInkView) => view.hasCurrentPage(),
-		],
-	] as const) {
-		plugin.addCommand({
-			id,
-			name,
-			icon,
-			checkCallback: (checking: boolean): boolean => {
-				const view = plugin.app.workspace.getActiveViewOfType(PdfInkView);
-				if (!view || !available(view)) return false;
-				if (!checking) run(view);
-				return true;
-			},
-		});
-	}
-
-	plugin.addCommand({
-		id: 'toggle-zoom-lock',
-		name: 'Toggle zoom lock',
-		icon: 'lock',
-		checkCallback: (checking: boolean): boolean => {
-			const view = plugin.app.workspace.getActiveViewOfType(PdfInkView);
-			if (!view) return false;
-			if (!checking) view.toggleZoomLock();
-			return true;
-		},
-	});
-
-	plugin.addCommand({
-		id: 'flip-toolbar-side',
-		name: 'Move tool palette to the other side',
-		icon: 'flip-horizontal',
-		checkCallback: (checking: boolean): boolean => {
-			const view = plugin.app.workspace.getActiveViewOfType(PdfInkView);
-			if (!view) return false;
-			if (!checking) view.flipToolbarSide();
 			return true;
 		},
 	});

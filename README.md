@@ -133,7 +133,7 @@ the right page even when you have inserted pages above it.
 The tool palette is a vertical column in the top corner of the page, so tools are under
 the hand that is not holding the pen, and stay put when a group of buttons changes
 height. Put it on the **left** or the **right** in
-settings, or run **Move tool palette to the other side** to flip it.
+settings.
 
 Colours sit on the palette: four to hand, twelve more behind the chevron, and a native
 colour picker for anything else. A colour applies to the active tool, and each tool
@@ -169,9 +169,6 @@ fingers' spread changing, and from a pan by their centre moving, so neither is
 affected — and finger taps are ignored entirely while the pen is on the page. The
 tool it switched to is named briefly on screen.
 
-The same thing is the **Toggle eraser** command, alongside **Toggle selection tool**.
-Neither has a key by default; bind one in **Settings → Hotkeys** if you want it.
-
 Picking any other tool drops the current selection.
 
 > **The Apple Pencil's own double-tap cannot be used.** Squeezing or double-tapping
@@ -183,7 +180,7 @@ Picking any other tool drops the current selection.
 
 ## Adding pages
 
-Four ways in:
+Three ways in:
 
 - **Hover between two pages** and a **+** appears in the gap. Click it to slip a new
   sheet in there.
@@ -193,8 +190,6 @@ Four ways in:
   above or below the one in view, open **Page options** (the same menu as a
   right-click), and export. This is the easy way in on a tablet, where there is no
   hover and no reliable long-press menu.
-- **Run a command** — **Insert page below**, **Insert page above**, or **Page
-  options**.
 
 A new page takes the size of the page above it, and its ruling too when that page is one
 you added — so extending a PDF into a notebook is one click per sheet. Right-click a page
@@ -222,15 +217,13 @@ never touched. Pages you add live entirely in the sidecar until you export.
 | `Delete` / `Backspace` | Delete the selection |
 
 These are scoped to the ink view, so they never shadow Obsidian's own shortcuts
-elsewhere. There is deliberately no eraser key. Every action also has a command, so
-you can bind one — including **Toggle eraser**, **Toggle eraser mode** and **Toggle
-selection tool**, which switch to a tool and back to whatever you were using.
+elsewhere. There is deliberately no eraser key.
 
 Zoom with `Ctrl`/`Cmd` and the scroll wheel, a two-finger pinch, or the toolbar.
 
 The **lock** beside the zoom buttons holds the zoom where it is: pinches, scroll-wheel
 zoom and the zoom buttons all leave it alone, and two fingers pan instead. It is
-remembered across tabs, and is also the **Toggle zoom lock** command. A fit mode still
+remembered across tabs. A fit mode still
 re-fits when the pane is resized.
 
 ## Exporting
