@@ -50,8 +50,6 @@ export class PageList {
 		private readonly renderer: PageRenderer,
 		private readonly onVisibleChange: (pageNumber: number) => void,
 		private readonly bufferPages: number,
-		/** After the list scrolls the page itself, as a jump to a page does. */
-		private readonly onScrolledTo: () => void = () => undefined,
 	) {
 		this.layout = computeLayout([], 1, PAGE_GAP);
 	}
@@ -170,7 +168,6 @@ export class PageList {
 		const box = this.layout.pages[index];
 		if (!box) return;
 		this.scrollEl.scrollTop = box.offsetTop;
-		this.onScrolledTo();
 		this.updateRetainSet();
 	}
 
