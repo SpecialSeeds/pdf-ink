@@ -111,7 +111,7 @@ Changes show in open tabs at once.
 
 The bar along the top carries the same controls as Obsidian's own PDF viewer, in the
 same order — page navigation, a page number you can type into, zoom, and fit width or
-fit page. The ink tools live in a separate floating palette so the two never compete
+fit height. The ink tools live in a separate floating palette so the two never compete
 for room on a tablet.
 
 The leftmost button opens a panel with **page thumbnails** and the PDF's **outline**.

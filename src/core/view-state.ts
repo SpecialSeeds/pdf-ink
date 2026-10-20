@@ -33,9 +33,8 @@ export function readInkViewState(state: unknown): RestoredInkState {
 	const zoom = raw['zoom'];
 	if (kind === 'fit-width') {
 		zoomMode = { kind: 'fit-width' };
-	} else if (kind === 'fit-page') {
-		zoomMode = { kind: 'fit-page' };
-	} else if (kind === 'fit-height') {
+	} else if (kind === 'fit-height' || kind === 'fit-page') {
+		// Fit page was replaced by fit height; a tab saved with it reopens at that.
 		zoomMode = { kind: 'fit-height' };
 	} else if (
 		kind === 'fixed' &&
