@@ -18,7 +18,6 @@ import {
 	type ToolState,
 	colouredTool,
 	defaultToolState,
-	toggleEraserMode,
 	eraserRadius,
 	presetFor,
 	setActiveColor,
@@ -309,14 +308,6 @@ export class InkController {
 		this.refresh();
 	}
 
-	/** Flip between whole-item and sized erasing, selecting the eraser too. */
-	toggleEraser(): void {
-		toggleEraserMode(this.toolState);
-		this.activate('eraser');
-		this.persistEraser();
-		this.refresh();
-	}
-
 	/**
 	 * Make `tool` the active one. Leaving the select tool drops the selection and
 	 * any loop being drawn, so the box and its handles do not linger over a page
@@ -417,14 +408,6 @@ export class InkController {
 	/** Re-read settings that change how the palette is laid out. */
 	applySettings(): void {
 		this.toolbar.setSide(this.host.settings.toolbarSide);
-	}
-
-	/** Move the palette to the other edge, and remember it. */
-	flipToolbarSide(): void {
-		this.host.settings.toolbarSide =
-			this.host.settings.toolbarSide === 'left' ? 'right' : 'left';
-		void this.host.saveSettings();
-		this.applySettings();
 	}
 
 	/** Bring the palette back in sync with the tool state and history. */

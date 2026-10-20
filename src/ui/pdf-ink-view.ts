@@ -60,7 +60,6 @@ import {
 import { getPdfJs } from '../pdf/pdfjs';
 import { exportAnnotatedCopy } from '../utils/export-pdf';
 import { type PdfInkHost } from '../settings';
-import type { ToolKind } from '../core/tools';
 import type { PageGeometry, PageRecord, ZoomMode } from '../types/view';
 import { resolveExportChoice } from './export-theme-modal';
 import { askAboutSyncCopy } from './sync-copy-modal';
@@ -664,11 +663,6 @@ export class PdfInkView extends FileView implements ZoomHost {
 		this.toolbar.setZoomLocked(locked);
 	}
 
-	/** Move the tool palette to the other edge. */
-	flipToolbarSide(): void {
-		this.ink?.flipToolbarSide();
-	}
-
 	override onResize(): void {
 		if (!this.ready) return;
 		// Only meaningful in fit-width mode; a fixed zoom just re-centres, which
@@ -916,41 +910,6 @@ export class PdfInkView extends FileView implements ZoomHost {
 		} finally {
 			this.syncingPages = false;
 		}
-	}
-
-	canUndoInk(): boolean {
-		return this.ready && (this.ink?.canUndo ?? false);
-	}
-
-	canRedoInk(): boolean {
-		return this.ready && (this.ink?.canRedo ?? false);
-	}
-
-	undoInk(): void {
-		this.ink?.undo();
-	}
-
-	redoInk(): void {
-		this.ink?.redo();
-	}
-
-	toggleEraserMode(): void {
-		this.ink?.toggleEraser();
-	}
-
-	/** Switch to a tool, or back to the previous one. */
-	toggleTool(tool: ToolKind): void {
-		this.ink?.toggleTool(tool);
-	}
-
-	/** Whether there is a page to act on, for the command's check pass. */
-	hasCurrentPage(): boolean {
-		return this.ready && this.composed.length > 0;
-	}
-
-	/** Whether a page can be inserted: beside the one in view, or into an empty notebook. */
-	canInsertPage(): boolean {
-		return this.hasCurrentPage() || (this.ready && this.document?.kind === 'notebook');
 	}
 
 	/**

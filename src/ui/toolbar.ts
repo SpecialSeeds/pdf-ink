@@ -31,8 +31,8 @@ export interface ToolbarCallbacks {
  * to move around it. The ink tools live in their own floating palette rather than
  * here, so the two sets never compete for width on a tablet.
  *
- * After those, the page and export actions — otherwise reachable only from the
- * command palette on a tablet, which has no hover "+" and no right-click.
+ * After those, the page and export actions — the only way to them on a tablet,
+ * which has no hover "+" and no right-click.
  */
 export class PdfInkToolbar {
 	private readonly sidebarButtonEl: HTMLElement;
