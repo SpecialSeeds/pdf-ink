@@ -74,6 +74,8 @@ import { ZoomController, type ZoomHost } from './zoom-controller';
 import { DprWatcher } from './dpr-watcher';
 import { InkController } from './ink-controller';
 import { attachZoomGestures } from './zoom-gestures';
+import { attachAxisGuard } from './axis-guard-events';
+import { AxisGuard } from '../core/axis-guard';
 import { frontmatterOf } from '../transcription/frontmatter';
 import type { ScrollAxis } from '../core/settings-schema';
 
@@ -108,6 +110,8 @@ export class PdfInkView extends FileView implements ZoomHost {
 	private diagnostics!: InputDiagnostics;
 	private renderer!: PageRenderer;
 	private zoom!: ZoomController;
+	/** Keeps the scroll lock's locked axis still while the user scrolls. */
+	private readonly axisGuard = new AxisGuard();
 
 	private pageList: PageList | null = null;
 	private pageEditor: PageEditor | null = null;
@@ -341,6 +345,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 		this.applyZoomLock();
 		this.applyScrollAxis();
 		attachZoomGestures(this, this.scrollEl, this.zoom);
+		attachAxisGuard(this, this.scrollEl, this.axisGuard);
 
 		this.dprWatcher = new DprWatcher(this, this.containerEl, (dpr) => {
 			// Boxes are unchanged, so no relayout and no anchor work is needed.
@@ -687,8 +692,21 @@ export class PdfInkView extends FileView implements ZoomHost {
 		const axis = this.host.settings.scrollAxis;
 		this.scrollEl.toggleClass('is-scroll-vertical', axis === 'vertical');
 		this.scrollEl.toggleClass('is-scroll-horizontal', axis === 'horizontal');
+		this.axisGuard.setAxis(axis, this.scrollOffset());
 		this.zoom.setScrollAxis(axis);
 		this.toolbar.setScrollAxis(axis);
+	}
+
+	private scrollOffset(): { left: number; top: number } {
+		return { left: this.scrollEl.scrollLeft, top: this.scrollEl.scrollTop };
+	}
+
+	/**
+	 * The plugin just moved the page itself, so the scroll lock holds it there
+	 * rather than putting it back, even mid-gesture.
+	 */
+	private holdScroll(): void {
+		this.axisGuard.hold(this.scrollOffset());
 	}
 
 	private applyZoomLock(): void {
@@ -734,6 +752,8 @@ export class PdfInkView extends FileView implements ZoomHost {
 
 	onZoomChanged(zoom: number, mode: ZoomMode): void {
 		this.toolbar.setZoom(zoom, mode);
+		// Called once a zoom has set the scroll to keep its anchor.
+		this.holdScroll();
 	}
 
 	// --- internals ------------------------------------------------------
@@ -749,6 +769,9 @@ export class PdfInkView extends FileView implements ZoomHost {
 				this.sidebar.setActiveIndex(pageNumber - 1);
 			},
 			this.host.settings.bufferPages,
+			() => {
+				this.holdScroll();
+			},
 		);
 		this.pageList = list;
 
@@ -860,6 +883,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 		this.scrollEl.scrollTop = laid.offsetTop + rect.y + rect.h / 2 - this.scrollEl.clientHeight / 2;
 		const pageLeft = this.sizerEl.offsetLeft + record.wrapperEl.offsetLeft;
 		this.scrollEl.scrollLeft = pageLeft + rect.x + rect.w / 2 - this.scrollEl.clientWidth / 2;
+		this.holdScroll();
 		list.updateRetainSet();
 		this.flash(record.wrapperEl, rect);
 	}

@@ -73,18 +73,17 @@
 }
 
 /*
- * Scroll lock. The locked axis is not scrollable by the user at all, so nothing
- * can move it: not a crooked swipe, not the fling after a fast one (which
- * touch-action alone does not hold on iOS), not the trackpad or the wheel.
- * Script can still set it, so zooming keeps its anchor and a found block can
- * still be brought into view.
+ * Scroll lock. A touch's panning is the intersection of touch-action up to the
+ * scroller, so narrowing it here holds a drag to one axis. A swipe that lands
+ * mid-fling escapes it on iOS; AxisGuard catches those. Never overflow: hidden
+ * on the locked axis: iOS resets that axis to zero as soon as the user scrolls.
  */
 .pdf-ink-scroll.is-scroll-vertical {
-	overflow-x: hidden;
+	touch-action: pan-y;
 }
 
 .pdf-ink-scroll.is-scroll-horizontal {
-	overflow-y: hidden;
+	touch-action: pan-x;
 }
 
 /*
