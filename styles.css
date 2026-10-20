@@ -73,17 +73,15 @@
 }
 
 /*
- * Scroll lock. A touch's panning is the intersection of touch-action up to the
- * scroller, so narrowing it here holds a drag to one axis. A swipe that lands
- * mid-fling escapes it on iOS; AxisGuard catches those. Never overflow: hidden
- * on the locked axis: iOS resets that axis to zero as soon as the user scrolls.
+ * Scroll lock. Touch scrolling is done in script (src/ui/locked-scroll.ts), along
+ * the allowed axis only, so the browser takes none: touch-action is intersected
+ * up to the scroller, so this reaches every finger on the pages. pan-y alone does
+ * not hold a swipe that lands mid-fling on iOS, and overflow: hidden on the
+ * locked axis makes iOS reset that axis to zero as soon as the user scrolls.
  */
-.pdf-ink-scroll.is-scroll-vertical {
-	touch-action: pan-y;
-}
-
+.pdf-ink-scroll.is-scroll-vertical,
 .pdf-ink-scroll.is-scroll-horizontal {
-	touch-action: pan-x;
+	touch-action: none;
 }
 
 /*
