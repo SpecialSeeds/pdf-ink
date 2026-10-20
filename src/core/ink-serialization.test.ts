@@ -311,6 +311,25 @@ describe('serialize / parse round-trip', () => {
 		expect(strokeAt(result.data, 0)?.points[0]).toEqual([53.18, 702.28, 0.12]);
 	});
 
+	it('writes exactly what one JSON.stringify of the whole document would', () => {
+		const store = new InkStore(() => 7);
+		store.setDocId('doc');
+		const pen = createStroke(DEFAULT_PEN, 'p1');
+		pen.points.push([53.183456, 702.284321, 0.123456], [1, 2, 1]);
+		store.add('pdf:0', pen);
+		store.add('pdf:2', createStroke(DEFAULT_PEN, 'p2'));
+		store.removeById('pdf:2', 'p2');
+		const data = store.toData();
+		const round = (key: string, value: unknown): unknown =>
+			key === 'points' && Array.isArray(value)
+				? (value as number[][]).map((s) => s.map((n) => Math.round(n * 100) / 100))
+				: value;
+		const whole = `${JSON.stringify(data, round)}\n`;
+		expect(serializeInkData(data)).toBe(whole);
+		// Again, with every item's JSON already cached.
+		expect(serializeInkData(data)).toBe(whole);
+	});
+
 	it('writes compact JSON, one line plus a newline', () => {
 		const store = new InkStore();
 		const stroke = createStroke(DEFAULT_PEN, 'p');

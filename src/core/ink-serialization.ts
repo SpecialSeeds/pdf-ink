@@ -222,7 +222,37 @@ export type ParseResult =
  * far below anything a pen or a screen can show.
  */
 export function serializeInkData(data: InkData): string {
-	return `${JSON.stringify(data, roundPoints)}\n`;
+	const fields: string[] = [];
+	for (const [key, value] of Object.entries(data) as [string, unknown][]) {
+		if (value === undefined) continue;
+		const json = key === 'pages' ? pagesJson(data.pages) : JSON.stringify(value, roundPoints);
+		fields.push(`${JSON.stringify(key)}:${json}`);
+	}
+	return `{${fields.join(',')}}\n`;
+}
+
+/**
+ * Each item's JSON, once written. Items are never changed in place — an edit is a
+ * new object — so a save only has to stringify what changed since the last one.
+ * Stringifying every sample of a heavy notebook through the rounding replacer was
+ * a stall of its own, two seconds after each pause in writing.
+ */
+const itemJson = new WeakMap<Item, string>();
+
+function pagesJson(pages: InkData['pages']): string {
+	const entries: string[] = [];
+	for (const [key, items] of Object.entries(pages)) {
+		const parts = items.map((item) => {
+			let json = itemJson.get(item);
+			if (json === undefined) {
+				json = JSON.stringify(item, roundPoints);
+				itemJson.set(item, json);
+			}
+			return json;
+		});
+		entries.push(`${JSON.stringify(key)}:[${parts.join(',')}]`);
+	}
+	return `{${entries.join(',')}}`;
 }
 
 /** Decimal places kept for stroke samples. */
