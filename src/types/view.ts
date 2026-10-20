@@ -143,8 +143,6 @@ export interface PageRecord {
 
 export type ZoomMode =
 	| { readonly kind: 'fit-width' }
-	/** The whole page in view, constrained by whichever axis runs out first. */
-	| { readonly kind: 'fit-page' }
 	/** The tallest page's height in view, its width to pan along: how a board opens. */
 	| { readonly kind: 'fit-height' }
 	| { readonly kind: 'fixed'; readonly zoom: number };

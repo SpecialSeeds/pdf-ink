@@ -77,6 +77,8 @@ export function maxBaseHeight(pages: readonly PageBase[]): number {
  * Zoom at which the tallest page's height fits the pane, whatever its width.
  *
  * What a board opens at: its whole height in view, and its width to pan along.
+ * On a landscape page it is also the whole page in view, which is why there is
+ * no separate fit-page.
  */
 export function fitHeightZoom(
 	clientHeight: number,
@@ -85,26 +87,6 @@ export function fitHeightZoom(
 ): number {
 	if (tallest <= 0) return 1;
 	return clampZoom((clientHeight - 2 * gutter) / tallest / PDF_TO_CSS_UNITS);
-}
-
-/**
- * Zoom at which the largest page fits entirely within the pane.
- *
- * The smaller of the two fits, so the constraining axis wins and nothing is cut
- * off. Like {@link fitWidthZoom} this is one zoom for the whole document rather
- * than one per page, so a nominal pen width means the same thing on every page.
- */
-export function fitPageZoom(
-	clientWidth: number,
-	clientHeight: number,
-	gutter: number,
-	widest: number,
-	tallest: number,
-): number {
-	if (widest <= 0 || tallest <= 0) return 1;
-	const byWidth = (clientWidth - 2 * gutter) / widest;
-	const byHeight = (clientHeight - 2 * gutter) / tallest;
-	return clampZoom(Math.min(byWidth, byHeight) / PDF_TO_CSS_UNITS);
 }
 
 /**

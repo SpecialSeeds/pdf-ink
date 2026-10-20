@@ -9,7 +9,7 @@ export interface ToolbarCallbacks {
 	zoomOut(): void;
 	zoomIn(): void;
 	fitWidth(): void;
-	fitPage(): void;
+	fitHeight(): void;
 	toggleZoomLock(): void;
 	goToPage(pageNumber: number): void;
 	insertPageAbove(): void;
@@ -42,7 +42,7 @@ export class PdfInkToolbar {
 	private readonly prevButtonEl: HTMLButtonElement;
 	private readonly nextButtonEl: HTMLButtonElement;
 	private readonly fitWidthButtonEl: HTMLButtonElement;
-	private readonly fitPageButtonEl: HTMLButtonElement;
+	private readonly fitHeightButtonEl: HTMLButtonElement;
 	private readonly zoomLockButtonEl: HTMLButtonElement;
 	private readonly themeButtonEl: HTMLButtonElement;
 	private readonly tintButtonEl: HTMLButtonElement;
@@ -134,17 +134,17 @@ export class PdfInkToolbar {
 				callbacks.fitWidth();
 			},
 		);
-		this.fitPageButtonEl = this.addButton(
+		this.fitHeightButtonEl = this.addButton(
 			fitGroupEl,
 			component,
-			'scan',
-			'Fit page',
+			'move-vertical',
+			'Fit height',
 			() => {
-				callbacks.fitPage();
+				callbacks.fitHeight();
 			},
 		);
 
-		this.zoomButtonEls.push(this.fitWidthButtonEl, this.fitPageButtonEl);
+		this.zoomButtonEls.push(this.fitWidthButtonEl, this.fitHeightButtonEl);
 
 		const actionsGroupEl = toolbarEl.createDiv({
 			cls: 'pdf-ink-toolbar-group pdf-ink-toolbar-actions',
@@ -225,7 +225,7 @@ export class PdfInkToolbar {
 		const percent = `${String(Math.round(zoom * 100))}%`;
 		this.zoomLabelEl.setText(percent);
 		this.fitWidthButtonEl.toggleClass('is-active', mode.kind === 'fit-width');
-		this.fitPageButtonEl.toggleClass('is-active', mode.kind === 'fit-page');
+		this.fitHeightButtonEl.toggleClass('is-active', mode.kind === 'fit-height');
 	}
 
 	setZoomLocked(locked: boolean): void {

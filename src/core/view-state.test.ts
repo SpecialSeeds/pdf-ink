@@ -8,16 +8,22 @@ describe('readInkViewState', () => {
 		});
 	});
 
-	it('restores fit-page', () => {
+	it('restores fit-height', () => {
+		expect(readInkViewState({ zoomMode: 'fit-height' }).zoomMode).toEqual({
+			kind: 'fit-height',
+		});
+	});
+
+	it('reopens a tab saved at the old fit-page at fit-height', () => {
 		expect(readInkViewState({ zoomMode: 'fit-page' }).zoomMode).toEqual({
-			kind: 'fit-page',
+			kind: 'fit-height',
 		});
 	});
 
 	it('round-trips every fit mode through write', () => {
 		for (const mode of [
 			{ kind: 'fit-width' },
-			{ kind: 'fit-page' },
+			{ kind: 'fit-height' },
 		] as const) {
 			const written = writeInkViewState(mode, 1.2, 1, 'pdf:0');
 			expect(readInkViewState(written).zoomMode).toEqual(mode);

@@ -269,8 +269,8 @@ export class PdfInkView extends FileView implements ZoomHost {
 			fitWidth: () => {
 				this.zoom.fitWidth();
 			},
-			fitPage: () => {
-				this.zoom.fitPage();
+			fitHeight: () => {
+				this.zoom.fitHeight();
 			},
 			toggleZoomLock: () => {
 				this.toggleZoomLock();

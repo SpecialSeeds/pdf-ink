@@ -4,7 +4,6 @@ import {
 	anchoredScroll,
 	clampZoom,
 	fitHeightZoom,
-	fitPageZoom,
 	fitWidthZoom,
 	nextZoom,
 	prevZoom,
@@ -18,7 +17,7 @@ export interface ZoomHost {
 	readonly pagesEl: HTMLElement;
 	/** Widest page at scale 1, for fit-width. */
 	maxBaseWidth(): number;
-	/** Tallest page at scale 1, for fit-page. */
+	/** Tallest page at scale 1, for fit-height. */
 	maxBaseHeight(): number;
 	/** Current committed content box, in CSS px. */
 	contentSize(): { width: number; height: number };
@@ -125,9 +124,9 @@ export class ZoomController {
 		this.setZoom(this.computeFitWidth(), { kind: 'fit-width' });
 	}
 
-	fitPage(): void {
+	fitHeight(): void {
 		if (this.locked) return;
-		this.setZoom(this.computeFitPage(), { kind: 'fit-page' });
+		this.setZoom(this.computeFit({ kind: 'fit-height' }), { kind: 'fit-height' });
 	}
 
 	/** Set a zoom outright, as a fixed zoom: what showing a found block needs. */
@@ -159,7 +158,6 @@ export class ZoomController {
 	}
 
 	private computeFit(mode: ZoomMode): number {
-		if (mode.kind === 'fit-page') return this.computeFitPage();
 		if (mode.kind === 'fit-height') {
 			return fitHeightZoom(
 				this.host.scrollEl.clientHeight,
@@ -175,16 +173,6 @@ export class ZoomController {
 			this.host.scrollEl.clientWidth,
 			FIT_WIDTH_GUTTER,
 			this.host.maxBaseWidth(),
-		);
-	}
-
-	private computeFitPage(): number {
-		return fitPageZoom(
-			this.host.scrollEl.clientWidth,
-			this.host.scrollEl.clientHeight,
-			FIT_WIDTH_GUTTER,
-			this.host.maxBaseWidth(),
-			this.host.maxBaseHeight(),
 		);
 	}
 
