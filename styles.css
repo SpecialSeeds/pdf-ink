@@ -73,6 +73,19 @@
 }
 
 /*
+ * Scroll lock. A touch's panning is the intersection of touch-action up to the
+ * scroller, so narrowing it here holds every finger on the pages to one axis,
+ * and a swipe that wanders sideways still only scrolls down.
+ */
+.pdf-ink-scroll.is-scroll-vertical {
+	touch-action: pan-y;
+}
+
+.pdf-ink-scroll.is-scroll-horizontal {
+	touch-action: pan-x;
+}
+
+/*
  * Carries the SCALED content box, so scrollWidth/scrollHeight stay honest while a
  * transform preview is running. `margin-inline: auto` centres it, and per spec the
  * auto margins resolve to 0 once the content is wider than the container, so wide

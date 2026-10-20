@@ -1,4 +1,5 @@
-import { type Component, setIcon } from 'obsidian';
+import { type Component, Menu, setIcon } from 'obsidian';
+import type { ScrollAxis } from '../core/settings-schema';
 import type { ThemeName } from '../core/theme';
 import type { ZoomMode } from '../types/view';
 
@@ -11,6 +12,8 @@ export interface ToolbarCallbacks {
 	fitWidth(): void;
 	fitHeight(): void;
 	toggleZoomLock(): void;
+	/** Let scrolling move the page only along `axis`, or both ways. */
+	setScrollAxis(axis: ScrollAxis): void;
 	goToPage(pageNumber: number): void;
 	insertPageAbove(): void;
 	insertPageBelow(): void;
@@ -22,6 +25,21 @@ export interface ToolbarCallbacks {
 	togglePaperTint(): void;
 	exportPdf(): void;
 }
+
+/** How each scroll lock is shown: on the button, and in its menu. */
+const SCROLL_AXES: Record<ScrollAxis, { icon: string; label: string; title: string }> = {
+	both: { icon: 'move', label: 'Scroll lock: off', title: 'Scroll freely' },
+	vertical: {
+		icon: 'arrow-down-up',
+		label: 'Scroll lock: up and down only',
+		title: 'Lock left and right (scroll up and down only)',
+	},
+	horizontal: {
+		icon: 'arrow-right-left',
+		label: 'Scroll lock: left and right only',
+		title: 'Lock up and down (scroll left and right only)',
+	},
+};
 
 /**
  * The document bar: outline and thumbnails, page navigation, zoom and fit.
@@ -44,6 +62,8 @@ export class PdfInkToolbar {
 	private readonly fitWidthButtonEl: HTMLButtonElement;
 	private readonly fitHeightButtonEl: HTMLButtonElement;
 	private readonly zoomLockButtonEl: HTMLButtonElement;
+	private readonly scrollLockButtonEl: HTMLButtonElement;
+	private scrollAxis: ScrollAxis = 'both';
 	private readonly themeButtonEl: HTMLButtonElement;
 	private readonly tintButtonEl: HTMLButtonElement;
 	/** Every control that changes the zoom, disabled while it is locked. */
@@ -146,6 +166,30 @@ export class PdfInkToolbar {
 
 		this.zoomButtonEls.push(this.fitWidthButtonEl, this.fitHeightButtonEl);
 
+		// Not a zoom control, so it stays usable while the zoom is locked.
+		this.scrollLockButtonEl = this.addButton(
+			fitGroupEl,
+			component,
+			SCROLL_AXES.both.icon,
+			SCROLL_AXES.both.label,
+			() => {
+				const menu = new Menu();
+				for (const axis of ['both', 'vertical', 'horizontal'] as const) {
+					menu.addItem((item) =>
+						item
+							.setTitle(SCROLL_AXES[axis].title)
+							.setIcon(SCROLL_AXES[axis].icon)
+							.setChecked(this.scrollAxis === axis)
+							.onClick(() => {
+								callbacks.setScrollAxis(axis);
+							}),
+					);
+				}
+				const box = this.scrollLockButtonEl.getBoundingClientRect();
+				menu.showAtPosition({ x: box.left, y: box.bottom });
+			},
+		);
+
 		const actionsGroupEl = toolbarEl.createDiv({
 			cls: 'pdf-ink-toolbar-group pdf-ink-toolbar-actions',
 		});
@@ -226,6 +270,15 @@ export class PdfInkToolbar {
 		this.zoomLabelEl.setText(percent);
 		this.fitWidthButtonEl.toggleClass('is-active', mode.kind === 'fit-width');
 		this.fitHeightButtonEl.toggleClass('is-active', mode.kind === 'fit-height');
+	}
+
+	/** Show which ways scrolling is allowed. */
+	setScrollAxis(axis: ScrollAxis): void {
+		this.scrollAxis = axis;
+		const shown = SCROLL_AXES[axis];
+		setIcon(this.scrollLockButtonEl, shown.icon);
+		this.scrollLockButtonEl.toggleClass('is-active', axis !== 'both');
+		this.scrollLockButtonEl.setAttribute('aria-label', shown.label);
 	}
 
 	setZoomLocked(locked: boolean): void {

@@ -226,6 +226,12 @@ zoom and the zoom buttons all leave it alone, and two fingers pan instead. It is
 remembered across tabs. A fit mode still
 re-fits when the pane is resized.
 
+The **scroll lock** beside the fit buttons holds scrolling to one direction. **Lock
+left and right** scrolls only up and down, however crooked the swipe, which suits
+reading down a PDF; **Lock up and down** scrolls only left and right, for panning
+along a board. It applies to fingers, the trackpad and the scroll wheel, and is
+remembered across tabs.
+
 ## Exporting
 
 Press the export button at the end of the top bar, or run **PDF ink: Export

@@ -29,6 +29,17 @@ import {
 
 export type DefaultZoomMode = 'fit-width' | 'actual-size';
 
+/**
+ * Which ways one-finger scrolling may move the page. `vertical` locks left and
+ * right, so a crooked swipe down a PDF only goes down; `horizontal` locks up and
+ * down, for panning along a board.
+ */
+export type ScrollAxis = 'both' | 'vertical' | 'horizontal';
+
+export function isScrollAxis(value: unknown): value is ScrollAxis {
+	return value === 'both' || value === 'vertical' || value === 'horizontal';
+}
+
 export interface PdfInkSettings {
 	/** Zoom a PDF opens at when the workspace has no saved zoom for it. */
 	defaultZoomMode: DefaultZoomMode;
@@ -93,6 +104,8 @@ export interface PdfInkSettings {
 	 * leave it alone, so a hand on the glass cannot rescale the page mid-sentence.
 	 */
 	zoomLocked: boolean;
+	/** Which ways scrolling may move the page. */
+	scrollAxis: ScrollAxis;
 	/** Page size of a PDF created from the ribbon or a folder's menu. */
 	newPdfPageSize: NewPdfPageSize;
 	/** Ruling of a new PDF, and of pages later inserted into it. */
@@ -179,6 +192,7 @@ export const DEFAULT_SETTINGS: PdfInkSettings = {
 	toolbarSide: 'left',
 	openByDefault: true,
 	zoomLocked: false,
+	scrollAxis: 'both',
 	newPdfPageSize: 'letter',
 	newPdfTemplate: 'lined',
 	pageThemes: emptyThemeOverrides(),
@@ -306,6 +320,9 @@ export function mergeSettings(stored: unknown): PdfInkSettings {
 
 	const zoomLocked = raw['zoomLocked'];
 	if (typeof zoomLocked === 'boolean') merged.zoomLocked = zoomLocked;
+
+	const scrollAxis = raw['scrollAxis'];
+	if (isScrollAxis(scrollAxis)) merged.scrollAxis = scrollAxis;
 
 	const pageSize = raw['newPdfPageSize'];
 	if (isNewPdfPageSize(pageSize)) merged.newPdfPageSize = pageSize;

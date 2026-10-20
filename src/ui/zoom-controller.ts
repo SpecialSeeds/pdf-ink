@@ -8,6 +8,7 @@ import {
 	nextZoom,
 	prevZoom,
 } from '../core/layout';
+import type { ScrollAxis } from '../core/settings-schema';
 import type { ZoomMode } from '../types/view';
 
 /** What the controller needs from the view. */
@@ -66,6 +67,7 @@ export class ZoomController {
 	private settleTimer = 0;
 	private pinch: Pinch | null = null;
 	private locked = false;
+	private axis: ScrollAxis = 'both';
 
 	constructor(
 		private readonly component: Component,
@@ -80,6 +82,15 @@ export class ZoomController {
 	/** Whether a pinch or wheel zoom is mid-gesture, with its preview showing. */
 	get isGesturing(): boolean {
 		return this.anchor !== null;
+	}
+
+	/** Which ways scrolling may move the page; see {@link ScrollAxis}. */
+	get scrollAxis(): ScrollAxis {
+		return this.axis;
+	}
+
+	setScrollAxis(axis: ScrollAxis): void {
+		this.axis = axis;
 	}
 
 	setLocked(locked: boolean): void {
@@ -251,7 +262,13 @@ export class ZoomController {
 	preview(zoom: number, drift?: { x: number; y: number }): void {
 		if (this.locked) return;
 		this.pending = clampZoom(zoom);
-		if (drift) this.drift = drift;
+		// Two fingers pan as well as zoom, but never along an axis that is locked.
+		if (drift) {
+			this.drift = {
+				x: this.axis === 'vertical' ? 0 : drift.x,
+				y: this.axis === 'horizontal' ? 0 : drift.y,
+			};
+		}
 		if (this.frame !== 0) return;
 		this.frame = this.host.scrollEl.win.requestAnimationFrame(() => {
 			this.frame = 0;
