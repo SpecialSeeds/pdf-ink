@@ -679,8 +679,9 @@ export class PdfInkView extends FileView implements ZoomHost {
 	}
 
 	/**
-	 * Touch scrolling is held to the axis by `touch-action`, so the browser itself
-	 * drops the sideways part of a crooked swipe rather than script fighting it.
+	 * The locked axis is made unscrollable by the user (see styles.css), so the
+	 * browser itself drops the sideways part of a swipe, its fling, and a trackpad's
+	 * drift, rather than script fighting them.
 	 */
 	private applyScrollAxis(): void {
 		const axis = this.host.settings.scrollAxis;
