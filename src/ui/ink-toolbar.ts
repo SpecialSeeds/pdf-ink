@@ -49,6 +49,8 @@ export class InkToolbar {
 	private readonly quickSwatches: { color: string; el: HTMLElement }[] = [];
 	private readonly extraSwatches: { color: string; el: HTMLElement }[] = [];
 	private readonly shapeButtonEl: HTMLButtonElement;
+	/** The shape the button's icon shows, so it is only rebuilt when that changes. */
+	private shownShape: ShapeKind | null = null;
 	private readonly colorGroupEl: HTMLElement;
 	private readonly colorPopoverEl: HTMLElement;
 	private readonly colorInputEl: HTMLInputElement;
@@ -271,7 +273,10 @@ export class InkToolbar {
 		}
 
 		const shape = SHAPES.find((entry) => entry.kind === state.shape.kind);
-		if (shape) {
+		// Every tool change and every stroke lands here; parsing a fresh SVG for
+		// an icon that has not changed was work for nothing.
+		if (shape && shape.kind !== this.shownShape) {
+			this.shownShape = shape.kind;
 			setIcon(this.shapeButtonEl, shape.icon);
 			this.shapeButtonEl.setAttribute('aria-label', `Shapes: ${shape.label}`);
 		}
