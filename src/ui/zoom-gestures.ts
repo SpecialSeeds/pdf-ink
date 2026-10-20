@@ -1,4 +1,5 @@
 import type { Component } from 'obsidian';
+import type { ScrollAxis } from '../core/settings-schema';
 import type { ZoomController } from './zoom-controller';
 
 interface Pinch {
@@ -32,7 +33,10 @@ export function attachZoomGestures(
 		(evt) => {
 			// ctrlKey is what a trackpad pinch emits on desktop; metaKey covers
 			// the habitual cmd+wheel. Anything else is an ordinary scroll.
-			if (!evt.ctrlKey && !evt.metaKey) return;
+			if (!evt.ctrlKey && !evt.metaKey) {
+				lockWheel(evt, scrollEl, zoom.scrollAxis);
+				return;
+			}
 			// Still swallowed when locked, or Obsidian would zoom its whole interface.
 			evt.preventDefault();
 			if (zoom.isLocked) return;
@@ -146,6 +150,21 @@ export function attachZoomGestures(
 	component.registerDomEvent(scrollEl.win, 'blur', endPinch);
 
 	zoom.registerCleanup();
+}
+
+/**
+ * Hold a wheel or trackpad scroll to the unlocked axis. touch-action only reaches
+ * touches, so a trackpad's diagonal drift is dropped here instead: the scroll is
+ * taken over, and only its allowed part is applied.
+ */
+function lockWheel(evt: WheelEvent, scrollEl: HTMLElement, axis: ScrollAxis): void {
+	if (axis === 'both') return;
+	const stray = axis === 'vertical' ? evt.deltaX : evt.deltaY;
+	if (stray === 0) return;
+	evt.preventDefault();
+	const unit = evt.deltaMode === 1 ? 16 : evt.deltaMode === 2 ? scrollEl.clientHeight : 1;
+	if (axis === 'vertical') scrollEl.scrollTop += evt.deltaY * unit;
+	else scrollEl.scrollLeft += evt.deltaX * unit;
 }
 
 /** The fingers on the glass: every touch except a stylus. */

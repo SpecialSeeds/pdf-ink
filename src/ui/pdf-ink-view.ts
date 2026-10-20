@@ -75,6 +75,14 @@ import { DprWatcher } from './dpr-watcher';
 import { InkController } from './ink-controller';
 import { attachZoomGestures } from './zoom-gestures';
 import { frontmatterOf } from '../transcription/frontmatter';
+import type { ScrollAxis } from '../core/settings-schema';
+
+/** What a scroll lock change says, as a zoom lock change does. */
+const SCROLL_AXIS_NOTICES: Record<ScrollAxis, string> = {
+	both: 'Scrolling unlocked',
+	vertical: 'Scrolling up and down only',
+	horizontal: 'Scrolling left and right only',
+};
 
 /**
  * A PDF viewer with an ink layer stacked over every page.
@@ -274,6 +282,9 @@ export class PdfInkView extends FileView implements ZoomHost {
 			toggleZoomLock: () => {
 				this.toggleZoomLock();
 			},
+			setScrollAxis: (axis) => {
+				this.setScrollAxis(axis);
+			},
 			insertPageAbove: () => {
 				this.insertPageAboveCurrent();
 			},
@@ -328,6 +339,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 		);
 		this.zoom = new ZoomController(this, this);
 		this.applyZoomLock();
+		this.applyScrollAxis();
 		attachZoomGestures(this, this.scrollEl, this.zoom);
 
 		this.dprWatcher = new DprWatcher(this, this.containerEl, (dpr) => {
@@ -458,6 +470,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 		if (!this.ready) return;
 		this.diagnostics.setEnabled(this.host.settings.inputDiagnostics);
 		this.applyZoomLock();
+		this.applyScrollAxis();
 		this.ink?.applySettings();
 
 		// Theme colours edited in the settings tab show at once, not on reopen.
@@ -655,6 +668,26 @@ export class PdfInkView extends FileView implements ZoomHost {
 		// Saving refreshes every open view, this one included.
 		void this.host.saveSettings();
 		new Notice(this.host.settings.zoomLocked ? 'Zoom locked' : 'Zoom unlocked', 900);
+	}
+
+	/** Let scrolling move the page only along `axis`, in every open ink view. */
+	private setScrollAxis(axis: ScrollAxis): void {
+		this.host.settings.scrollAxis = axis;
+		// Saving refreshes every open view, this one included.
+		void this.host.saveSettings();
+		new Notice(SCROLL_AXIS_NOTICES[axis], 900);
+	}
+
+	/**
+	 * Touch scrolling is held to the axis by `touch-action`, so the browser itself
+	 * drops the sideways part of a crooked swipe rather than script fighting it.
+	 */
+	private applyScrollAxis(): void {
+		const axis = this.host.settings.scrollAxis;
+		this.scrollEl.toggleClass('is-scroll-vertical', axis === 'vertical');
+		this.scrollEl.toggleClass('is-scroll-horizontal', axis === 'horizontal');
+		this.zoom.setScrollAxis(axis);
+		this.toolbar.setScrollAxis(axis);
 	}
 
 	private applyZoomLock(): void {

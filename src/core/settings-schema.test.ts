@@ -263,6 +263,24 @@ describe('zoomLocked', () => {
 	});
 });
 
+describe('scrollAxis', () => {
+	it('defaults to scrolling both ways', () => {
+		expect(DEFAULT_SETTINGS.scrollAxis).toBe('both');
+		expect(mergeSettings({}).scrollAxis).toBe('both');
+	});
+
+	it('keeps a stored choice', () => {
+		expect(mergeSettings({ scrollAxis: 'vertical' }).scrollAxis).toBe('vertical');
+		expect(mergeSettings({ scrollAxis: 'horizontal' }).scrollAxis).toBe('horizontal');
+	});
+
+	it('ignores anything it does not know', () => {
+		for (const value of ['diagonal', true, null]) {
+			expect(mergeSettings({ scrollAxis: value }).scrollAxis).toBe('both');
+		}
+	});
+});
+
 describe('new PDF settings', () => {
 	it('default to lined Letter', () => {
 		expect(mergeSettings({}).newPdfPageSize).toBe('letter');
