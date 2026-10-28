@@ -4,6 +4,8 @@ import {
 	type TapOutcome,
 	TAP_MAX_MOVE_PX,
 	TAP_MAX_MS,
+	TAP_MAX_RADIUS_PX,
+	TAP_PEN_QUIET_MS,
 	type TapPoint,
 } from './multitouch-tap';
 
@@ -195,5 +197,57 @@ describe('outcomes say why a gesture was not a tap', () => {
 		const outcome = tap.end(0, 60);
 		expect(outcome.kind).toBe('rejected');
 		if (outcome.kind === 'rejected') expect(outcome.fingers).toBe(2);
+	});
+
+	it('rejects a palm that rested while the pen wrote', () => {
+		const tap = new MultiTouchTap();
+		tap.start([at(1, 300, 500), at(2, 340, 520)], 0);
+		tap.pen(100);
+		tap.pen(300);
+		expect(reason(tap.end(0, 400))).toBe('pen');
+	});
+
+	it('rejects a palm that lands just after the pen lifts', () => {
+		const tap = new MultiTouchTap();
+		tap.pen(1000);
+		tap.start([at(1, 300, 500), at(2, 340, 520)], 1000 + TAP_PEN_QUIET_MS - 50);
+		expect(reason(tap.end(0, 1000 + TAP_PEN_QUIET_MS + 100))).toBe('pen');
+	});
+
+	it('still allows a deliberate tap once the pen has been up a moment', () => {
+		const tap = new MultiTouchTap();
+		tap.pen(1000);
+		tap.start([at(1, 100, 100), at(2, 160, 100)], 1000 + TAP_PEN_QUIET_MS + 50);
+		expect(fingers(tap.end(0, 1000 + TAP_PEN_QUIET_MS + 150))).toBe(2);
+	});
+
+	it('does not let a palm marked by the pen restart as a fresh tap', () => {
+		// The old recogniser forgot the gesture when the pen landed, so the palm's
+		// next contact began a new one that its lift completed.
+		const tap = new MultiTouchTap();
+		tap.start([at(1, 300, 500)], 0);
+		tap.pen(50);
+		tap.start([at(1, 300, 500), at(2, 340, 520)], 200);
+		expect(reason(tap.end(0, 2000 + TAP_PEN_QUIET_MS))).toBe('pen');
+	});
+
+	it('rejects a palm-sized contact', () => {
+		const tap = new MultiTouchTap();
+		const palm = { ...at(2, 340, 520), radius: TAP_MAX_RADIUS_PX + 20 };
+		tap.start([{ ...at(1, 300, 500), radius: 20 }, palm], 0);
+		expect(reason(tap.end(0, 100))).toBe('palm');
+	});
+
+	it('rejects a contact that spreads to palm size as the hand settles', () => {
+		const tap = new MultiTouchTap();
+		tap.start([{ ...at(1, 300, 500), radius: 20 }, { ...at(2, 340, 520), radius: 25 }], 0);
+		tap.update([{ ...at(1, 300, 500), radius: 20 }, { ...at(2, 340, 520), radius: 70 }], 50);
+		expect(reason(tap.end(0, 100))).toBe('palm');
+	});
+
+	it('allows fingertip-sized contacts, and platforms that report no size', () => {
+		const tap = new MultiTouchTap();
+		tap.start([{ ...at(1, 100, 100), radius: 25 }, { ...at(2, 160, 100), radius: 0 }], 0);
+		expect(fingers(tap.end(0, 100))).toBe(2);
 	});
 });
