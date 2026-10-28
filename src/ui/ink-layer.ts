@@ -469,7 +469,22 @@ export class InkLayer {
 		this.component.registerDomEvent(tapEl, 'touchmove', (evt) => {
 			this.trackTap(evt, 'move');
 		});
+		/*
+		 * Every pen contact, anywhere in the scroller, tells the recogniser the hand
+		 * on the glass is the one writing. Contact only: a hovering pencil is also
+		 * near the glass while a deliberate tap is made with the pen in hand.
+		 */
+		for (const type of ['pointerdown', 'pointermove', 'pointerup'] as const) {
+			this.component.registerDomEvent(tapEl, type, (evt) => {
+				if (evt.pointerType === 'pen' && (type === 'pointerup' || evt.buttons !== 0)) {
+					this.tap.pen(evt.timeStamp);
+				}
+			});
+		}
 		this.component.registerDomEvent(tapEl, 'touchend', (evt) => {
+			if (Array.from(evt.changedTouches).some(isStylusTouch)) {
+				this.tap.pen(evt.timeStamp);
+			}
 			const outcome = this.tap.end(evt.touches.length, evt.timeStamp);
 			if (this.options.tracingInput() && outcome.kind !== 'pending') {
 				this.options.traceInput('tap', {
@@ -507,24 +522,29 @@ export class InkLayer {
 				penDrawing: this.penIsDrawing,
 				target:
 					evt.target instanceof Element ? evt.target.className : 'non-element',
+				radius: Math.round(
+					Math.max(0, ...Array.from(evt.touches, (t) => Math.max(t.radiusX || 0, t.radiusY || 0))),
+				),
 			});
 		}
-		// A pen on the glass means the fingers are a resting hand, not a gesture.
-		if (this.penIsDrawing) {
-			this.tap.cancel();
-			return;
+		/*
+		 * A pen on the glass means the fingers are a resting hand, not a gesture.
+		 * Marked rather than cancelled: cancelling forgot the palm, so the next
+		 * contact it made started a fresh "tap" that its lift then completed.
+		 */
+		const touches = Array.from(evt.touches);
+		if (this.penIsDrawing || touches.some(isStylusTouch)) {
+			this.tap.pen(evt.timeStamp);
 		}
-		const points: TapPoint[] = Array.from(evt.touches)
+		const points: TapPoint[] = touches
 			.filter((touch) => !isStylusTouch(touch))
 			.map((touch) => ({
 				id: touch.identifier,
 				x: touch.clientX,
 				y: touch.clientY,
+				radius: Math.max(touch.radiusX || 0, touch.radiusY || 0),
 			}));
-		if (points.length === 0) {
-			this.tap.cancel();
-			return;
-		}
+		if (points.length === 0) return;
 		if (phase === 'start') this.tap.start(points, evt.timeStamp);
 		else this.tap.update(points, evt.timeStamp);
 	}
