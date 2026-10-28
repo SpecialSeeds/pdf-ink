@@ -205,3 +205,32 @@ export function anchoredScroll(
 	const target = contentOffset * factor + margin - viewportOffset;
 	return Math.min(Math.max(0, target), Math.max(0, maxScroll));
 }
+
+/**
+ * Where a vertical content offset in one layout lands in another.
+ *
+ * Pages scale with the zoom but the gaps between them do not, so scaling the
+ * whole offset by the zoom factor misses by one gap per page above the point,
+ * times the factor less one: zooming in on page 100 went well over a page astray.
+ * Instead the point is found on its page, as a fraction of that page's height,
+ * and put back at the same fraction of the same page. A point in a gap keeps its
+ * distance below the page above, since the gap does not change.
+ */
+export function remapOffset(from: LayoutResult, to: LayoutResult, y: number): number {
+	const count = Math.min(from.pages.length, to.pages.length);
+	for (let i = 0; i < count; i++) {
+		const before = from.pages[i];
+		const after = to.pages[i];
+		if (before === undefined || after === undefined) break;
+		// Each page owns the gap below it, and the last owns everything below it.
+		const next = i < count - 1 ? from.pages[i + 1] : undefined;
+		if (next !== undefined && y >= next.offsetTop) continue;
+		const bottom = before.offsetTop + before.cssHeight;
+		const local = y - before.offsetTop;
+		if (local <= before.cssHeight) {
+			return after.offsetTop + (local / before.cssHeight) * after.cssHeight;
+		}
+		return after.offsetTop + after.cssHeight + (y - bottom);
+	}
+	return y;
+}
