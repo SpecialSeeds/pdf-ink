@@ -14,7 +14,7 @@ import {
 	DESKTOP_BUDGET,
 	MOBILE_BUDGET,
 } from '../core/canvas-budget';
-import { maxBaseHeight, maxBaseWidth } from '../core/layout';
+import { computeLayout, maxBaseHeight, maxBaseWidth } from '../core/layout';
 import { type Bounds, boundsContain, itemBounds } from '../core/hit-test';
 import { grownBoardPage } from '../core/board';
 import { type BlockBox, blockBox, segmentPage } from '../core/blocks';
@@ -60,7 +60,7 @@ import {
 import { getPdfJs } from '../pdf/pdfjs';
 import { exportAnnotatedCopy } from '../utils/export-pdf';
 import { type PdfInkHost } from '../settings';
-import type { PageGeometry, PageRecord, ZoomMode } from '../types/view';
+import type { LayoutResult, PageGeometry, PageRecord, ZoomMode } from '../types/view';
 import { resolveExportChoice } from './export-theme-modal';
 import { askAboutSyncCopy } from './sync-copy-modal';
 import { confirm } from './confirm-modal';
@@ -728,6 +728,10 @@ export class PdfInkView extends FileView implements ZoomHost {
 			width: layout?.contentWidth ?? 0,
 			height: layout?.contentHeight ?? 0,
 		};
+	}
+
+	layout(): LayoutResult {
+		return this.pageList?.getLayout() ?? computeLayout([], 1, PAGE_GAP);
 	}
 
 	applyZoom(zoom: number): void {

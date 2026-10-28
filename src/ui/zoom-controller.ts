@@ -7,9 +7,10 @@ import {
 	fitWidthZoom,
 	nextZoom,
 	prevZoom,
+	remapOffset,
 } from '../core/layout';
 import type { ScrollAxis } from '../core/settings-schema';
-import type { ZoomMode } from '../types/view';
+import type { LayoutResult, ZoomMode } from '../types/view';
 
 /** What the controller needs from the view. */
 export interface ZoomHost {
@@ -22,6 +23,8 @@ export interface ZoomHost {
 	maxBaseHeight(): number;
 	/** Current committed content box, in CSS px. */
 	contentSize(): { width: number; height: number };
+	/** Current committed page layout. */
+	layout(): LayoutResult;
 	/** Relayout every page at this zoom. */
 	applyZoom(zoom: number): void;
 	/** Report the zoom for the toolbar readout. */
@@ -44,6 +47,8 @@ interface Anchor {
 	readonly contentWidth: number;
 	readonly contentHeight: number;
 	readonly startZoom: number;
+	/** The layout `contentY` was measured in, to find its page again after. */
+	readonly layout: LayoutResult;
 }
 
 interface Pinch {
@@ -218,6 +223,7 @@ export class ZoomController {
 			contentWidth: size.width,
 			contentHeight: size.height,
 			startZoom: this.zoom,
+			layout: this.host.layout(),
 		};
 	}
 
@@ -232,10 +238,12 @@ export class ZoomController {
 			margin,
 			size.width + 2 * margin - scrollEl.clientWidth,
 		);
+		// Vertically, by page rather than by factor: the gaps between pages do not
+		// scale, and on a long document they add up to whole pages of drift.
 		scrollEl.scrollTop = anchoredScroll(
-			anchor.contentY,
+			remapOffset(anchor.layout, this.host.layout(), anchor.contentY),
 			anchor.viewportY,
-			factor,
+			1,
 			0,
 			size.height - scrollEl.clientHeight,
 		);
