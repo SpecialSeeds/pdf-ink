@@ -119,6 +119,19 @@ Thumbnails include pages you have added, drawn with their ruling, so the panel s
 the document as it will export rather than the source file. Outline entries jump to
 the right page even when you have inserted pages above it.
 
+### Finding text and following links
+
+**Find in PDF** (the magnifier in the top bar, `Mod+F`, or the command) searches the
+PDF's own text. Every match is highlighted, the first one at or after the page you are
+on is shown straight away, and `Enter` / `Shift+Enter` or the arrows step through the
+rest. Matching ignores case, accents and ligatures, and finds phrases broken across
+lines. Highlights are never saved and never exported.
+
+The PDF's own **links** work too: tap one with a finger (once a pen has been used, so
+fingers are not drawing), or `Ctrl`/`Cmd`+click it with a mouse. A link within the
+document jumps there and offers **Back to page N** to return; a web or mail link
+opens outside Obsidian. The pen always draws, over links or not.
+
 ## Tools
 
 | Tool | What it does |
@@ -219,6 +232,7 @@ never touched. Pages you add live entirely in the sidecar until you export.
 | `Mod+Shift+Z` | Redo |
 | `Escape` | Deselect, or commit an open text box |
 | `Delete` / `Backspace` | Delete the selection |
+| `Mod+F` | Find in PDF |
 
 These are scoped to the ink view, so they never shadow Obsidian's own shortcuts
 elsewhere. There is deliberately no eraser key.
@@ -346,8 +360,9 @@ the log into an issue is by far the most useful thing you can send.
 
 ## Limitations
 
-- There is no text search yet, and no text selection or copying: the viewer draws
-  pages rather than laying out a selectable text layer over them.
+- There is no text selection or copying: the viewer draws pages rather than laying
+  out a selectable text layer over them. Search reads the text without one.
+- A scanned PDF with no text layer has nothing to find.
 - Undo history does not survive switching tabs, because Obsidian unloads backgrounded
   views. Your annotations do survive — only the ability to undo them is lost.
 - Sized-erasing a shape converts it to pen strokes. Dash patterns and fills do not

@@ -199,6 +199,13 @@ describe('outcomes say why a gesture was not a tap', () => {
 		if (outcome.kind === 'rejected') expect(outcome.fingers).toBe(2);
 	});
 
+	it('reports where and when a tap landed', () => {
+		const tap = new MultiTouchTap();
+		tap.start([at(1, 100, 200)], 40);
+		tap.update([at(1, 104, 203)], 60);
+		expect(tap.end(0, 120)).toEqual({ kind: 'tap', fingers: 1, x: 100, y: 200, startedAt: 40 });
+	});
+
 	it('rejects a palm that rested while the pen wrote', () => {
 		const tap = new MultiTouchTap();
 		tap.start([at(1, 300, 500), at(2, 340, 520)], 0);

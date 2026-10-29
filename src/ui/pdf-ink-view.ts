@@ -5,6 +5,7 @@ import {
 	Notice,
 	Platform,
 	TFile,
+	setIcon,
 	type ViewStateResult,
 	type WorkspaceLeaf,
 } from 'obsidian';
@@ -14,7 +15,8 @@ import {
 	DESKTOP_BUDGET,
 	MOBILE_BUDGET,
 } from '../core/canvas-budget';
-import { computeLayout, maxBaseHeight, maxBaseWidth } from '../core/layout';
+import { computeLayout, maxBaseHeight, maxBaseWidth, remapOffset } from '../core/layout';
+import { type PdfLink, linkAt } from '../core/pdf-links';
 import { type Bounds, boundsContain, itemBounds } from '../core/hit-test';
 import { grownBoardPage } from '../core/board';
 import { type BlockBox, blockBox, segmentPage } from '../core/blocks';
@@ -28,6 +30,28 @@ export interface RevealTarget extends InkTarget {
 
 /** How long a found block stays outlined. */
 const FLASH_MS = 1500;
+
+/**
+ * How far from a link a fingertip may land and still follow it, in CSS px. A
+ * mouse is exact, so a click gets only a sliver.
+ */
+const LINK_SLOP_TOUCH_PX = 10;
+const LINK_SLOP_CLICK_PX = 2;
+
+/** A tap this soon after the page was scrolling was stopping it, not choosing a link. */
+const LINK_AFTER_SCROLL_MS = 120;
+
+/** Room left above a link's destination, so its line is not flush with the edge. */
+const LINK_LANDING_MARGIN_PX = 16;
+
+/** Where the view was before a link was followed, to go back to. */
+interface Place {
+	readonly scrollTop: number;
+	readonly scrollLeft: number;
+	readonly layout: LayoutResult;
+	/** 1-based display page, for the button's label. */
+	readonly pageNumber: number;
+}
 import { paperTintStyle } from '../core/paper-tint';
 import { type HeaderText, headerText, headerTitleBox } from '../core/header';
 import { HeaderEditor } from './header-editor';
@@ -58,6 +82,8 @@ import {
 	openPdfDocument,
 } from '../pdf/document';
 import { getPdfJs } from '../pdf/pdfjs';
+import { resolveDestination } from '../pdf/destinations';
+import { PdfPageData } from '../pdf/page-data';
 import { exportAnnotatedCopy } from '../utils/export-pdf';
 import { type PdfInkHost } from '../settings';
 import type { LayoutResult, PageGeometry, PageRecord, ZoomMode } from '../types/view';
@@ -75,6 +101,7 @@ import { DprWatcher } from './dpr-watcher';
 import { InkController } from './ink-controller';
 import { attachZoomGestures } from './zoom-gestures';
 import { LockedScroll } from './locked-scroll';
+import { PdfFind } from './pdf-find';
 import { frontmatterOf } from '../transcription/frontmatter';
 import type { ScrollAxis } from '../core/settings-schema';
 
@@ -102,6 +129,15 @@ export class PdfInkView extends FileView implements ZoomHost {
 	private readonly headerEditor = new HeaderEditor(this, (title) => {
 		void this.renameFromHeader(title);
 	});
+	/** Find in PDF: the bar, its search and its highlights. */
+	private find!: PdfFind;
+	/** The open PDF's text and links, read as needed. Null for a notebook. */
+	private pageData: PdfPageData | null = null;
+	/** When the scroller last moved, on the event clock. */
+	private lastScrollAt = -Infinity;
+	/** "Back to page N", shown after following a link within the document. */
+	private backEl!: HTMLElement;
+	private backPlace: Place | null = null;
 	/** The "no pages" notice of an empty notebook, while it shows. */
 	private emptyEl: HTMLElement | null = null;
 	private toolbar!: PdfInkToolbar;
@@ -309,6 +345,9 @@ export class PdfInkView extends FileView implements ZoomHost {
 			goToPage: (pageNumber) => {
 				this.goToPage(pageNumber);
 			},
+			find: () => {
+				this.openFind();
+			},
 		});
 
 		// The sidebar sits beside the scroller, not above it, so opening it narrows
@@ -325,6 +364,34 @@ export class PdfInkView extends FileView implements ZoomHost {
 		});
 
 		this.scrollEl = bodyEl.createDiv({ cls: 'pdf-ink-scroll' });
+		this.registerDomEvent(this.scrollEl, 'scroll', (evt) => {
+			this.lastScrollAt = evt.timeStamp;
+		});
+		this.find = new PdfFind(bodyEl, this, {
+			pageData: () => this.pageData,
+			currentPdfIndex: () => this.currentPdfIndex(),
+			recordForPdfIndex: (pdfIndex) => this.pageList?.recordForKey(`pdf:${String(pdfIndex)}`),
+			revealBox: (pdfIndex, box) => {
+				const at = this.composed.findIndex((geom) => geom.key === `pdf:${String(pdfIndex)}`);
+				if (at >= 0) this.reveal({ page: at + 1, box }, false);
+			},
+		});
+		this.backEl = bodyEl.createDiv({ cls: 'pdf-ink-back is-hidden' });
+		const backButtonEl = this.backEl.createEl('button', {
+			cls: 'pdf-ink-back-button',
+			attr: { type: 'button' },
+		});
+		const dismissEl = this.backEl.createEl('button', {
+			cls: 'clickable-icon pdf-ink-back-dismiss',
+			attr: { type: 'button', 'aria-label': 'Dismiss' },
+		});
+		setIcon(dismissEl, 'x');
+		this.registerDomEvent(backButtonEl, 'click', () => {
+			this.goBack();
+		});
+		this.registerDomEvent(dismissEl, 'click', () => {
+			this.setBackPlace(null);
+		});
 		this.diagnostics = new InputDiagnostics(this.contentEl, this);
 		this.diagnostics.setEnabled(this.host.settings.inputDiagnostics);
 		this.statusEl = this.scrollEl.createDiv({ cls: 'pdf-ink-status' });
@@ -386,9 +453,16 @@ export class PdfInkView extends FileView implements ZoomHost {
 				editHeader: (record) => {
 					this.headerEditor.open(record, this.pageTheme(record));
 				},
+				followLink: (clientX, clientY, startedAt) => {
+					void this.followLinkAt(clientX, clientY, startedAt);
+				},
 			},
 		);
 		this.scope = this.ink.scope;
+		this.scope.register(['Mod'], 'f', () => {
+			this.openFind();
+			return false;
+		});
 
 		/*
 		 * A sync client — or this vault on another device — can write the sidecar
@@ -761,6 +835,8 @@ export class PdfInkView extends FileView implements ZoomHost {
 			this.host.settings.bufferPages,
 		);
 		this.pageList = list;
+		this.pageData = loaded.doc ? new PdfPageData(loaded.doc) : null;
+		this.toolbar.setFindAvailable(this.pageData !== null);
 
 		this.composed = composePages(
 			loaded.geometry,
@@ -835,7 +911,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 		if (target) this.requestReveal(target);
 	}
 
-	private reveal(target: RevealTarget): void {
+	private reveal(target: RevealTarget, flash = true): void {
 		const list = this.pageList;
 		if (!list || this.composed.length === 0) return;
 		const index = Math.min(Math.max(1, target.page), this.composed.length) - 1;
@@ -871,7 +947,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 		const pageLeft = this.sizerEl.offsetLeft + record.wrapperEl.offsetLeft;
 		this.scrollEl.scrollLeft = pageLeft + rect.x + rect.w / 2 - this.scrollEl.clientWidth / 2;
 		list.updateRetainSet();
-		this.flash(record.wrapperEl, rect);
+		if (flash) this.flash(record.wrapperEl, rect);
 	}
 
 	/** Outline a found block for a moment, so the eye lands on it. */
@@ -1066,6 +1142,9 @@ export class PdfInkView extends FileView implements ZoomHost {
 		// Thumbnails and the outline belong to the document that is going away; page
 		// keys repeat between documents, so they cannot be left to be matched.
 		this.sidebar.reset();
+		this.find.reset();
+		this.pageData = null;
+		this.setBackPlace(null);
 
 		this.pageEditor = null;
 		// Unloads its listeners before PageList.dispose() empties the container the
@@ -1093,6 +1172,117 @@ export class PdfInkView extends FileView implements ZoomHost {
 				console.error('pdf-ink: error releasing PDF', err);
 			}
 		}
+	}
+
+	/** Open the find bar, or say why there is nothing to find in. */
+	openFind(): void {
+		if (!this.pageData) {
+			new Notice('A notebook has no PDF text to search.');
+			return;
+		}
+		this.find.open();
+	}
+
+	/** The source page nearest the top of the view, 0-based: where a search starts. */
+	private currentPdfIndex(): number {
+		const start = this.currentPageNumber() - 1;
+		for (let i = start; i < this.composed.length; i++) {
+			const source = this.composed[i]?.source;
+			if (source?.kind === 'pdf') return source.pdfIndex;
+		}
+		return 0;
+	}
+
+	/**
+	 * Follow the PDF link under a client point, if there is one.
+	 *
+	 * Reached from a finger tap once a pen has been seen, and from a Ctrl/Cmd+click.
+	 * A tap that began while the page was still scrolling was stopping it, and is
+	 * left alone.
+	 */
+	private async followLinkAt(clientX: number, clientY: number, startedAt: number | null): Promise<void> {
+		if (startedAt !== null && this.lastScrollAt >= startedAt - LINK_AFTER_SCROLL_MS) return;
+		const data = this.pageData;
+		const record = this.pageList?.recordForTarget(this.scrollEl.doc.elementFromPoint(clientX, clientY));
+		if (!data || !record || record.geom.source.kind !== 'pdf') return;
+		const rect = record.inkCanvasEl.getBoundingClientRect();
+		const [x = 0, y = 0] = record.viewport.convertToPdfPoint(clientX - rect.left, clientY - rect.top);
+		const slop = (startedAt === null ? LINK_SLOP_CLICK_PX : LINK_SLOP_TOUCH_PX) / (record.viewport.scale || 1);
+		const link = linkAt(await data.linksFor(record.geom.source.pdfIndex), x, y, slop);
+		if (link) await this.followLink(link, data);
+	}
+
+	private async followLink(link: PdfLink, data: PdfPageData): Promise<void> {
+		const target = link.target;
+		if (target.kind === 'url') {
+			window.open(target.url, '_blank');
+			return;
+		}
+		const from = this.currentPageNumber();
+		if (target.kind === 'named') {
+			const to = {
+				NextPage: from + 1,
+				PrevPage: from - 1,
+				FirstPage: 1,
+				LastPage: this.composed.length,
+			}[target.action];
+			this.rememberPlace();
+			this.goToPage(to);
+			return;
+		}
+		try {
+			const resolved = await resolveDestination(data.doc, target.dest);
+			const list = this.pageList;
+			if (!resolved || !list || this.pageData !== data) return;
+			const at = this.composed.findIndex((geom) => geom.key === `pdf:${String(resolved.pdfIndex)}`);
+			const geom = this.composed[at];
+			const laid = list.getLayout().pages[at];
+			if (!geom || !laid) return;
+			this.rememberPlace();
+			// A destination that names a height lands with that line near the top.
+			let top = laid.offsetTop;
+			if (resolved.top !== null) {
+				const viewport = geom.baseViewport.clone({ scale: laid.scale });
+				const [, y = 0] = viewport.convertToViewportPoint(0, resolved.top);
+				top += Math.min(Math.max(0, y), laid.cssHeight) - LINK_LANDING_MARGIN_PX;
+			}
+			this.scrollEl.scrollTop = Math.max(0, top);
+			list.updateRetainSet();
+		} catch (err) {
+			console.error('pdf-ink: could not follow a link', err);
+		}
+	}
+
+	/** Keep where the view is now, for "Back to page N". */
+	private rememberPlace(): void {
+		const list = this.pageList;
+		if (!list) return;
+		this.setBackPlace({
+			scrollTop: this.scrollEl.scrollTop,
+			scrollLeft: this.scrollEl.scrollLeft,
+			layout: list.getLayout(),
+			pageNumber: this.currentPageNumber(),
+		});
+	}
+
+	private setBackPlace(place: Place | null): void {
+		this.backPlace = place;
+		this.backEl.toggleClass('is-hidden', place === null);
+		const buttonEl = this.backEl.querySelector('.pdf-ink-back-button');
+		if (place && buttonEl) buttonEl.setText(`Back to page ${String(place.pageNumber)}`);
+	}
+
+	/** Return to where the view was before the last link, at whatever zoom it is now. */
+	private goBack(): void {
+		const place = this.backPlace;
+		const list = this.pageList;
+		this.setBackPlace(null);
+		if (!place || !list) return;
+		const layout = list.getLayout();
+		this.scrollEl.scrollTop = remapOffset(place.layout, layout, place.scrollTop);
+		const widthRatio = place.layout.contentWidth > 0 ? layout.contentWidth / place.layout.contentWidth : 1;
+		this.scrollEl.scrollLeft = place.scrollLeft * widthRatio;
+		list.updateRetainSet();
 	}
 
 	/** Scroll to a 1-based page number, clamped to the document. */

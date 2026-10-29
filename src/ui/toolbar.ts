@@ -24,6 +24,8 @@ export interface ToolbarCallbacks {
 	/** Lay a soft tint over the pages, or take it off. */
 	togglePaperTint(): void;
 	exportPdf(): void;
+	/** Open the find bar. */
+	find(): void;
 }
 
 /** How each scroll lock is shown: on the button, and in its menu. */
@@ -66,6 +68,7 @@ export class PdfInkToolbar {
 	private scrollAxis: ScrollAxis = 'both';
 	private readonly themeButtonEl: HTMLButtonElement;
 	private readonly tintButtonEl: HTMLButtonElement;
+	private readonly findButtonEl: HTMLButtonElement;
 	/** Every control that changes the zoom, disabled while it is locked. */
 	private readonly zoomButtonEls: HTMLButtonElement[] = [];
 	private pageCount = 0;
@@ -118,6 +121,16 @@ export class PdfInkToolbar {
 			cls: 'pdf-ink-toolbar-text',
 			text: '/ 0',
 		});
+
+		this.findButtonEl = this.addButton(
+			pageGroupEl,
+			component,
+			'search',
+			'Find in PDF',
+			() => {
+				callbacks.find();
+			},
+		);
 
 		const zoomGroupEl = toolbarEl.createDiv({ cls: 'pdf-ink-toolbar-group' });
 		this.zoomButtonEls.push(
@@ -324,6 +337,11 @@ export class PdfInkToolbar {
 		// Never clobber what the user is mid-way through typing.
 		if (this.pageInputEl.doc.activeElement === this.pageInputEl) return;
 		this.pageInputEl.value = String(pageNumber);
+	}
+
+	/** A notebook has no PDF text, so it has no find button. */
+	setFindAvailable(available: boolean): void {
+		this.findButtonEl.toggleClass('is-hidden', !available);
 	}
 
 	setSidebarOpen(open: boolean): void {

@@ -117,6 +117,18 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 	});
 
 	plugin.addCommand({
+		id: 'find-in-pdf',
+		name: 'Find in PDF',
+		icon: 'search',
+		checkCallback: (checking: boolean): boolean => {
+			const active = plugin.app.workspace.getActiveViewOfType(PdfInkView);
+			if (!active?.file || active.file.extension !== 'pdf') return false;
+			if (!checking) active.openFind();
+			return true;
+		},
+	});
+
+	plugin.addCommand({
 		id: 'export-annotated-pdf',
 		name: 'Export annotated PDF',
 		icon: 'file-down',

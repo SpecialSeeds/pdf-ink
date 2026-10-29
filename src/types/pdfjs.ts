@@ -70,6 +70,13 @@ export interface PDFPageProxy {
 		dontFlip?: boolean;
 	}): PageViewport;
 	render(params: RenderParameters): RenderTask;
+	/**
+	 * The page's text, as runs. Items without `str` are marked-content markers,
+	 * which carry no text.
+	 */
+	getTextContent(): Promise<{ items: readonly unknown[] }>;
+	/** The page's annotations, links among them. Loosely shaped; see core/pdf-links. */
+	getAnnotations(params?: { intent?: 'display' }): Promise<readonly unknown[]>;
 	/** Drops the operator list and decoded images. Only call once settled. */
 	cleanup(resetStats?: boolean): boolean;
 }

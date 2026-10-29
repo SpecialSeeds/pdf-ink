@@ -4,8 +4,8 @@ import type {
 	PDFDestination,
 	PDFDocumentProxy,
 	PDFOutlineNode,
-	PDFRef,
 } from '../types/pdfjs';
+import { resolveDestination } from '../pdf/destinations';
 import { dropPosition } from '../core/pages';
 import type { PageTheme } from '../core/theme';
 import type { PageGeometry } from '../types/view';
@@ -476,13 +476,10 @@ export class PdfSidebar {
 		doc: PDFDocumentProxy,
 		dest: PDFDestination | string | null,
 	): Promise<void> {
-		if (dest === null) return;
 		try {
-			const resolved =
-				typeof dest === 'string' ? await doc.getDestination(dest) : dest;
-			const ref = resolved?.[0];
-			if (!isPdfRef(ref)) return;
-			const pdfIndex = await doc.getPageIndex(ref);
+			const resolved = await resolveDestination(doc, dest);
+			if (!resolved) return;
+			const { pdfIndex } = resolved;
 			// Outline entries name pages of the source document, so the display index
 			// has to be looked up: inserted pages may sit before this one.
 			const key = `pdf:${String(pdfIndex)}`;
@@ -503,13 +500,4 @@ export class PdfSidebar {
 		}
 		this.entries.clear();
 	}
-}
-
-function isPdfRef(value: unknown): value is PDFRef {
-	return (
-		typeof value === 'object' &&
-		value !== null &&
-		typeof (value as PDFRef).num === 'number' &&
-		typeof (value as PDFRef).gen === 'number'
-	);
 }
