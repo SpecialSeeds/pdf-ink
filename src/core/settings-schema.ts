@@ -7,6 +7,7 @@
 import { BUFFER_PAGES } from '../constants';
 import { normalizeHex } from './color';
 import { DEFAULT_RENDER_FOLDER, DEFAULT_TRANSCRIPT_FOLDER, normalizeFolder } from './transcripts';
+import { TAP_MAX_MS, clampTapWindow } from './multitouch-tap';
 import { DEFAULT_TINT_COLOR, DEFAULT_TINT_STRENGTH, clampTintStrength } from './paper-tint';
 import { type HeaderDateFormat, isHeaderDateFormat } from './header';
 import { type NewPdfPageSize, isNewPdfPageSize } from './new-pdf';
@@ -68,6 +69,8 @@ export interface PdfInkSettings {
 	palmRejection: boolean;
 	/** Pencil strokes with the pen follow pressure: lighter is thinner. */
 	dynamicPenWidth: boolean;
+	/** How long a two-finger tap may last and still switch tools, in ms. */
+	tapWindowMs: number;
 	/**
 	 * Whether a stylus has ever been used in this vault.
 	 *
@@ -187,6 +190,7 @@ export const DEFAULT_SETTINGS: PdfInkSettings = {
 	exportMode: 'flatten',
 	palmRejection: true,
 	dynamicPenWidth: false,
+	tapWindowMs: TAP_MAX_MS,
 	penSeen: false,
 	inputDiagnostics: false,
 	toolbarSide: 'left',
@@ -305,6 +309,8 @@ export function mergeSettings(stored: unknown): PdfInkSettings {
 	if (typeof palm === 'boolean') merged.palmRejection = palm;
 	const dynamicPenWidth = raw['dynamicPenWidth'];
 	if (typeof dynamicPenWidth === 'boolean') merged.dynamicPenWidth = dynamicPenWidth;
+	const tapWindow = raw['tapWindowMs'];
+	if (typeof tapWindow === 'number') merged.tapWindowMs = clampTapWindow(tapWindow);
 
 	const penSeen = raw['penSeen'];
 	if (typeof penSeen === 'boolean') merged.penSeen = penSeen;

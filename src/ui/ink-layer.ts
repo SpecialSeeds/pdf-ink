@@ -182,6 +182,8 @@ export interface InkLayerOptions {
 	 * expose to the page at all.
 	 */
 	multiTouchTap(fingers: number): void;
+	/** How long a two-finger tap may last, in ms. */
+	tapWindowMs(): number;
 	/** Whether pencil strokes with the pen follow pressure. */
 	dynamicPenWidth(): boolean;
 	/** Record an input event, when diagnostics are switched on. */
@@ -485,6 +487,7 @@ export class InkLayer {
 			if (Array.from(evt.changedTouches).some(isStylusTouch)) {
 				this.tap.pen(evt.timeStamp);
 			}
+			this.tap.setMaxDuration(this.options.tapWindowMs());
 			const outcome = this.tap.end(evt.touches.length, evt.timeStamp);
 			if (this.options.tracingInput() && outcome.kind !== 'pending') {
 				this.options.traceInput('tap', {

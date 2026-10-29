@@ -33,6 +33,17 @@ export interface TapPoint {
 export const TAP_MAX_MS = 800;
 
 /**
+ * The range the "Two-finger tap window" setting offers, in ms. Some hands tap
+ * slowly, and a window they cannot meet makes the gesture look broken.
+ */
+export const TAP_WINDOW_RANGE = { min: 300, max: 2000, step: 50 } as const;
+
+export function clampTapWindow(ms: number): number {
+	if (!Number.isFinite(ms)) return TAP_MAX_MS;
+	return Math.min(TAP_WINDOW_RANGE.max, Math.max(TAP_WINDOW_RANGE.min, Math.round(ms)));
+}
+
+/**
  * Movement thresholds, measured against the gesture as a whole rather than each
  * finger on its own.
  *
@@ -129,9 +140,14 @@ export class MultiTouchTap {
 	private lastPenAt: number | null = null;
 
 	constructor(
-		private readonly maxDurationMs = TAP_MAX_MS,
+		private maxDurationMs = TAP_MAX_MS,
 		private readonly maxMovePx = TAP_MAX_MOVE_PX,
 	) {}
+
+	/** Change how long a tap may last; see {@link TAP_WINDOW_RANGE}. */
+	setMaxDuration(ms: number): void {
+		this.maxDurationMs = ms;
+	}
 
 	/**
 	 * A touch began. Safe to call for every touch of a gesture: the first starts

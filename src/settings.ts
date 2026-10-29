@@ -9,6 +9,7 @@ import { PAGE_SIZE_LABELS, isNewPdfPageSize } from './core/new-pdf';
 import { PAGE_TEMPLATES, TEMPLATE_LABELS, isPageTemplate } from './core/templates';
 import { formatHeaderDate, isHeaderDateFormat } from './core/header';
 import { DEFAULT_TINT_COLOR, TINT_STRENGTH_RANGE } from './core/paper-tint';
+import { TAP_WINDOW_RANGE } from './core/multitouch-tap';
 import { DEFAULT_RENDER_FOLDER, DEFAULT_TRANSCRIPT_FOLDER, normalizeFolder } from './core/transcripts';
 import { contrastRatio } from './core/color';
 import {
@@ -227,6 +228,22 @@ export class PdfInkSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.palmRejection)
 					.onChange((value) => {
 						this.plugin.settings.palmRejection = value;
+						this.save();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Two-finger tap window')
+			.setDesc(
+				'How long, in milliseconds, a two-finger tap may take and still switch to the eraser. Raise it if your taps are missed; lower it if a resting hand switches tools.',
+			)
+			.addSlider((slider) =>
+				slider
+					.setLimits(TAP_WINDOW_RANGE.min, TAP_WINDOW_RANGE.max, TAP_WINDOW_RANGE.step)
+					.setValue(this.plugin.settings.tapWindowMs)
+					.setDynamicTooltip()
+					.onChange((value) => {
+						this.plugin.settings.tapWindowMs = value;
 						this.save();
 					}),
 			);

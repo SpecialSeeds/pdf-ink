@@ -166,8 +166,12 @@ disappearing.
 **Tap two fingers** anywhere on the document to switch to the eraser, and tap again
 to go back to whatever you were using. The gesture is told apart from a pinch by the
 fingers' spread changing, and from a pan by their centre moving, so neither is
-affected — and finger taps are ignored entirely while the pen is on the page. The
-tool it switched to is named briefly on screen.
+affected — and finger taps are ignored while the pen is on the page, just after it
+lifts, and when a contact is as wide as a palm. The tool it switched to is named
+briefly on screen.
+
+A tap has 800 ms to land and lift by default. If yours are missed, raise **Two-finger
+tap window** in settings (300 to 2000 ms).
 
 Picking any other tool drops the current selection.
 

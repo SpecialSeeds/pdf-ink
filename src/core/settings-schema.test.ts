@@ -175,6 +175,20 @@ describe('palm rejection', () => {
 	});
 });
 
+describe('tapWindowMs', () => {
+	it('defaults to the recogniser\'s own window', () => {
+		expect(DEFAULT_SETTINGS.tapWindowMs).toBe(800);
+	});
+
+	it('is clamped to the slider\'s range, and ignores non-numbers', () => {
+		expect(mergeSettings({ tapWindowMs: 1500 }).tapWindowMs).toBe(1500);
+		expect(mergeSettings({ tapWindowMs: 50 }).tapWindowMs).toBe(300);
+		expect(mergeSettings({ tapWindowMs: 99999 }).tapWindowMs).toBe(2000);
+		expect(mergeSettings({ tapWindowMs: Number.NaN }).tapWindowMs).toBe(800);
+		expect(mergeSettings({ tapWindowMs: 'slow' }).tapWindowMs).toBe(800);
+	});
+});
+
 describe('penSeen', () => {
 	it('starts false, so touch drawing works before a stylus appears', () => {
 		expect(DEFAULT_SETTINGS.penSeen).toBe(false);

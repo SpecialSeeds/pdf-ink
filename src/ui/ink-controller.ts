@@ -147,6 +147,7 @@ export class InkController {
 				// for without putting the pen down.
 				if (fingers === 2) this.toggleByGesture('eraser');
 			},
+			tapWindowMs: () => this.host.settings.tapWindowMs,
 			dynamicPenWidth: () => this.host.settings.dynamicPenWidth,
 			traceInput: (event, fields) => {
 				this.options.traceInput(event, fields);
