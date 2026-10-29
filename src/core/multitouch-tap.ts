@@ -82,7 +82,15 @@ export const TAP_PEN_QUIET_MS = 350;
  * "nothing at all" and "you held it a shade too long" need very different fixes.
  */
 export type TapOutcome =
-	| { readonly kind: 'tap'; readonly fingers: number }
+	| {
+			readonly kind: 'tap';
+			readonly fingers: number;
+			/** Where the fingers landed, on average, in client px. */
+			readonly x: number;
+			readonly y: number;
+			/** When the first finger landed, on the event clock. */
+			readonly startedAt: number;
+		}
 	/** Fingers are still down; nothing decided yet. */
 	| { readonly kind: 'pending' }
 	| {
@@ -246,7 +254,14 @@ export class MultiTouchTap {
 		if (now - tracked.startedAt > this.maxDurationMs) {
 			return { kind: 'rejected', reason: 'too-slow', fingers };
 		}
-		return { kind: 'tap', fingers };
+		const landed = spreadOf([...tracked.origins.values()]);
+		return {
+			kind: 'tap',
+			fingers,
+			x: landed?.cx ?? 0,
+			y: landed?.cy ?? 0,
+			startedAt: tracked.startedAt,
+		};
 	}
 
 	/**

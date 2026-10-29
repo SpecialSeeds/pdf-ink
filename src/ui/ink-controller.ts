@@ -61,6 +61,8 @@ export interface InkControllerOptions {
 	headerTitleAt(record: PageRecord, x: number, y: number): boolean;
 	/** The title was double tapped. */
 	editHeader(record: PageRecord): void;
+	/** A tap or Ctrl/Cmd+click that does not draw; see InkLayerOptions.followLink. */
+	followLink(clientX: number, clientY: number, startedAt: number | null): void;
 }
 
 /**
@@ -148,6 +150,9 @@ export class InkController {
 				if (fingers === 2) this.toggleByGesture('eraser');
 			},
 			tapWindowMs: () => this.host.settings.tapWindowMs,
+			followLink: (clientX, clientY, startedAt) => {
+				this.options.followLink(clientX, clientY, startedAt);
+			},
 			dynamicPenWidth: () => this.host.settings.dynamicPenWidth,
 			traceInput: (event, fields) => {
 				this.options.traceInput(event, fields);

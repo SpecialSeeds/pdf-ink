@@ -184,6 +184,13 @@ export interface InkLayerOptions {
 	multiTouchTap(fingers: number): void;
 	/** How long a two-finger tap may last, in ms. */
 	tapWindowMs(): number;
+	/**
+	 * A tap that does not draw — a finger once a pen has been seen, or a
+	 * Ctrl/Cmd+click — at this client point: follow a PDF link there, if any.
+	 * `startedAt` is when the touch began, on the event clock, so a tap that
+	 * only stopped a fling can be told apart; null for a click.
+	 */
+	followLink(clientX: number, clientY: number, startedAt: number | null): void;
 	/** Whether pencil strokes with the pen follow pressure. */
 	dynamicPenWidth(): boolean;
 	/** Record an input event, when diagnostics are switched on. */
@@ -497,9 +504,22 @@ export class InkLayer {
 					remaining: evt.touches.length,
 				});
 			}
-			// One finger is an ordinary tap on the page; leave it alone.
-			if (outcome.kind === 'tap' && outcome.fingers >= 2) {
+			if (outcome.kind !== 'tap') return;
+			if (outcome.fingers >= 2) {
 				this.options.multiTouchTap(outcome.fingers);
+				return;
+			}
+			// One finger draws nothing once a pen has been seen, so its tap is free
+			// to follow a link — but only one made on the page itself, not on a
+			// button, the selection or the text editor above it.
+			const target = evt.changedTouches.item(0)?.target;
+			if (
+				this.penSeen &&
+				this.options.palmRejection() &&
+				target instanceof Element &&
+				target.classList.contains('pdf-ink-ink')
+			) {
+				this.options.followLink(outcome.x, outcome.y, outcome.startedAt);
 			}
 		});
 		this.component.registerDomEvent(tapEl, 'touchcancel', () => {
@@ -716,6 +736,12 @@ export class InkLayer {
 		}
 		// Left button only; middle and right are for panning and context menus.
 		if (evt.pointerType === 'mouse' && evt.button !== 0) return;
+		// Ctrl/Cmd+click follows a link rather than drawing, as in a browser.
+		if (evt.pointerType === 'mouse' && (evt.ctrlKey || evt.metaKey) && !this.hasActiveGesture) {
+			evt.preventDefault();
+			this.options.followLink(evt.clientX, evt.clientY, null);
+			return;
+		}
 		// A pen landing outranks whatever else is in flight. See yieldToPen.
 		if (evt.pointerType === 'pen') this.yieldToPen(evt.pointerId);
 		// A second pointer mid-gesture is a palm or a pinch.

@@ -131,6 +131,93 @@
 	background-color: var(--interactive-accent);
 }
 
+.pdf-ink-toolbar-button.is-hidden {
+	display: none;
+}
+
+/* ---- find in PDF -------------------------------------------------------- */
+
+/* Floats over the top right of the page area, clear of the tool palette. */
+.pdf-ink-find {
+	position: absolute;
+	top: var(--size-4-2);
+	right: var(--size-4-4);
+	z-index: 15;
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-1);
+	max-width: calc(100% - 2 * var(--size-4-4));
+	padding: var(--size-4-1) var(--size-4-2);
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	box-shadow: var(--shadow-s);
+}
+
+.pdf-ink-find.is-hidden {
+	display: none;
+}
+
+.pdf-ink-find-input {
+	width: 14em;
+	min-width: 6em;
+	flex: 1 1 auto;
+}
+
+.pdf-ink-find-status {
+	min-width: 5em;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	font-variant-numeric: tabular-nums;
+	text-align: center;
+	white-space: nowrap;
+}
+
+/*
+ * A match, placed in fractions of its page so a zoom carries it along. Above the
+ * rendered page and below the ink, multiplied like a highlighter so the text
+ * shows through; never a pointer target.
+ */
+.pdf-ink-find-hit {
+	position: absolute;
+	z-index: 1;
+	left: var(--pdf-ink-find-x, 0);
+	top: var(--pdf-ink-find-y, 0);
+	width: var(--pdf-ink-find-w, 0);
+	height: var(--pdf-ink-find-h, 0);
+	pointer-events: none;
+	background-color: rgba(255, 214, 0, 0.45);
+	mix-blend-mode: multiply;
+	border-radius: 2px;
+}
+
+.pdf-ink-find-hit.is-current {
+	background-color: rgba(255, 140, 0, 0.7);
+	outline: 2px solid rgba(255, 120, 0, 0.9);
+}
+
+/* ---- back after a link -------------------------------------------------- */
+
+.pdf-ink-back {
+	position: absolute;
+	bottom: var(--size-4-4);
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 15;
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-1);
+	padding: var(--size-4-1);
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-l);
+	box-shadow: var(--shadow-s);
+}
+
+.pdf-ink-back.is-hidden {
+	display: none;
+}
+
 /* ---- sidebar ------------------------------------------------------------ */
 
 /* Holds the sidebar and the scroller side by side, under the toolbar. */
