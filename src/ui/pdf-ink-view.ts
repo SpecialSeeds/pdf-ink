@@ -52,7 +52,6 @@ interface Place {
 	/** 1-based display page, for the button's label. */
 	readonly pageNumber: number;
 }
-import { paperTintStyle } from '../core/paper-tint';
 import { type HeaderText, headerText, headerTitleBox } from '../core/header';
 import { HeaderEditor } from './header-editor';
 import { renameNotebookFromTitle } from '../utils/rename-notebook';
@@ -339,9 +338,6 @@ export class PdfInkView extends FileView implements ZoomHost {
 			exportPdf: () => {
 				void this.exportAnnotated();
 			},
-			togglePaperTint: () => {
-				this.togglePaperTint();
-			},
 			goToPage: (pageNumber) => {
 				this.goToPage(pageNumber);
 			},
@@ -561,7 +557,6 @@ export class PdfInkView extends FileView implements ZoomHost {
 		}
 		// So does a change of the header's date format.
 		this.syncPages();
-		this.applyPaperTint();
 	}
 
 	/**
@@ -666,31 +661,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 			'--pdf-ink-inserted-paper': paper,
 			'--pdf-ink-inserted-blend': highlighterBlend(paper),
 		});
-		// Dark notebook pages are already easy on the eyes: the tint skips them.
-		this.contentEl.toggleClass('is-dark-pages', this.theme === 'dark');
 		this.toolbar.setTheme(this.theme);
-		this.applyPaperTint();
-	}
-
-	/** Lay the paper tint over the pages, or take it away. Screen only. */
-	private applyPaperTint(): void {
-		const settings = this.host.settings;
-		this.contentEl.toggleClass('is-paper-tinted', settings.paperTint);
-		this.contentEl.setCssProps(
-			paperTintStyle({
-				enabled: settings.paperTint,
-				color: settings.paperTintColor,
-				strength: settings.paperTintStrength,
-			}),
-		);
-		this.toolbar.setPaperTint(settings.paperTint);
-	}
-
-	/** Turn the paper tint on or off, in every open view. */
-	togglePaperTint(): void {
-		this.host.settings.paperTint = !this.host.settings.paperTint;
-		// Saving refreshes every open view, this one included.
-		void this.host.saveSettings();
 	}
 
 	/**
