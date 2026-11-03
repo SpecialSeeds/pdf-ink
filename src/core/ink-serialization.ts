@@ -35,6 +35,7 @@ import {
 	type Item,
 	OLDEST_SUPPORTED_VERSION,
 	type PathItem,
+	type ImageItem,
 	type ShapeItem,
 	type Stroke,
 	type StrokeSample,
@@ -513,6 +514,8 @@ function parseItem(
 			return parseText(raw, { id, color, opacity, rotation, z, ...timestamps });
 		case 'path':
 			return parsePath(raw, { id, color, opacity, rotation, z, ...timestamps });
+		case 'image':
+			return parseImage(raw, { id, color, opacity, rotation, z, ...timestamps });
 		default:
 			return null;
 	}
@@ -623,6 +626,17 @@ function parsePath(
 	if (isFiniteNumber(strokeWidth) && strokeWidth > 0) path.strokeWidth = strokeWidth;
 	if (raw['highlight'] === true) path.highlight = true;
 	return path;
+}
+
+function parseImage(
+	raw: Record<string, unknown>,
+	base: BaseFields,
+): ImageItem | null {
+	const src = raw['src'];
+	const box = parseBox(raw['box']);
+	if (typeof src !== 'string' || src.length === 0) return null;
+	if (!box) return null;
+	return { ...base, type: 'image', box, src };
 }
 
 function parseBox(value: unknown): Box | null {

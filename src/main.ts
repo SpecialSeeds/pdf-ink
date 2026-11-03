@@ -15,6 +15,8 @@ import { NOTE_SEARCH_ICON, NoteSearchView, VIEW_TYPE_NOTE_SEARCH } from './ui/se
 import { transcriptRedirectHandler } from './transcription/redirect';
 import { transcriptHandlers } from './transcription/transcript-sync';
 import { createNotebook } from './utils/create-notebook';
+import { forgetImage, retryMissingImages, setImageLoader } from './ui/image-cache';
+import { readImageBytes } from './utils/images';
 import { createPdf } from './utils/create-pdf';
 import { DefaultPdfViewer } from './utils/default-viewer';
 
@@ -58,6 +60,34 @@ export default class PdfInkPlugin extends Plugin {
 		this.registerEvent(this.app.metadataCache.on('changed', transcripts.changed));
 		this.registerEvent(
 			this.app.workspace.on('file-open', transcriptRedirectHandler(this.app, () => this.settings)),
+		);
+
+		// Image items name their pictures by vault path; this is how they are read,
+		// and how a picture that changes, moves or turns up is read again.
+		setImageLoader((src) => readImageBytes(this.app, src));
+		this.register(() => {
+			setImageLoader(null);
+		});
+		this.registerEvent(
+			this.app.vault.on('modify', (file) => {
+				forgetImage(file.path);
+			}),
+		);
+		this.registerEvent(
+			this.app.vault.on('delete', (file) => {
+				forgetImage(file.path);
+			}),
+		);
+		this.registerEvent(
+			this.app.vault.on('rename', (file, oldPath) => {
+				forgetImage(oldPath);
+				retryMissingImages();
+			}),
+		);
+		this.registerEvent(
+			this.app.vault.on('create', () => {
+				retryMissingImages();
+			}),
 		);
 
 		registerCommands(this);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ItemRef } from './history';
-import type { Item, ShapeItem, StrokeSample, TextItem } from './items';
+import type { ImageItem, Item, ShapeItem, StrokeSample, TextItem } from './items';
 import { createStroke } from './stroke';
 import {
 	IDENTITY_TRANSFORM,
@@ -377,6 +377,29 @@ describe('duplicateItems on a page', () => {
 		expect(copy.box.x + copy.box.w).toBeLessThanOrEqual(60);
 		expect(copy.box.y).toBeGreaterThanOrEqual(0);
 		expect(copy.box.y + copy.box.h).toBeLessThanOrEqual(90);
+	});
+});
+
+function image(id = 'im'): ImageItem {
+	return {
+		type: 'image',
+		id,
+		color: '#000000',
+		opacity: 1,
+		rotation: 0,
+		z: 0,
+		updatedAt: 0,
+		box: { x: 10, y: 10, w: 40, h: 30 },
+		src: 'Attachments/photo.png',
+	};
+}
+
+describe('transformItem on images', () => {
+	it('moves, scales and turns the box, and keeps the picture', () => {
+		const moved = transformItem(image(), translation(5, -5));
+		expect(moved).toMatchObject({ box: { x: 15, y: 5, w: 40, h: 30 }, src: 'Attachments/photo.png' });
+		const turned = transformItem(image(), rotationAbout(30, 25, 90));
+		expect(turned.rotation).toBe(90);
 	});
 });
 

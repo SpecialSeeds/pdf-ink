@@ -338,7 +338,9 @@ export function segmentBlocks(
  * what B7 is.
  */
 export function segmentPage(items: readonly Item[], width: number, height: number): Block[] {
-	return segmentBlocks(items, blockTargetFor(width, height));
+	// A picture is not handwriting, and would swallow whatever is written on it.
+	const ink = items.filter((item) => item.type !== 'image');
+	return segmentBlocks(ink, blockTargetFor(width, height));
 }
 
 /** A block's bounds as stored: `[x, y, w, h]`, rounded to a tenth of a point. */

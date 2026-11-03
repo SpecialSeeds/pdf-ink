@@ -64,6 +64,8 @@ export interface InkControllerOptions {
 	editHeader(record: PageRecord): void;
 	/** The page whose ink canvas is under this client point, if any. */
 	recordAtPoint(clientX: number, clientY: number): PageRecord | undefined;
+	/** Choose a picture and put it on the page in view. */
+	insertImage(): void;
 	/** A tap or Ctrl/Cmd+click that does not draw; see InkLayerOptions.followLink. */
 	followLink(clientX: number, clientY: number, startedAt: number | null): void;
 }
@@ -221,6 +223,9 @@ export class InkController {
 			},
 			setShapeLineStyle: (style) => {
 				this.setShapeLineStyle(style);
+			},
+			insertImage: () => {
+				this.options.insertImage();
 			},
 			selectColor: (color) => {
 				this.applyColor(color);
@@ -569,6 +574,25 @@ export class InkController {
 			return change ? { ...ref, item: change.after } : ref;
 		});
 		this.options.repaint();
+	}
+
+	/**
+	 * Add an item made outside the tools — an inserted picture — as one undoable
+	 * step, and leave it selected so it can be moved and sized straight away.
+	 */
+	placeItem(pageKey: PageKey, item: Item): void {
+		if (this.reading) return;
+		this.textEditor.close(true);
+		this.store.addItem(pageKey, item);
+		this.options.itemsCommitted(pageKey, [item]);
+		this.activate('lasso');
+		const items = this.store.itemsFor(pageKey);
+		const index = items.findIndex((candidate) => candidate.id === item.id);
+		const stored = items[index];
+		this.selection = stored ? [{ pageKey, index, item: stored }] : [];
+		this.layer.refreshSelection();
+		this.options.repaint();
+		this.refresh();
 	}
 
 	/**

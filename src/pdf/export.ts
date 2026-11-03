@@ -3,12 +3,14 @@ import {
 	LineCapStyle,
 	PDFDocument,
 	type PDFFont,
+	type PDFImage,
 	type PDFPage,
 	degrees,
 	rgb,
 } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import {
+	type ImageItem,
 	type Item,
 	type PathItem,
 	type ShapeItem,
@@ -243,6 +245,45 @@ function themed(item: Item, theme: PageTheme): Item {
 	return { ...item, color };
 }
 
+/**
+ * A picture over its box, turned about the box's centre, as on screen.
+ *
+ * pdf-lib turns an image about its bottom-left corner, so the corner is placed
+ * where the turn about the centre would put it. A picture that was not supplied,
+ * or could not be embedded, is left out.
+ */
+function drawImage(page: PDFPage, item: ImageItem, image: PDFImage | undefined): void {
+	if (!image) return;
+	const { x, y, w, h } = item.box;
+	// Counter-clockwise, which is what pdf-lib means by a positive angle.
+	const radians = (-item.rotation * Math.PI) / 180;
+	const cos = Math.cos(radians);
+	const sin = Math.sin(radians);
+	const cx = x + w / 2;
+	const cy = y + h / 2;
+	page.drawImage(image, {
+		x: cx + (-w / 2) * cos - (-h / 2) * sin,
+		y: cy + (-w / 2) * sin + (-h / 2) * cos,
+		width: w,
+		height: h,
+		rotate: degrees(-item.rotation),
+		opacity: item.opacity,
+	});
+}
+
+/** PNG and JPEG are the formats a PDF embeds directly; anything else is left out. */
+async function embedImage(doc: PDFDocument, bytes: Uint8Array): Promise<PDFImage | undefined> {
+	try {
+		if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
+			return await doc.embedPng(bytes);
+		}
+		if (bytes[0] === 0xff && bytes[1] === 0xd8) return await doc.embedJpg(bytes);
+	} catch {
+		// A damaged picture is left out rather than failing the whole export.
+	}
+	return undefined;
+}
+
 function drawItem(
 	doc: PDFDocument,
 	page: PDFPage,
@@ -250,7 +291,13 @@ function drawItem(
 	font: PDFFont,
 	mode: ExportMode,
 	theme: PageTheme,
+	images: ReadonlyMap<string, PDFImage>,
 ): void {
+	// A picture keeps its own colours under every theme.
+	if (stored.type === 'image') {
+		drawImage(page, stored, images.get(stored.src));
+		return;
+	}
 	const item = themed(stored, theme);
 	const blend = highlighterBlend(theme.paper);
 	switch (item.type) {
@@ -268,6 +315,8 @@ function drawItem(
 			break;
 		case 'path':
 			drawPath(page, item, blend);
+			break;
+		case 'image':
 			break;
 	}
 }
@@ -399,6 +448,11 @@ export interface ExportOptions {
 	readonly themes?: PageThemes;
 	/** A notebook's title header, drawn on its first page. */
 	readonly header?: HeaderText;
+	/**
+	 * The bytes of every picture the items name, by vault path. A picture missing
+	 * from here is left out of the export.
+	 */
+	readonly images?: ReadonlyMap<string, Uint8Array>;
 }
 
 /**
@@ -457,6 +511,12 @@ export async function exportAnnotatedPdfWithReport(
 	// Required before embedding a TrueType font.
 	doc.registerFontkit(fontkit);
 	const font = await doc.embedFont(embeddedFontBytes(), { subset: true });
+	// Each picture once, however many times it is placed.
+	const images = new Map<string, PDFImage>();
+	for (const [src, bytes] of options.images ?? []) {
+		const image = await embedImage(doc, bytes);
+		if (image) images.set(src, image);
+	}
 
 	const order = orderPages(doc.getPageCount(), options.insertedPages ?? []);
 
@@ -494,7 +554,7 @@ export async function exportAnnotatedPdfWithReport(
 		const page = doc.getPage(index);
 		const theme = themeFor(kindByKey.get(key) ?? 'pdf');
 		for (const item of inZOrder(items)) {
-			drawItem(doc, page, item, font, options.mode ?? 'flatten', theme);
+			drawItem(doc, page, item, font, options.mode ?? 'flatten', theme, images);
 		}
 	}
 

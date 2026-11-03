@@ -86,11 +86,11 @@ describe('schema version validation', () => {
 	});
 
 	it('rejects a newer version and reports it', () => {
-		const result = parseInkData(doc({}, 6));
+		const result = parseInkData(doc({}, 7));
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('unsupported-version');
-		expect(result.version).toBe(6);
+		expect(result.version).toBe(7);
 	});
 
 	it('rejects a version below the oldest it can migrate', () => {
@@ -99,15 +99,25 @@ describe('schema version validation', () => {
 		if (!result.ok) expect(result.reason).toBe('unsupported-version');
 	});
 
-	it('reports version 5 as current, needing no migration', () => {
-		const result = parseInkData(doc({ 'pdf:0': [validStroke()] }, 5));
+	it('reports version 6 as current, needing no migration', () => {
+		const result = parseInkData(doc({ 'pdf:0': [validStroke()] }, 6));
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
-		expect(result.sourceVersion).toBe(5);
+		expect(result.sourceVersion).toBe(6);
 		expect(result.migrated).toBe(false);
 	});
 
-	it('migrates a version 4 file to version 5 with its items intact', () => {
+	it('reads a version 5 file as version 6 unchanged', () => {
+		const stroke = validStroke();
+		const result = parseInkData(doc({ 'pdf:0': [stroke] }, 5));
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.migrated).toBe(true);
+		expect(result.data.version).toBe(6);
+		expect(result.data.pages['pdf:0']).toHaveLength(1);
+	});
+
+	it('migrates a version 4 file to version 6 with its items intact', () => {
 		const stroke = validStroke();
 		const result = parseInkData(
 			JSON.stringify({
@@ -121,12 +131,12 @@ describe('schema version validation', () => {
 		if (!result.ok) return;
 		expect(result.sourceVersion).toBe(4);
 		expect(result.migrated).toBe(true);
-		expect(result.data.version).toBe(5);
+		expect(result.data.version).toBe(6);
 		expect(result.data.docId).toBe('doc-1');
 		expect(result.data.pages['pdf:0']).toEqual([
 			expect.objectContaining({ id: stroke.id, type: 'stroke', points: stroke.points }),
 		]);
-		expect((JSON.parse(serializeInkData(result.data)) as { version: number }).version).toBe(5);
+		expect((JSON.parse(serializeInkData(result.data)) as { version: number }).version).toBe(6);
 	});
 
 	it('migrates a version 2 file', () => {
@@ -358,7 +368,7 @@ describe('serialize / parse round-trip', () => {
 		const text = serializeInkData(data);
 		expect(text.endsWith('\n')).toBe(true);
 		expect(JSON.parse(text)).toEqual({
-			version: 5,
+			version: 6,
 			pages: {},
 			insertedPages: [],
 		});
@@ -884,5 +894,43 @@ describe('dynamic strokes', () => {
 		expect(parsed.ok).toBe(true);
 		if (!parsed.ok) return;
 		expect(serializeInkData(parsed.data)).not.toContain('dynamic');
+	});
+});
+
+describe('version 6 items', () => {
+	const base = { color: '#000000', opacity: 1, rotation: 0, z: 0, updatedAt: 5 };
+
+	it('reads an image, and drops one with no picture or box', () => {
+		const result = parseInkData(
+			doc({
+				'pdf:0': [
+					{ ...base, id: 'i', type: 'image', box: { x: 1, y: 2, w: 3, h: 4 }, src: 'a/b.png' },
+					{ ...base, id: 'j', type: 'image', box: { x: 1, y: 2, w: 3, h: 4 }, src: '' },
+					{ ...base, id: 'k', type: 'image', src: 'a/b.png' },
+				],
+			}),
+		);
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.data.pages['pdf:0']).toEqual([
+			{ ...base, id: 'i', type: 'image', box: { x: 1, y: 2, w: 3, h: 4 }, src: 'a/b.png' },
+		]);
+	});
+
+	it("keeps a shape's dash, and reads anything else as solid", () => {
+		const shape = { ...base, type: 'shape', kind: 'rect', box: { x: 0, y: 0, w: 5, h: 5 }, width: 1, fill: null };
+		const result = parseInkData(
+			doc({
+				'pdf:0': [
+					{ ...shape, id: 'a', dash: 'dotted' },
+					{ ...shape, id: 'b', dash: 'wavy' },
+				],
+			}),
+		);
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		const [dotted, other] = result.data.pages['pdf:0'] ?? [];
+		expect(dotted).toMatchObject({ dash: 'dotted' });
+		expect(other).not.toHaveProperty('dash');
 	});
 });

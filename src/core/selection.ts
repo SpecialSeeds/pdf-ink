@@ -30,13 +30,18 @@ export interface LayerColor {
 	readonly color: string | null;
 }
 
+/** Whether a colour means anything for this item. A picture has its own. */
+function isColoured(item: Item): boolean {
+	return item.type !== 'image';
+}
+
 /** The palettes a selection needs, ink first, each only if it has items. */
 export function selectionLayers(refs: readonly ItemRef[]): LayerColor[] {
 	const layers: LayerColor[] = [];
 	for (const layer of ['ink', 'highlight'] as const) {
 		const colors = new Set(
 			refs
-				.filter((ref) => colorLayerOf(ref.item) === layer)
+				.filter((ref) => isColoured(ref.item) && colorLayerOf(ref.item) === layer)
 				.map((ref) => ref.item.color.toLowerCase()),
 		);
 		if (colors.size === 0) continue;
@@ -57,6 +62,7 @@ export function recolorChanges(
 ): ItemChange[] {
 	const changes: ItemChange[] = [];
 	for (const ref of refs) {
+		if (!isColoured(ref.item)) continue;
 		if (layer !== undefined && colorLayerOf(ref.item) !== layer) continue;
 		if (ref.item.color === color) continue;
 		changes.push({

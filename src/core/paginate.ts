@@ -339,7 +339,7 @@ export function splitColumns(
  */
 function mapItem(item: Item, scale: number, dx: number, dy: number): Item {
 	const moved = transformItem(item, { ...scaleAbout(0, 0, scale, scale), dx, dy });
-	if (moved.type === 'text') return moved;
+	if (moved.type === 'text' || moved.type === 'image') return moved;
 	if (moved.type === 'path') {
 		return moved.strokeWidth === undefined
 			? moved

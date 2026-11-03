@@ -69,6 +69,7 @@ describe('per-type renderer dispatch', () => {
 
 	it('covers every item type in the schema', () => {
 		expect(Object.keys(ITEM_RENDERERS).sort()).toEqual([
+			'image',
 			'path',
 			'shape',
 			'stroke',

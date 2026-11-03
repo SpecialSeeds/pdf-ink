@@ -156,3 +156,26 @@ describe('lineStyleChanges', () => {
 		expect(change?.after).not.toHaveProperty('dash');
 	});
 });
+
+describe('pictures and colour', () => {
+	const picture: ItemRef = {
+		pageKey: 'pdf:0',
+		index: 0,
+		item: {
+			type: 'image',
+			id: 'im',
+			color: '#000000',
+			opacity: 1,
+			rotation: 0,
+			z: 0,
+			updatedAt: 0,
+			box: { x: 0, y: 0, w: 10, h: 10 },
+			src: 'a.png',
+		},
+	};
+
+	it('offers no palette for a picture and never recolours one', () => {
+		expect(selectionLayers([picture])).toEqual([]);
+		expect(recolorChanges([picture, strokeRef('s', '#111111')], '#ff0000').map((c) => c.after.id)).toEqual(['s']);
+	});
+});

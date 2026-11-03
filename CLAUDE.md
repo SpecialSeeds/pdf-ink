@@ -18,12 +18,12 @@ TypeScript, esbuild (sample plugin config), pdf-lib, perfect-freehand.
   everywhere — manifest, package.json, README, LICENSE, workflows. Never write any
   other account name or email into the repo, including one picked up from the git
   config or the environment.
-## Data schema (version 5)
-{ version: 5, pages: { [pageKey]: Item[] }, insertedPages: InsertedPage[],
+## Data schema (version 6)
+{ version: 6, pages: { [pageKey]: Item[] }, insertedPages: InsertedPage[],
   docId?, layout?: "board", base?: { hash }, header?: { createdAt, dateFormat? } }
 PageKey = "pdf:<0-based index>" for a page of the source PDF
         | "ins:<uuid>"          for an inserted page
-Item = Stroke | Shape | TextBox | Path, all coordinates in PDF user space
+Item = Stroke | Shape | TextBox | Path | Image, all coordinates in PDF user space
 Base  = { id, type, color, opacity, rotation, z, updatedAt, deletedAt? }
 Stroke  = Base & { type: "stroke", tool: "pen"|"highlighter", width, points: [x,y,p][],
                    dynamic?: true }
@@ -34,6 +34,8 @@ ShapeKind = "line" | "arrow" | "rect" | "ellipse" | "triangle"
 TextBox = Base & { type: "text", box: {x,y,w,h}, text, fontSize }
 Path    = Base & { type: "path", d, strokeWidth?, highlight? }
   d = SVG-style path data, absolute M, L, C, Z only, in PDF user space
+Image   = Base & { type: "image", box: {x,y,w,h}, src }
+  src = vault path of a PNG or JPEG file; the picture is never stored in the JSON
 InsertedPage = { id, afterPdfPage, sortKey, template, size: {width,height},
                  origin?: {x,y}, updatedAt, deletedAt? }
   origin = the page's bottom-left corner in PDF space, (0, 0) when absent
@@ -75,6 +77,21 @@ PageTemplate = "blank" | "lined" | "lined7.5" | "lined10" | "grid5" | "dot"
   transforms bake into its points (rotation stays 0), recolour changes `color`,
   the stroke eraser hits it, and the sized eraser removes it WHOLE, never cuts it.
 - A v4 file reads as v5 unchanged; only its version is bumped on the next save.
+  Likewise a v5 file reads as v6 unchanged. v6 exists so an older build, which
+  would drop an image it cannot parse and save without it, refuses the file.
+- A shape's line style is applied by `shapeGeometry` (absent `dash` is solid), so
+  screen and export agree. It breaks every stroked part except those dashed by
+  construction (the into-page 3D axis); filled arrowheads are never broken.
+- An image is inserted as an attachment (Obsidian's attachment folder), converted
+  to PNG unless it is PNG or JPEG, since those are what a PDF embeds. A moved
+  picture is found again by file name. It keeps its own colours under every theme,
+  has no colour palette, no eraser touches it (only Delete from a selection), and
+  transcription ignores it (`segmentPage` and the raster skip it).
+- A lasso selection dragged onto another page is moved as ONE `replace`: the
+  originals are tombstoned and copies with NEW ids are added there, because items
+  merge page by page and one id on two pages would be ambiguous.
+- Reading mode (per tab, in the workspace state) hides the ink palette and makes
+  every pointer scroll and tap links; nothing writes, erases or undoes.
 - Migrate v1 (strokes only) and v2 (no timestamps) sidecars on load. Items from an
   older file are stamped updatedAt = 0, so any genuine remote edit beats them.
 - Deletion is a tombstone (deletedAt), never a splice: a removal that left no

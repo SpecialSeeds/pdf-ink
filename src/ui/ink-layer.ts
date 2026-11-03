@@ -1319,6 +1319,9 @@ export class InkLayer {
 		let hitAny = false;
 		for (const item of this.store.itemsFor(record.geom.key)) {
 			if (erasing.pending.has(item)) continue;
+			// A picture is under the writing on it: erasing that writing must not
+			// take the picture too. It is deleted from the selection instead.
+			if (item.type === 'image') continue;
 			const shape = this.shapeFor(item);
 			if (!shape) continue;
 			if (hitTestShape(shape, pdfX, pdfY, radius)) {

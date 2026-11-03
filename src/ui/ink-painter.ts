@@ -5,6 +5,7 @@ import type { PageTheme } from '../core/theme';
 import type { Matrix } from '../types/pdfjs';
 import type { PageRecord } from '../types/view';
 import { detailCssRect } from './detail-renderer';
+import { imageGeneration } from './image-cache';
 import {
 	type LayerName,
 	type RenderTarget,
@@ -257,6 +258,8 @@ export class InkPainter {
 			width,
 			height,
 			pending?.size ?? 0,
+			// A picture that has just arrived has to be drawn in.
+			imageGeneration(),
 		].join(':');
 
 		const version = this.store.pageVersion(record.geom.key);
