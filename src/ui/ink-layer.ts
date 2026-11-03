@@ -128,6 +128,15 @@ interface ActiveSelectionDrag {
 	readonly bounds: Bounds;
 	readonly captureEl: HTMLElement;
 	transform: SelectionTransform;
+	/**
+	 * The page the selection will land on: its own page, or another one a body
+	 * drag has carried it onto. The transform is in this page's space.
+	 */
+	target: PageRecord;
+	/** The pointer's last client position, so an edge scroll can carry it on. */
+	clientX: number;
+	clientY: number;
+	shift: boolean;
 }
 
 interface ActiveSizedErase {
@@ -209,6 +218,13 @@ export interface InkLayerOptions {
 	setSelection(refs: readonly ItemRef[]): void;
 	/** Commit the transform as one undoable operation. */
 	commitTransform(t: SelectionTransform): void;
+	/**
+	 * Move the selection onto another page, transformed into that page's space,
+	 * as one undoable operation.
+	 */
+	moveSelectionToPage(record: PageRecord, t: SelectionTransform): void;
+	/** The page whose ink canvas is under this client point, if any. */
+	recordAtPoint(clientX: number, clientY: number): PageRecord | undefined;
 	deleteSelection(): void;
 	duplicateSelection(): void;
 	/** Recolour the selected items on one layer: ink, or highlighter. */
@@ -292,6 +308,8 @@ export class InkLayer {
 	private lasso: ActiveLasso | null = null;
 	private textDrag: ActiveTextDrag | null = null;
 	private selectionDrag: ActiveSelectionDrag | null = null;
+	/** The pending frame of an edge scroll during a selection drag; 0 for none. */
+	private edgeScrollFrame = 0;
 	private readonly overlay: SelectionOverlay;
 	/** Last tap, for spotting a double tap on a text box. */
 	private lastTap: { time: number; itemId: string } | null = null;
@@ -711,7 +729,68 @@ export class InkLayer {
 			bounds,
 			captureEl,
 			transform: IDENTITY_TRANSFORM,
+			target: record,
+			clientX: evt.clientX,
+			clientY: evt.clientY,
+			shift: evt.shiftKey,
 		};
+	}
+
+	/**
+	 * Follow the pointer during a selection drag.
+	 *
+	 * A body drag that reaches another page carries the selection onto it: the
+	 * grab point stays under the pointer, worked out in the new page's own PDF
+	 * space, and the selection is kept on that page instead. Handles only ever
+	 * resize or turn the selection on its own page.
+	 */
+	private updateSelectionDrag(drag: ActiveSelectionDrag): void {
+		const previous = drag.target;
+		let target = drag.record;
+		if (drag.handle === 'body') {
+			const under = this.options.recordAtPoint(drag.clientX, drag.clientY);
+			// Between pages, it stays wherever it last was.
+			if (!under) target = previous;
+			else if (isDrawable(under)) target = under;
+		}
+		drag.target = target;
+
+		const rect = target.inkCanvasEl.getBoundingClientRect();
+		const [x, y] = this.toPdf(drag, target, rect);
+		drag.transform = keepOnPage(
+			selectionTransformFor(drag, x, y, drag.shift),
+			drag.bounds,
+			boundsOf(target),
+		);
+		this.overlay.show(target, transformBounds(drag.bounds, drag.transform));
+		this.schedulePaint(target);
+		if (previous !== target) {
+			this.schedulePaint(previous);
+			this.schedulePaint(drag.record);
+		}
+	}
+
+	/**
+	 * Scroll the document while a carried selection is held near its edge, so it
+	 * can reach a page that is not on screen. Runs every frame until the pointer
+	 * moves away from the edge or the drag ends.
+	 */
+	private edgeScroll(): void {
+		const drag = this.selectionDrag;
+		if (!drag || drag.handle !== 'body' || this.edgeScrollFrame !== 0) return;
+		const scrollEl = this.pagesEl.closest('.pdf-ink-scroll');
+		if (!(scrollEl instanceof HTMLElement)) return;
+		const rect = scrollEl.getBoundingClientRect();
+		const dy = edgeScrollStep(drag.clientY, rect.top, rect.bottom);
+		const dx = edgeScrollStep(drag.clientX, rect.left, rect.right);
+		if (dx === 0 && dy === 0) return;
+		this.edgeScrollFrame = this.pagesEl.win.requestAnimationFrame(() => {
+			this.edgeScrollFrame = 0;
+			if (this.selectionDrag !== drag) return;
+			scrollEl.scrollBy(dx, dy);
+			this.updateSelectionDrag(drag);
+			this.edgeScroll();
+		});
 	}
 
 	private onPointerDown(evt: PointerEvent): void {
@@ -909,15 +988,11 @@ export class InkLayer {
 		const drag = this.selectionDrag;
 		if (drag && evt.pointerId === drag.pointerId) {
 			evt.preventDefault();
-			const rect = drag.record.inkCanvasEl.getBoundingClientRect();
-			const [x, y] = this.toPdf(evt, drag.record, rect);
-			drag.transform = keepOnPage(
-				selectionTransformFor(drag, x, y, evt.shiftKey),
-				drag.bounds,
-				boundsOf(drag.record),
-			);
-			this.overlay.show(drag.record, transformBounds(drag.bounds, drag.transform));
-			this.schedulePaint(drag.record);
+			drag.clientX = evt.clientX;
+			drag.clientY = evt.clientY;
+			drag.shift = evt.shiftKey;
+			this.updateSelectionDrag(drag);
+			this.edgeScroll();
 			return;
 		}
 
@@ -1341,14 +1416,22 @@ export class InkLayer {
 		const drag = this.selectionDrag;
 		if (!drag) return;
 		this.selectionDrag = null;
+		if (this.edgeScrollFrame !== 0) {
+			this.pagesEl.win.cancelAnimationFrame(this.edgeScrollFrame);
+			this.edgeScrollFrame = 0;
+		}
 		this.releaseCapture(drag.captureEl, drag.pointerId);
 
-		if (commit && !isIdentity(drag.transform)) {
+		if (commit && drag.target !== drag.record) {
+			// Onto another page: off this one and onto that, as one operation.
+			this.options.moveSelectionToPage(drag.target, drag.transform);
+		} else if (commit && !isIdentity(drag.transform)) {
 			// One transform operation for the whole gesture.
 			this.options.commitTransform(drag.transform);
 		}
 		this.refreshSelection();
 		this.paint(drag.record);
+		if (drag.target !== drag.record) this.paint(drag.target);
 	}
 
 	private recordForPage(pageKey: PageKey): PageRecord | undefined {
@@ -1438,7 +1521,7 @@ export class InkLayer {
 	}
 
 	private toPdf(
-		evt: PointerEvent,
+		evt: Pick<PointerEvent, 'clientX' | 'clientY'>,
 		record: PageRecord,
 		rect: RectLike,
 	): [number, number] {
@@ -1610,14 +1693,17 @@ export class InkLayer {
 		}
 
 		const drag = this.selectionDrag;
-		if (drag && drag.record === record && !isIdentity(drag.transform)) {
+		const moved = drag !== null && (drag.target !== drag.record || !isIdentity(drag.transform));
+		if (drag && moved && (drag.record === record || drag.target === record)) {
 			// The selection is previewed transformed, with the originals hidden,
-			// until the gesture commits.
+			// until the gesture commits. Carried to another page, the originals
+			// are hidden here and the preview is drawn there.
 			const refs = this.options.selection();
-			hidden = new Set(refs.map((ref) => ref.item));
-			previewOnThisPage = refs.map((ref) =>
-				transformItem(ref.item, drag.transform),
-			);
+			if (drag.record === record) hidden = new Set(refs.map((ref) => ref.item));
+			previewOnThisPage =
+				drag.target === record
+					? refs.map((ref) => transformItem(ref.item, drag.transform))
+					: [];
 		}
 
 		this.painter.paint(record, live, hidden, previewOnThisPage);
@@ -1777,6 +1863,24 @@ function coalescedEvents(evt: PointerEvent): PointerEvent[] {
 /** The page's rectangle in PDF space. */
 function boundsOf(record: PageRecord): Bounds {
 	return pageBounds(record.viewport, record.cssWidth, record.cssHeight);
+}
+
+/** How close to the scroller's edge, in CSS px, a carried selection scrolls it. */
+const EDGE_SCROLL_ZONE = 48;
+/** The fastest an edge scroll goes, in CSS px per frame. */
+const EDGE_SCROLL_MAX = 18;
+
+/**
+ * How far to scroll along one axis this frame: nothing outside the edge zones,
+ * faster the deeper into one the pointer is.
+ */
+function edgeScrollStep(position: number, start: number, end: number): number {
+	if (end - start < EDGE_SCROLL_ZONE * 3) return 0;
+	const intoStart = start + EDGE_SCROLL_ZONE - position;
+	if (intoStart > 0) return -Math.ceil(EDGE_SCROLL_MAX * Math.min(1, intoStart / EDGE_SCROLL_ZONE));
+	const intoEnd = position - (end - EDGE_SCROLL_ZONE);
+	if (intoEnd > 0) return Math.ceil(EDGE_SCROLL_MAX * Math.min(1, intoEnd / EDGE_SCROLL_ZONE));
+	return 0;
 }
 
 /** Adjust a selection transform so the selection stays on the page. */

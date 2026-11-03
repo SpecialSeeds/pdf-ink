@@ -10,6 +10,7 @@ import { TextEditor } from './text-editor';
 import {
 	type SelectionTransform,
 	duplicateItems,
+	movedToPage,
 	transformChanges,
 	zChanges,
 } from '../core/transform';
@@ -61,6 +62,8 @@ export interface InkControllerOptions {
 	headerTitleAt(record: PageRecord, x: number, y: number): boolean;
 	/** The title was double tapped. */
 	editHeader(record: PageRecord): void;
+	/** The page whose ink canvas is under this client point, if any. */
+	recordAtPoint(clientX: number, clientY: number): PageRecord | undefined;
 	/** A tap or Ctrl/Cmd+click that does not draw; see InkLayerOptions.followLink. */
 	followLink(clientX: number, clientY: number, startedAt: number | null): void;
 }
@@ -173,6 +176,10 @@ export class InkController {
 			commitTransform: (transform) => {
 				this.applyTransform(transform);
 			},
+			moveSelectionToPage: (record, transform) => {
+				this.moveSelectionToPage(record.geom.key, transform);
+			},
+			recordAtPoint: (clientX, clientY) => this.options.recordAtPoint(clientX, clientY),
 			deleteSelection: () => {
 				this.deleteSelection();
 			},
@@ -543,6 +550,34 @@ export class InkController {
 			return change ? { ...ref, item: change.after } : ref;
 		});
 		this.options.repaint();
+	}
+
+	/**
+	 * Carry the selection onto another page: tombstoned here, copied there, in one
+	 * operation, and the copies become the selection. A drop near the bottom of a
+	 * notebook's last page grows it in the same undo step, as drawing there would.
+	 */
+	private moveSelectionToPage(pageKey: PageKey, transform: SelectionTransform): void {
+		if (this.selection.length === 0) return;
+		const items = this.store.itemsFor(pageKey);
+		let top = -1;
+		for (const item of items) top = Math.max(top, item.z);
+		const added = movedToPage(
+			this.selection,
+			transform,
+			pageKey,
+			createStrokeId,
+			top + 1,
+			items.length,
+		);
+		this.store.replaceItems(this.selection, added);
+		this.selection = added;
+		this.options.itemsCommitted(
+			pageKey,
+			added.map((ref) => ref.item),
+		);
+		this.options.repaint();
+		this.refresh();
 	}
 
 	private deleteSelection(): void {

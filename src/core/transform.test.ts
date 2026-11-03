@@ -7,6 +7,7 @@ import {
 	duplicateItems,
 	isIdentity,
 	mapPoint,
+	movedToPage,
 	rotationAbout,
 	scaleAbout,
 	transformChanges,
@@ -376,5 +377,29 @@ describe('duplicateItems on a page', () => {
 		expect(copy.box.x + copy.box.w).toBeLessThanOrEqual(60);
 		expect(copy.box.y).toBeGreaterThanOrEqual(0);
 		expect(copy.box.y + copy.box.h).toBeLessThanOrEqual(90);
+	});
+});
+
+describe('movedToPage', () => {
+	it('copies the selection onto the page with fresh ids, above what is there', () => {
+		let next = 0;
+		const refs = [ref({ ...text('a'), z: 4 }, 0), ref({ ...shape('b'), z: 2 }, 1)];
+		const moved = movedToPage(refs, translation(0, -100), 'ins:x', () => `new${String(next++)}`, 7, 3);
+		// Paint order is kept: the shape was below the text.
+		expect(moved.map((r) => r.item.type)).toEqual(['shape', 'text']);
+		expect(moved.map((r) => r.item.id)).toEqual(['new0', 'new1']);
+		expect(moved.map((r) => r.item.z)).toEqual([7, 8]);
+		expect(moved.map((r) => r.index)).toEqual([3, 4]);
+		expect(moved.every((r) => r.pageKey === 'ins:x')).toBe(true);
+		const [first] = moved;
+		if (first?.item.type !== 'shape') throw new Error('expected the shape first');
+		expect(first.item.box.y).toBe(-80);
+	});
+
+	it('leaves the originals untouched', () => {
+		const original = text('a');
+		movedToPage([ref(original)], translation(10, 10), 'pdf:1', () => 'n', 0, 0);
+		expect(original.box).toEqual({ x: 0, y: 0, w: 100, h: 20 });
+		expect(original.id).toBe('a');
 	});
 });
