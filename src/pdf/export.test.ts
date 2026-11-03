@@ -1,9 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BlendMode, PDFDocument, StandardFonts, degrees } from 'pdf-lib';
+import { BlendMode, PDFDict, PDFDocument, PDFName, StandardFonts, degrees } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
-import type { Item, PathItem, ShapeItem, TextItem } from '../core/items';
+import type { ImageItem, Item, PathItem, ShapeItem, TextItem } from '../core/items';
 import { pathCommands } from '../core/path';
 import { HEADER_BAND, HEADER_RULE } from '../core/header';
 import { DEFAULT_PAGE_THEMES } from '../core/theme';
@@ -1046,4 +1046,52 @@ describe('notebook header export', () => {
 			expect((other?.lineYs ?? []).some((y) => y > band + 0.01)).toBe(true);
 		});
 	}
+});
+
+describe('images export', () => {
+	/** A 1x1 red PNG. */
+	const PNG = Uint8Array.from(
+		atob(
+			'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==',
+		),
+		(c) => c.charCodeAt(0),
+	);
+
+	function imageItem(src: string): ImageItem {
+		return {
+			type: 'image',
+			id: 'im',
+			color: '#000000',
+			opacity: 1,
+			rotation: 30,
+			z: 0,
+			updatedAt: 0,
+			box: { x: 100, y: 100, w: 200, h: 100 },
+			src,
+		};
+	}
+
+	async function imagesOnFirstPage(bytes: Uint8Array): Promise<number> {
+		const doc = await PDFDocument.load(bytes);
+		const xobjects = doc.getPage(0).node.Resources()?.lookupMaybe(PDFName.of('XObject'), PDFDict);
+		return xobjects?.keys().length ?? 0;
+	}
+
+	it('embeds a supplied picture on its page', async () => {
+		const bytes = await exportAnnotatedPdf({
+			pdfBytes: await blankPdf(),
+			pages: { 'pdf:0': [imageItem('a.png')] },
+			images: new Map([['a.png', PNG]]),
+		});
+		expect(await imagesOnFirstPage(bytes)).toBe(1);
+	});
+
+	it('leaves out a picture it was not given, and still exports', async () => {
+		const bytes = await exportAnnotatedPdf({
+			pdfBytes: await blankPdf(),
+			pages: { 'pdf:0': [imageItem('missing.png')] },
+			images: new Map([['junk.png', Uint8Array.from([1, 2, 3])]]),
+		});
+		expect(await imagesOnFirstPage(bytes)).toBe(0);
+	});
 });

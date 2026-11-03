@@ -129,6 +129,18 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 	});
 
 	plugin.addCommand({
+		id: 'insert-image',
+		name: 'Insert image',
+		icon: 'image-plus',
+		checkCallback: (checking: boolean): boolean => {
+			const active = plugin.app.workspace.getActiveViewOfType(PdfInkView);
+			if (!active?.file || active.isReading) return false;
+			if (!checking) void active.insertImage();
+			return true;
+		},
+	});
+
+	plugin.addCommand({
 		id: 'toggle-reading-mode',
 		name: 'Toggle reading mode',
 		icon: 'book-open',

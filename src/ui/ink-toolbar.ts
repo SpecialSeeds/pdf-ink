@@ -22,6 +22,8 @@ export interface InkToolbarCallbacks {
 	selectColor(color: string): void;
 	setWidth(width: number): void;
 	setEraserMode(mode: EraserMode): void;
+	/** Choose a picture and put it on the page in view. */
+	insertImage(): void;
 	undo(): void;
 	redo(): void;
 }
@@ -176,6 +178,10 @@ export class InkToolbar {
 				}),
 			);
 		}
+		// Not a tool: it places a picture once and selects it.
+		this.addButton(toolsEl, 'image-plus', 'Insert image', () => {
+			this.callbacks.insertImage();
+		});
 
 		// --- colours -------------------------------------------------------
 		const colorGroupEl = barEl.createDiv({

@@ -1,5 +1,7 @@
 import type { PointConverter } from '../core/coords';
+import { imageFor } from './image-cache';
 import {
+	type ImageItem,
 	type Item,
 	type ItemType,
 	type PathItem,
@@ -261,6 +263,39 @@ const renderPath: ItemRenderer<PathItem> = (item, target) => {
 	ctx.restore();
 };
 
+/** How a picture that cannot be found is drawn: a faint box, in CSS px. */
+const MISSING_IMAGE_STYLE = { color: '#9a9a9a', dash: [6, 4], width: 1 } as const;
+
+/**
+ * A picture stretched over its box and turned about the box's centre, drawn in
+ * PDF space under the viewport's transform like a path. Its colours are its own:
+ * a page theme never touches them. Until it has loaded, or when its file cannot
+ * be found, a dashed box shows where it is, so it can still be selected.
+ */
+const renderImage: ItemRenderer<ImageItem> = (item, target) => {
+	const { ctx } = target;
+	const { x, y, w, h } = item.box;
+	ctx.save();
+	ctx.transform(...viewportMatrix(target.viewport));
+	ctx.translate(x + w / 2, y + h / 2);
+	// Clockwise in a y-up space is a negative turn.
+	if (item.rotation !== 0) ctx.rotate((-item.rotation * Math.PI) / 180);
+	const image = imageFor(item.src);
+	if (image) {
+		ctx.globalAlpha = item.opacity;
+		// Bitmaps are y-down: flip so the picture's top is at the box's top.
+		ctx.scale(1, -1);
+		ctx.drawImage(image, -w / 2, -h / 2, w, h);
+	} else {
+		const perPoint = target.scale > 0 ? 1 / target.scale : 1;
+		ctx.strokeStyle = MISSING_IMAGE_STYLE.color;
+		ctx.lineWidth = MISSING_IMAGE_STYLE.width * perPoint;
+		ctx.setLineDash(MISSING_IMAGE_STYLE.dash.map((length) => length * perPoint));
+		ctx.strokeRect(-w / 2, -h / 2, w, h);
+	}
+	ctx.restore();
+};
+
 /**
  * The font the on-screen renderer measures and draws with.
  *
@@ -313,6 +348,7 @@ export const ITEM_RENDERERS: Partial<Record<ItemType, ItemRenderer>> = {
 	shape: renderShape as ItemRenderer,
 	text: renderText as ItemRenderer,
 	path: renderPath as ItemRenderer,
+	image: renderImage as ItemRenderer,
 };
 
 export function rendererFor(item: Item): ItemRenderer | undefined {

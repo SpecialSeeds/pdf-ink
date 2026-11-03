@@ -87,7 +87,8 @@ export async function rasterisePage(page: SourcePage, options: RasterOptions): P
 	// where highlights sit on a layer of their own under the pen.
 	const theme = DEFAULT_PAGE_THEMES.light;
 	const target = { ctx, viewport, scale, theme };
-	const items = inZOrder(page.items);
+	// Handwriting only: a picture is not something to transcribe.
+	const items = inZOrder(page.items).filter((item) => item.type !== 'image');
 	ctx.globalCompositeOperation = 'multiply';
 	for (const item of items) if (layerFor(item) === 'highlight') rendererFor(item)?.(item, target);
 	ctx.globalCompositeOperation = 'source-over';

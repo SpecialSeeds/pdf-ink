@@ -18,9 +18,13 @@
  * Version 5 adds the `path` item: a vector outline, such as ink imported from
  * another app, drawn exactly as stored rather than through the pen's outline.
  * A v4 file needs no rewriting to be read as v5; only its version changes.
+ *
+ * Version 6 adds the `image` item, and an optional `dash` on shapes. A v5 file
+ * reads as v6 unchanged. The bump is what keeps an older build, which would drop
+ * an image it cannot parse and then save without it, from opening the file.
  */
 
-export const INK_DATA_VERSION = 5;
+export const INK_DATA_VERSION = 6;
 
 /** The oldest schema this build can read and migrate. */
 export const OLDEST_SUPPORTED_VERSION = 1;
@@ -148,10 +152,27 @@ export interface PathItem extends ItemBase {
 	highlight?: boolean;
 }
 
-export type Item = Stroke | ShapeItem | TextItem | PathItem;
+/**
+ * A picture placed on the page, stretched to fill `box` and turned by
+ * `rotation` about the box's centre.
+ *
+ * The picture itself is a file in the vault, named by its path, and never copied
+ * into the annotations: a photo inside the JSON would be rewritten on every
+ * stroke. It is always PNG or JPEG, the two formats a PDF can embed directly;
+ * anything else is converted to PNG when it is inserted.
+ */
+export interface ImageItem extends ItemBase {
+	type: 'image';
+	/** Bottom-left corner and positive size, in PDF points. */
+	box: Box;
+	/** Vault path of the picture. */
+	src: string;
+}
+
+export type Item = Stroke | ShapeItem | TextItem | PathItem | ImageItem;
 export type ItemType = Item['type'];
 
-export const ITEM_TYPES: readonly ItemType[] = ['stroke', 'shape', 'text', 'path'];
+export const ITEM_TYPES: readonly ItemType[] = ['stroke', 'shape', 'text', 'path', 'image'];
 
 /** The `<file>.ink.json` shape. Page keys are {@link PageKey}, never indices. */
 export interface InkData {
@@ -235,6 +256,10 @@ export function isText(item: Item): item is TextItem {
 
 export function isPath(item: Item): item is PathItem {
 	return item.type === 'path';
+}
+
+export function isImage(item: Item): item is ImageItem {
+	return item.type === 'image';
 }
 
 export function isShapeKind(value: unknown): value is ShapeKind {

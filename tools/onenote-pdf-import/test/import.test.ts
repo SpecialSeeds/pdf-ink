@@ -25,6 +25,7 @@ import { unpackBase } from '../../../src/core/base-layer';
 import { parseInkData } from '../../../src/core/ink-serialization';
 import { HEADER_CONTENT_TOP } from '../../../src/core/header';
 import { pathBounds } from '../../../src/core/path';
+import { INK_DATA_VERSION } from '../../../src/core/items';
 import { buildNotebook, classify } from '../src/build';
 import { compareCanvases, describeComparison } from '../src/compare';
 import { type RawPath, extractPdf } from '../src/extract';
@@ -327,7 +328,7 @@ describe('running an import', () => {
 		const parsed = parseInkData(await readFile(join(dir, 'Board note.inknote'), 'utf8'));
 		expect(parsed.ok).toBe(true);
 		if (!parsed.ok) return;
-		expect(parsed.data.version).toBe(5);
+		expect(parsed.data.version).toBe(INK_DATA_VERSION);
 		expect(parsed.data.layout).toBe('board');
 		expect(typeof parsed.data.docId).toBe('string');
 		// The imported ink is all in the base layer the notebook names.

@@ -63,6 +63,10 @@ import {
 	shouldAppendPage,
 } from '../core/new-notebook';
 import { pageBounds } from '../core/page-bounds';
+import { placeImage } from '../core/image-placement';
+import { createStrokeId } from '../core/stroke';
+import { onImagesChanged } from './image-cache';
+import { pickImageFile, saveImageAttachment } from '../utils/images';
 import { composePages, pagesSignature } from '../core/page-composition';
 import type { PageKey } from '../core/pages';
 import {
@@ -438,6 +442,9 @@ export class PdfInkView extends FileView implements ZoomHost {
 				resolveRecord: (target) => this.pageList?.recordForTarget(target),
 				recordForPage: (pageKey) => this.pageList?.recordForKey(pageKey),
 				recordAtPoint: (clientX, clientY) => this.recordAtPoint(clientX, clientY),
+				insertImage: () => {
+					void this.insertImage();
+				},
 				repaint: () => {
 					this.repaintInk();
 				},
@@ -495,6 +502,34 @@ export class PdfInkView extends FileView implements ZoomHost {
 		};
 		this.registerEvent(this.app.vault.on('create', onAppear));
 		this.registerEvent(this.app.vault.on('rename', onAppear));
+
+		// A picture arriving, or changing on disk, is drawn as soon as it is read.
+		this.register(
+			onImagesChanged(() => {
+				this.repaintInk();
+			}),
+		);
+		// Pictures pasted or dropped onto the pages are inserted there. Not while
+		// typing: a paste into a text box or the page field is theirs.
+		this.registerDomEvent(this.contentEl, 'paste', (evt) => {
+			if (this.reading || isTyping(evt.target)) return;
+			const picture = imageFileIn(evt.clipboardData);
+			if (!picture) return;
+			evt.preventDefault();
+			void this.insertImage(picture);
+		});
+		this.registerDomEvent(this.scrollEl, 'dragover', (evt) => {
+			if (this.reading || !evt.dataTransfer?.types.includes('Files')) return;
+			evt.preventDefault();
+			evt.dataTransfer.dropEffect = 'copy';
+		});
+		this.registerDomEvent(this.scrollEl, 'drop', (evt) => {
+			if (this.reading) return;
+			const picture = imageFileIn(evt.dataTransfer);
+			if (!picture) return;
+			evt.preventDefault();
+			void this.insertImage(picture, { x: evt.clientX, y: evt.clientY });
+		});
 		this.applyThemeStyles();
 		this.ready = true;
 		this.applyReading();
@@ -634,6 +669,11 @@ export class PdfInkView extends FileView implements ZoomHost {
 	}
 
 	/** Switch this tab's notebook and inserted pages between light and dark. */
+	/** Whether this tab shows its ink without any way to change it. */
+	get isReading(): boolean {
+		return this.reading;
+	}
+
 	/** Switch reading mode on or off for this tab. */
 	toggleReading(): void {
 		this.setReading(!this.reading);
@@ -1196,6 +1236,60 @@ export class PdfInkView extends FileView implements ZoomHost {
 	}
 
 	/**
+	 * Put a picture on a page: the one under `at` if given (a drop), otherwise
+	 * the one in view, centred on what is showing of it. With no picture given,
+	 * the system's chooser asks for one. Saved as an attachment, placed as one
+	 * undoable step, and left selected.
+	 */
+	async insertImage(picture?: File, at?: { x: number; y: number }): Promise<void> {
+		const file = this.file;
+		const ink = this.ink;
+		if (!file || !ink || this.reading) return;
+		const chosen = picture ?? (await pickImageFile(this.contentEl.doc));
+		if (!chosen) return;
+
+		const dropped = at ? this.recordAtPoint(at.x, at.y) : undefined;
+		const key = dropped?.geom.key ?? this.currentPageKey();
+		const record = key === null ? undefined : this.pageList?.recordForKey(key);
+		if (key === null || !record) return;
+
+		let saved;
+		try {
+			saved = await saveImageAttachment(this.app, chosen, chosen.name, file.path);
+		} catch (error) {
+			console.error('pdf-ink: could not insert picture', error);
+			new Notice('Could not insert that picture.');
+			return;
+		}
+
+		const { geom } = record;
+		const page = pageBounds(geom.baseViewport, geom.baseWidth, geom.baseHeight);
+		const scroller = this.scrollEl.getBoundingClientRect();
+		const point = at ?? {
+			x: scroller.left + scroller.width / 2,
+			y: scroller.top + scroller.height / 2,
+		};
+		const rect = record.inkCanvasEl.getBoundingClientRect();
+		const [px = 0, py = 0] = record.viewport.convertToPdfPoint(point.x - rect.left, point.y - rect.top);
+		const centre: [number, number] = boundsContain(page, px, py)
+			? [px, py]
+			: [(page.minX + page.maxX) / 2, (page.minY + page.maxY) / 2];
+
+		ink.placeItem(key, {
+			type: 'image',
+			id: createStrokeId(),
+			// Unused by a picture, but every item has one.
+			color: '#000000',
+			opacity: 1,
+			rotation: 0,
+			z: 0,
+			updatedAt: Date.now(),
+			box: placeImage(saved.width, saved.height, page, centre),
+			src: saved.path,
+		});
+	}
+
+	/**
 	 * The page whose ink canvas is under a client point. By geometry rather than
 	 * by hit target, because whatever is being dragged is usually what the point
 	 * would hit.
@@ -1366,4 +1460,20 @@ export class PdfInkView extends FileView implements ZoomHost {
 /** Obsidian's own theme right now, which a tab with no saved theme follows. */
 function obsidianTheme(): ThemeName {
 	return activeDocument.body.hasClass('theme-dark') ? 'dark' : 'light';
+}
+
+/** The first picture among a paste's or a drop's files, if there is one. */
+function imageFileIn(data: DataTransfer | null): File | null {
+	for (const file of Array.from(data?.files ?? [])) {
+		if (file.type.startsWith('image/')) return file;
+	}
+	return null;
+}
+
+/** Whether an event landed where text is being typed. */
+function isTyping(target: EventTarget | null): boolean {
+	return (
+		target instanceof HTMLElement &&
+		(target.isContentEditable || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')
+	);
 }

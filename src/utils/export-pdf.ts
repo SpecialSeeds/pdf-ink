@@ -9,6 +9,7 @@ import { ORIGINAL_PAGES_VARIANT, exportPathFor, parentFolder } from '../core/exp
 import { isNotebookPath } from '../core/new-notebook';
 import type { PageThemes, ThemeName } from '../core/theme';
 import { type HeaderDateFormat, headerText } from '../core/header';
+import { collectImageBytes } from './images';
 
 export interface ExportSettings {
 	readonly suffix: string;
@@ -77,6 +78,7 @@ export async function exportAnnotatedCopy(
 			mode: settings.mode,
 			theme: settings.theme,
 			themes: settings.themes,
+			images: await collectImageBytes(app, pages),
 			// The title is the notebook's name now, whatever it was when written.
 			...(notebook && parsed.data.header
 				? { header: headerText(file.path, parsed.data.header, settings.headerDateFormat) }
