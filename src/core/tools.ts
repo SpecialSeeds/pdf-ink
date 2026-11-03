@@ -2,7 +2,7 @@
  * Tool selection and per-tool settings. Pure.
  */
 
-import type { ShapeKind } from './items';
+import type { ShapeKind, ShapeLineStyle } from './items';
 import type { ToolPreset } from './stroke';
 
 export type ToolKind =
@@ -31,6 +31,12 @@ export interface ToolSettings {
 
 export interface ShapeToolSettings extends ToolSettings {
 	kind: ShapeKind;
+	/** The outline every new shape is drawn with. */
+	lineStyle: ShapeLineStyle;
+}
+
+export function isShapeLineStyle(value: unknown): value is ShapeLineStyle {
+	return value === 'solid' || value === 'dashed' || value === 'dotted';
 }
 
 /** 'stroke' deletes a whole item; 'sized' cuts away what the disc touches. */
@@ -162,7 +168,7 @@ export function defaultToolState(): ToolState {
 		active: 'pen',
 		pen: { color: '#1f1f1f', width: 2 },
 		highlighter: { color: '#e6b800', width: 16 },
-		shape: { color: '#1f1f1f', width: 2, kind: 'line' },
+		shape: { color: '#1f1f1f', width: 2, kind: 'line', lineStyle: 'solid' },
 		text: { color: '#1f1f1f', fontSize: 12, defaultWidth: 180 },
 		eraser: { mode: 'stroke', width: 18, radiusPx: 16 },
 	};

@@ -10,7 +10,7 @@
  * dragged down-right.
  */
 
-import type { Box, ShapeKind } from './items';
+import type { Box, ShapeKind, ShapeLineStyle } from './items';
 
 export type PathCommand =
 	| { readonly op: 'move'; readonly x: number; readonly y: number }
@@ -30,7 +30,10 @@ export interface PathSegment {
 	readonly commands: readonly PathCommand[];
 	/** Filled rather than stroked. Arrowheads are the only filled parts. */
 	readonly fill?: boolean;
-	/** Dash pattern in PDF points; negative 3D axes are the only dashed parts. */
+	/**
+	 * Dash pattern in PDF points. A zero-length dash is a dot, drawn with round
+	 * caps.
+	 */
 	readonly dash?: readonly [number, number];
 }
 
@@ -46,6 +49,11 @@ export const ARROW_LENGTH = 6;
 export const ARROW_HALF_WIDTH = 2.2;
 /** Dash on/off lengths as multiples of stroke width. */
 export const DASH_PATTERN: readonly [number, number] = [3, 2.5];
+/**
+ * Dots as a dash pattern, in multiples of stroke width: zero-length dashes, each
+ * drawn as a round cap one width across, two widths apart centre to centre.
+ */
+export const DOT_PATTERN: readonly [number, number] = [0, 2];
 
 /**
  * How long the out-of-page axis is, relative to the in-plane axis it is measured
@@ -334,12 +342,33 @@ export const SHAPE_GEOMETRY: Record<ShapeKind, ShapeGeometryFn> = {
 	axes3d_c: axes3dCentreGeometry,
 };
 
+/**
+ * A shape's geometry with its outline drawn in `style`.
+ *
+ * The style applies to every stroked part that is otherwise solid; parts that are
+ * dashed by construction (a 3D axis going into the page) keep their own dash, so
+ * they still read as behind. Filled parts, like arrowheads, are never broken.
+ */
 export function shapeGeometry(
 	kind: ShapeKind,
 	box: Box,
 	width: number,
+	style: ShapeLineStyle = 'solid',
 ): ShapeGeometry {
-	return SHAPE_GEOMETRY[kind](box, width);
+	const geometry = SHAPE_GEOMETRY[kind](box, width);
+	if (style === 'solid') return geometry;
+	const pattern = style === 'dotted' ? DOT_PATTERN : DASH_PATTERN;
+	const dash: [number, number] = [pattern[0] * width, pattern[1] * width];
+	return {
+		segments: geometry.segments.map((segment) =>
+			segment.fill === true || segment.dash ? segment : { ...segment, dash },
+		),
+	};
+}
+
+/** The line style a stored shape is drawn in. */
+export function shapeLineStyle(shape: { readonly dash?: 'dashed' | 'dotted' }): ShapeLineStyle {
+	return shape.dash ?? 'solid';
 }
 
 /** Where the origin sits for an axes kind, or null for other shapes. */

@@ -107,6 +107,9 @@ export const SHAPE_KINDS: readonly ShapeKind[] = [
 	'axes3d_c',
 ];
 
+/** How a shape's outline is drawn. Solid is stored as an absent `dash`. */
+export type ShapeLineStyle = 'solid' | 'dashed' | 'dotted';
+
 export interface ShapeItem extends ItemBase {
 	type: 'shape';
 	kind: ShapeKind;
@@ -114,6 +117,8 @@ export interface ShapeItem extends ItemBase {
 	/** Outline width in PDF points. */
 	width: number;
 	fill: string | null;
+	/** A broken outline. Absent means solid. */
+	dash?: 'dashed' | 'dotted';
 }
 
 export interface TextItem extends ItemBase {

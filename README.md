@@ -138,7 +138,7 @@ opens outside Obsidian. The pen always draws, over links or not.
 |---|---|
 | **Pen** | Freehand ink at a constant width. |
 | **Highlighter** | Flat, translucent ink that multiplies with the page, so text reads through it. |
-| **Shapes** | Line, arrow, rectangle, ellipse, equilateral triangle, 2D and 3D axes. |
+| **Shapes** | Line, arrow, rectangle, ellipse, equilateral triangle, 2D and 3D axes, in solid, dashed or dotted line. |
 | **Text** | A resizable text box with wrapping. |
 | **Eraser** | Whole-stroke, or a sized rubber that cuts strokes into fragments. |
 | **Select** | Lasso or click, then move, scale, rotate, recolour, duplicate or reorder. |

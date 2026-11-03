@@ -24,7 +24,9 @@ import {
 	SIZED_ERASER_RANGE,
 	WIDTH_RANGES,
 	defaultToolState,
+	isShapeLineStyle,
 } from './tools';
+import type { ShapeLineStyle } from './items';
 
 export type DefaultZoomMode = 'fit-width' | 'actual-size';
 
@@ -52,6 +54,8 @@ export interface PdfInkSettings {
 	textFontSize: number;
 	/** Last eraser mode used. */
 	eraserMode: EraserMode;
+	/** Last line style chosen for shapes. */
+	shapeLineStyle: ShapeLineStyle;
 	/** Last sized-eraser radius, in screen pixels. */
 	eraserRadiusPx: number;
 	/** Whole-stroke eraser hit radius, in PDF points. */
@@ -173,6 +177,7 @@ export const DEFAULT_SETTINGS: PdfInkSettings = {
 	toolWidths: defaultToolWidths(),
 	textFontSize: defaultToolState().text.fontSize,
 	eraserMode: defaultToolState().eraser.mode,
+	shapeLineStyle: defaultToolState().shape.lineStyle,
 	eraserRadiusPx: defaultToolState().eraser.radiusPx,
 	eraserWidth: defaultToolState().eraser.width,
 	exportSuffix: DEFAULT_EXPORT_SUFFIX,
@@ -233,6 +238,9 @@ export function mergeSettings(stored: unknown): PdfInkSettings {
 
 	const mode = raw['eraserMode'];
 	if (mode === 'stroke' || mode === 'sized') merged.eraserMode = mode;
+
+	const lineStyle = raw['shapeLineStyle'];
+	if (isShapeLineStyle(lineStyle)) merged.shapeLineStyle = lineStyle;
 
 	const radius = raw['eraserRadiusPx'];
 	if (typeof radius === 'number' && Number.isFinite(radius)) {

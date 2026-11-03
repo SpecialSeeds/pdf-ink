@@ -1,6 +1,6 @@
 import { type Component, Menu, setIcon } from 'obsidian';
 import { normalizeHex, sameColor } from '../core/color';
-import type { ShapeKind } from '../core/items';
+import type { ShapeKind, ShapeLineStyle } from '../core/items';
 import type { ToolbarSide } from '../core/settings-schema';
 import {
 	EXTRA_COLORS,
@@ -17,6 +17,8 @@ import {
 export interface InkToolbarCallbacks {
 	selectTool(tool: ToolKind): void;
 	selectShape(kind: ShapeKind): void;
+	/** Draw shapes with this outline, and restyle any selected shapes. */
+	setShapeLineStyle(style: ShapeLineStyle): void;
 	selectColor(color: string): void;
 	setWidth(width: number): void;
 	setEraserMode(mode: EraserMode): void;
@@ -30,6 +32,12 @@ const TOOLS: { kind: ToolKind; icon: string; label: string }[] = [
 	{ kind: 'text', icon: 'type', label: 'Text' },
 	{ kind: 'eraser', icon: 'eraser', label: 'Eraser' },
 	{ kind: 'lasso', icon: 'lasso', label: 'Select' },
+];
+
+const LINE_STYLES: { style: ShapeLineStyle; label: string }[] = [
+	{ style: 'solid', label: 'Solid line' },
+	{ style: 'dashed', label: 'Dashed line' },
+	{ style: 'dotted', label: 'Dotted line' },
 ];
 
 const SHAPES: { kind: ShapeKind; icon: string; label: string }[] = [
@@ -51,6 +59,8 @@ export class InkToolbar {
 	private readonly shapeButtonEl: HTMLButtonElement;
 	/** The shape the button's icon shows, so it is only rebuilt when that changes. */
 	private shownShape: ShapeKind | null = null;
+	/** The shape tool's line style, ticked in the shape menu. */
+	private shownLineStyle: ShapeLineStyle = 'solid';
 	private readonly colorGroupEl: HTMLElement;
 	private readonly colorPopoverEl: HTMLElement;
 	private readonly colorInputEl: HTMLInputElement;
@@ -272,6 +282,7 @@ export class InkToolbar {
 			buttonEl.toggleClass('is-active', state.active === kind);
 		}
 
+		this.shownLineStyle = state.shape.lineStyle;
 		const shape = SHAPES.find((entry) => entry.kind === state.shape.kind);
 		// Every tool change and every stroke lands here; parsing a fresh SVG for
 		// an icon that has not changed was work for nothing.
@@ -340,6 +351,17 @@ export class InkToolbar {
 					.setIcon(shape.icon)
 					.onClick(() => {
 						this.callbacks.selectShape(shape.kind);
+					}),
+			);
+		}
+		menu.addSeparator();
+		for (const entry of LINE_STYLES) {
+			menu.addItem((item) =>
+				item
+					.setTitle(entry.label)
+					.setChecked(this.shownLineStyle === entry.style)
+					.onClick(() => {
+						this.callbacks.setShapeLineStyle(entry.style);
 					}),
 			);
 		}
