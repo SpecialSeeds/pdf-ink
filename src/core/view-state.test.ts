@@ -72,8 +72,18 @@ describe('readInkViewState', () => {
 				zoomMode: null,
 				pageKey: null,
 				theme: null,
+				reading: false,
 			});
 		}
+	});
+
+	it('remembers reading mode, and writes it only when on', () => {
+		expect(readInkViewState({ reading: true }).reading).toBe(true);
+		expect(readInkViewState({ reading: 'yes' }).reading).toBe(false);
+		const off = writeInkViewState({ kind: 'fit-width' }, 1, 1, null, null, false);
+		expect(off).not.toHaveProperty('reading');
+		const on = writeInkViewState({ kind: 'fit-width' }, 1, 1, null, null, true);
+		expect(readInkViewState(on).reading).toBe(true);
 	});
 
 	it('ignores a page number that is not a 1-based integer', () => {

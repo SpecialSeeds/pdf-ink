@@ -21,6 +21,8 @@ export interface ToolbarCallbacks {
 	pageOptions(at: { x: number; y: number }): void;
 	/** Switch notebook and inserted pages between light and dark. */
 	toggleTheme(): void;
+	/** Show the ink without the palette or any way to change it, or go back. */
+	toggleReading(): void;
 	exportPdf(): void;
 	/** Open the find bar. */
 	find(): void;
@@ -65,6 +67,7 @@ export class PdfInkToolbar {
 	private readonly scrollLockButtonEl: HTMLButtonElement;
 	private scrollAxis: ScrollAxis = 'both';
 	private readonly themeButtonEl: HTMLButtonElement;
+	private readonly readingButtonEl: HTMLButtonElement;
 	private readonly findButtonEl: HTMLButtonElement;
 	/** Every control that changes the zoom, disabled while it is locked. */
 	private readonly zoomButtonEls: HTMLButtonElement[] = [];
@@ -231,6 +234,15 @@ export class PdfInkToolbar {
 				callbacks.pageOptions({ x: box.left, y: box.bottom });
 			},
 		);
+		this.readingButtonEl = this.addButton(
+			actionsGroupEl,
+			component,
+			'book-open',
+			'Turn on reading mode',
+			() => {
+				callbacks.toggleReading();
+			},
+		);
 		this.themeButtonEl = this.addButton(
 			actionsGroupEl,
 			component,
@@ -294,6 +306,15 @@ export class PdfInkToolbar {
 	}
 
 	/** Show the theme in effect: the sun for light pages, the moon for dark. */
+	setReading(on: boolean): void {
+		this.readingButtonEl.toggleClass('is-active', on);
+		this.readingButtonEl.setAttribute('aria-pressed', String(on));
+		this.readingButtonEl.setAttribute(
+			'aria-label',
+			on ? 'Turn off reading mode' : 'Turn on reading mode',
+		);
+	}
+
 	setTheme(theme: ThemeName): void {
 		const dark = theme === 'dark';
 		setIcon(this.themeButtonEl, dark ? 'moon' : 'sun');

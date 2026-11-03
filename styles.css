@@ -484,6 +484,12 @@
 	touch-action: pan-x pan-y;
 }
 
+/* Reading mode: nothing draws, so every touch pans, and the pointer is plain. */
+.pdf-ink-view.is-reading .pdf-ink-ink {
+	touch-action: pan-x pan-y;
+	cursor: default;
+}
+
 /*
  * The sharp drawing of the visible part of a page too large to draw whole at
  * full density. Each sits directly after its whole-page layer, sharing its
@@ -561,6 +567,11 @@
 .pdf-ink-floating.is-right {
 	left: auto;
 	right: var(--size-4-2);
+}
+
+/* Reading mode: no palette. */
+.pdf-ink-floating.is-hidden {
+	display: none;
 }
 
 .pdf-ink-floating-group {

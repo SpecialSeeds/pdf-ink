@@ -86,6 +86,8 @@ export class InkController {
 	private editingPage: PageKey = '';
 	/** What to return to when a toggled tool is toggled off. */
 	private previousTool: ToolKind | null = null;
+	/** Reading mode: ink shown, palette hidden, nothing writes or undoes. */
+	private reading = false;
 	private readonly layer: InkLayer;
 	private readonly toolbar: InkToolbar;
 
@@ -151,7 +153,7 @@ export class InkController {
 			multiTouchTap: (fingers) => {
 				// Two fingers, and only two: the eraser is the one tool worth reaching
 				// for without putting the pen down.
-				if (fingers === 2) this.toggleByGesture('eraser');
+				if (fingers === 2 && !this.reading) this.toggleByGesture('eraser');
 			},
 			tapWindowMs: () => this.host.settings.tapWindowMs,
 			followLink: (clientX, clientY, startedAt) => {
@@ -265,7 +267,7 @@ export class InkController {
 		// they belong to the text box or the page-number field.
 		for (const key of ['Delete', 'Backspace']) {
 			this.scope.register([], key, (evt) => {
-				if (this.selection.length === 0 || isEditable(evt.target)) return;
+				if (this.reading || this.selection.length === 0 || isEditable(evt.target)) return;
 				this.deleteSelection();
 				return false;
 			});
@@ -283,11 +285,28 @@ export class InkController {
 	}
 
 	undo(): void {
+		// Nothing changes the ink while reading, undo included: it would edit what
+		// the reader cannot see being edited.
+		if (this.reading) return;
 		if (this.store.undo()) this.options.repaint();
 	}
 
 	redo(): void {
+		if (this.reading) return;
 		if (this.store.redo()) this.options.repaint();
+	}
+
+	/**
+	 * Show the ink without the means to change it: the palette goes, every pointer
+	 * scrolls, and a tap follows a link. Anything open is committed first.
+	 */
+	setReading(on: boolean): void {
+		if (this.reading === on) return;
+		this.textEditor.close(true);
+		this.reading = on;
+		this.layer.setReading(on);
+		this.toolbar.setHidden(on);
+		this.refresh();
 	}
 
 	/**

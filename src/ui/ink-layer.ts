@@ -313,6 +313,13 @@ export class InkLayer {
 	private readonly overlay: SelectionOverlay;
 	/** Last tap, for spotting a double tap on a text box. */
 	private lastTap: { time: number; itemId: string } | null = null;
+	/**
+	 * Reading mode: the ink is shown but nothing writes. Every pointer scrolls,
+	 * the pencil included, and a tap follows a link.
+	 */
+	private reading = false;
+	/** A mouse or pen press in reading mode, a link click if it lifts in place. */
+	private readingPress: { pointerId: number; x: number; y: number } | null = null;
 	private readonly painter: InkPainter;
 
 	/**
@@ -384,6 +391,18 @@ export class InkLayer {
 			this.paint(lasso.record);
 		}
 		if (this.options.selection().length > 0) this.clearSelection();
+	}
+
+	/** Turn reading mode on or off, abandoning anything in progress. */
+	setReading(on: boolean): void {
+		if (this.reading === on) return;
+		this.cancelSelection();
+		this.cancelActive();
+		this.hideCursor();
+		this.readingPress = null;
+		this.reading = on;
+		// Lets every touch pan, the pencil's included; see claimsTouch.
+		this.rootEl.toggleClass('is-reading', on);
 	}
 
 	attach(): void {
@@ -532,8 +551,7 @@ export class InkLayer {
 			// button, the selection or the text editor above it.
 			const target = evt.changedTouches.item(0)?.target;
 			if (
-				this.penSeen &&
-				this.options.palmRejection() &&
+				(this.reading || (this.penSeen && this.options.palmRejection())) &&
 				target instanceof Element &&
 				target.classList.contains('pdf-ink-ink')
 			) {
@@ -654,6 +672,8 @@ export class InkLayer {
 		 * meant Delete, Duplicate and the rest silently did nothing.
 		 */
 		if (this.overlay.isBarTarget(evt.target)) return false;
+		// Reading: the pencil scrolls like a finger.
+		if (this.reading) return false;
 		for (const touch of Array.from(evt.changedTouches)) {
 			if (isStylusTouch(touch)) return true;
 		}
@@ -804,6 +824,14 @@ export class InkLayer {
 			});
 		}
 		if (evt.pointerType === 'pen') this.markPenSeen();
+		if (this.reading) {
+			// Fingers scroll and tap through the recogniser; a mouse or pen press
+			// may be a click on a link, decided when it lifts.
+			if (evt.pointerType !== 'touch' && evt.button === 0) {
+				this.readingPress = { pointerId: evt.pointerId, x: evt.clientX, y: evt.clientY };
+			}
+			return;
+		}
 		// Palm rejection: let the scroll container have this touch. Off means every
 		// touch draws, which is what a device with no stylus wants.
 		if (
@@ -983,6 +1011,16 @@ export class InkLayer {
 
 	private onPointerMove(evt: PointerEvent): void {
 		if (evt.pointerType === 'pen') this.markPenSeen();
+		if (this.reading) {
+			const press = this.readingPress;
+			if (
+				press?.pointerId === evt.pointerId &&
+				Math.hypot(evt.clientX - press.x, evt.clientY - press.y) > TAP_SLOP_PX
+			) {
+				this.readingPress = null;
+			}
+			return;
+		}
 		this.updateCursor(evt);
 
 		const drag = this.selectionDrag;
@@ -1086,6 +1124,14 @@ export class InkLayer {
 	}
 
 	private onPointerUp(evt: PointerEvent): void {
+		if (this.reading) {
+			const press = this.readingPress;
+			this.readingPress = null;
+			if (press?.pointerId === evt.pointerId) {
+				this.options.followLink(evt.clientX, evt.clientY, null);
+			}
+			return;
+		}
 		if (this.selectionDrag?.pointerId === evt.pointerId) {
 			evt.preventDefault();
 			this.finishSelectionDrag(true);
@@ -1137,6 +1183,7 @@ export class InkLayer {
 			type: evt.pointerType,
 			wasDrawing: this.hasActiveGesture,
 		});
+		if (this.readingPress?.pointerId === evt.pointerId) this.readingPress = null;
 		if (this.selectionDrag?.pointerId === evt.pointerId) {
 			this.finishSelectionDrag(false);
 			return;

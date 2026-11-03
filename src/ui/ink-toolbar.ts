@@ -272,6 +272,11 @@ export class InkToolbar {
 	}
 
 	/** Dock the palette to one side, for whichever hand is free. */
+	/** Take the palette away, for reading mode, or bring it back. */
+	setHidden(hidden: boolean): void {
+		this.barEl.toggleClass('is-hidden', hidden);
+	}
+
 	setSide(side: ToolbarSide): void {
 		this.barEl.toggleClass('is-right', side === 'right');
 	}
