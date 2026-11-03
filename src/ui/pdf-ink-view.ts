@@ -427,6 +427,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 			{
 				resolveRecord: (target) => this.pageList?.recordForTarget(target),
 				recordForPage: (pageKey) => this.pageList?.recordForKey(pageKey),
+				recordAtPoint: (clientX, clientY) => this.recordAtPoint(clientX, clientY),
 				repaint: () => {
 					this.repaintInk();
 				},
@@ -1162,6 +1163,28 @@ export class PdfInkView extends FileView implements ZoomHost {
 			if (source?.kind === 'pdf') return source.pdfIndex;
 		}
 		return 0;
+	}
+
+	/**
+	 * The page whose ink canvas is under a client point. By geometry rather than
+	 * by hit target, because whatever is being dragged is usually what the point
+	 * would hit.
+	 */
+	private recordAtPoint(clientX: number, clientY: number): PageRecord | undefined {
+		let found: PageRecord | undefined;
+		this.pageList?.eachRecord((record) => {
+			if (found) return;
+			const rect = record.inkCanvasEl.getBoundingClientRect();
+			if (
+				clientX >= rect.left &&
+				clientX <= rect.right &&
+				clientY >= rect.top &&
+				clientY <= rect.bottom
+			) {
+				found = record;
+			}
+		});
+		return found;
 	}
 
 	/**

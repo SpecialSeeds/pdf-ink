@@ -8,6 +8,7 @@
 
 import type { ItemChange, ItemRef } from './history';
 import type { Box, Item } from './items';
+import type { PageKey } from './pages';
 import { mapPath } from './path';
 import { selectionBounds } from './lasso';
 import type { Bounds } from './hit-test';
@@ -259,4 +260,33 @@ export function zChanges(
 					: lowest - refs.length + offset,
 		},
 	}));
+}
+
+/**
+ * The selection carried onto another page: copies transformed into that page's
+ * space, each with a fresh id, painted above everything already there and in the
+ * order they had.
+ *
+ * Fresh ids rather than the same ones: items are merged page by page, so an id
+ * living on two pages at once (a tombstone here, the item there) would be
+ * ambiguous to another device's merge. The originals are tombstoned by the
+ * caller in the same operation, so one undo puts everything back.
+ */
+export function movedToPage(
+	refs: readonly ItemRef[],
+	t: SelectionTransform,
+	pageKey: PageKey,
+	nextId: () => string,
+	firstZ: number,
+	firstIndex: number,
+): ItemRef[] {
+	const ordered = [...refs].sort((a, b) => a.item.z - b.item.z);
+	return ordered.map((ref, offset) => {
+		const moved = transformItem(ref.item, t);
+		return {
+			pageKey,
+			index: firstIndex + offset,
+			item: { ...moved, id: nextId(), z: firstZ + offset },
+		};
+	});
 }
