@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ItemRef } from './history';
 import type { Item, ShapeItem } from './items';
-import { colorLayerOf, recolorChanges, selectionLayers } from './selection';
+import { colorLayerOf, lineStyleChanges, recolorChanges, selectionLayers } from './selection';
 import { DEFAULT_PEN, createStroke } from './stroke';
 
 function strokeRef(id: string, color: string, index = 0): ItemRef {
@@ -133,5 +133,26 @@ describe('colour layers', () => {
 			'highlight',
 		);
 		expect(changes.map((change) => change.after.id)).toEqual(['h']);
+	});
+});
+
+describe('lineStyleChanges', () => {
+	it('restyles only the shapes, and only those not already in the style', () => {
+		const solid = shapeRef('a', '#111111', null);
+		const dotted: ItemRef = { ...shapeRef('b', '#111111', null) };
+		const dottedItem = { ...(dotted.item as ShapeItem), dash: 'dotted' as const };
+		const changes = lineStyleChanges(
+			[solid, { ...dotted, item: dottedItem }, strokeRef('s', '#111111')],
+			'dotted',
+		);
+		expect(changes.map((change) => change.after.id)).toEqual(['a']);
+		expect(changes[0]?.after).toMatchObject({ dash: 'dotted' });
+	});
+
+	it('stores solid as no dash at all', () => {
+		const dashed = shapeRef('a', '#111111', null);
+		const item = { ...(dashed.item as ShapeItem), dash: 'dashed' as const };
+		const [change] = lineStyleChanges([{ ...dashed, item }], 'solid');
+		expect(change?.after).not.toHaveProperty('dash');
 	});
 });

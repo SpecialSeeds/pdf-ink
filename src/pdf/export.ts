@@ -26,7 +26,7 @@ import {
 	reserveHeaderBand,
 } from '../core/header';
 import { type InsertedPage, type PageKey, orderPages, pageOrigin } from '../core/pages';
-import { type PathSegment, shapeGeometry } from '../core/shapes';
+import { type PathSegment, shapeGeometry, shapeLineStyle } from '../core/shapes';
 import { type PageTemplate, templateGeometry, translateTemplate } from '../core/templates';
 import { outlineToPathData, strokeOutline } from '../core/stroke';
 import { layoutTextLines } from '../core/text-layout';
@@ -123,6 +123,8 @@ function drawSegment(page: PDFPage, shape: ShapeItem, segment: PathSegment): voi
 		borderWidth: shape.width,
 		borderOpacity: shape.opacity,
 		borderDashArray: segment.dash ? [...segment.dash] : undefined,
+		// A zero-length dash is a dot, and only a round cap makes it visible.
+		...(segment.dash?.[0] === 0 ? { borderLineCap: LineCapStyle.Round } : {}),
 		...(shape.fill === null
 			? {}
 			: { color: toRgb(shape.fill), opacity: shape.opacity }),
@@ -144,7 +146,8 @@ function segmentPathData(segment: PathSegment): string {
 }
 
 function drawShape(page: PDFPage, shape: ShapeItem): void {
-	for (const segment of shapeGeometry(shape.kind, shape.box, shape.width).segments) {
+	for (const segment of shapeGeometry(shape.kind, shape.box, shape.width, shapeLineStyle(shape))
+		.segments) {
 		drawSegment(page, shape, segment);
 	}
 }

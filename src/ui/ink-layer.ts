@@ -1750,6 +1750,7 @@ function createShapeItem(
 		box: { x, y, w: 0, h: 0 },
 		width: settings.width,
 		fill: null,
+		...(settings.lineStyle === 'solid' ? {} : { dash: settings.lineStyle }),
 	};
 }
 

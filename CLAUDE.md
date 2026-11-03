@@ -27,7 +27,8 @@ Item = Stroke | Shape | TextBox | Path, all coordinates in PDF user space
 Base  = { id, type, color, opacity, rotation, z, updatedAt, deletedAt? }
 Stroke  = Base & { type: "stroke", tool: "pen"|"highlighter", width, points: [x,y,p][],
                    dynamic?: true }
-Shape   = Base & { type: "shape", kind: ShapeKind, box: {x,y,w,h}, width, fill: null|color }
+Shape   = Base & { type: "shape", kind: ShapeKind, box: {x,y,w,h}, width, fill: null|color,
+                   dash?: "dashed"|"dotted" }
 ShapeKind = "line" | "arrow" | "rect" | "ellipse" | "triangle"
           | "axes2d_q" | "axes2d_c" | "axes3d_c"
 TextBox = Base & { type: "text", box: {x,y,w,h}, text, fontSize }

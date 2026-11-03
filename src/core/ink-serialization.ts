@@ -591,7 +591,10 @@ function parseShape(
 	if (fill !== null && (typeof fill !== 'string' || fill.length === 0)) {
 		return null;
 	}
-	return { ...base, type: 'shape', kind, box, width, fill };
+	const shape: ShapeItem = { ...base, type: 'shape', kind, box, width, fill };
+	const dash = raw['dash'];
+	if (dash === 'dashed' || dash === 'dotted') shape.dash = dash;
+	return shape;
 }
 
 function parseText(

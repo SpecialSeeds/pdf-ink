@@ -9,7 +9,7 @@ import {
 	type TextItem,
 } from '../core/items';
 import { pathGeometry } from '../core/path';
-import { type PathSegment, shapeGeometry } from '../core/shapes';
+import { type PathSegment, shapeGeometry, shapeLineStyle } from '../core/shapes';
 import { layoutTextLines } from '../core/text-layout';
 import { type PageTheme, renderColor } from '../core/theme';
 import type { Vec2 } from 'perfect-freehand';
@@ -175,7 +175,7 @@ function buildPath(segment: PathSegment, target: RenderTarget): Path2D {
 
 const renderShape: ItemRenderer<ShapeItem> = (shape, target) => {
 	const { ctx, scale, theme } = target;
-	const geometry = shapeGeometry(shape.kind, shape.box, shape.width);
+	const geometry = shapeGeometry(shape.kind, shape.box, shape.width, shapeLineStyle(shape));
 	const color = renderColor(shape.color, theme);
 
 	for (const segment of geometry.segments) {

@@ -7,7 +7,7 @@
  */
 
 import type { ItemChange, ItemRef } from './history';
-import type { Item } from './items';
+import type { Item, ShapeLineStyle } from './items';
 
 /**
  * Which colour palette an item answers to: highlighter ink, or everything else.
@@ -76,4 +76,25 @@ export function recolorChanges(
  */
 function recolored(item: Item, color: string): Item {
 	return { ...item, color };
+}
+
+/**
+ * Whole-item replacements that give the selected shapes this outline. Anything
+ * that is not a shape is left alone.
+ */
+export function lineStyleChanges(
+	refs: readonly ItemRef[],
+	style: ShapeLineStyle,
+): ItemChange[] {
+	const changes: ItemChange[] = [];
+	for (const ref of refs) {
+		const item = ref.item;
+		if (item.type !== 'shape') continue;
+		if ((item.dash ?? 'solid') === style) continue;
+		const after = { ...item };
+		if (style === 'solid') delete after.dash;
+		else after.dash = style;
+		changes.push({ pageKey: ref.pageKey, before: item, after });
+	}
+	return changes;
 }

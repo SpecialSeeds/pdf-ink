@@ -1,9 +1,9 @@
 import { type App, type Component, Notice, Scope } from 'obsidian';
 import type { ItemRef } from '../core/history';
-import type { Item, ShapeKind, TextItem } from '../core/items';
+import type { Item, ShapeKind, ShapeLineStyle, TextItem } from '../core/items';
 import type { PageKey } from '../core/pages';
 import type { PageTheme } from '../core/theme';
-import { type ColorLayer, recolorChanges } from '../core/selection';
+import { type ColorLayer, lineStyleChanges, recolorChanges } from '../core/selection';
 import { createStrokeId } from '../core/stroke';
 import { pageBounds } from '../core/page-bounds';
 import { TextEditor } from './text-editor';
@@ -112,6 +112,7 @@ export class InkController {
 		this.toolState.shape.width = host.settings.toolWidths.shape;
 		this.toolState.text.fontSize = host.settings.textFontSize;
 		this.toolState.eraser.mode = host.settings.eraserMode;
+		this.toolState.shape.lineStyle = host.settings.shapeLineStyle;
 		this.toolState.eraser.radiusPx = host.settings.eraserRadiusPx;
 		this.toolState.eraser.width = host.settings.eraserWidth;
 
@@ -208,6 +209,9 @@ export class InkController {
 			},
 			selectShape: (kind) => {
 				this.selectShape(kind);
+			},
+			setShapeLineStyle: (style) => {
+				this.setShapeLineStyle(style);
 			},
 			selectColor: (color) => {
 				this.applyColor(color);
@@ -361,6 +365,32 @@ export class InkController {
 		this.toolState.shape.kind = kind;
 		this.textEditor.close(true);
 		this.activate('shape');
+		this.refresh();
+	}
+
+	/**
+	 * Draw new shapes with this outline. Selected shapes take it too, as one
+	 * undoable operation; with nothing selected it also switches to the shape tool.
+	 */
+	private setShapeLineStyle(style: ShapeLineStyle): void {
+		this.toolState.shape.lineStyle = style;
+		this.host.settings.shapeLineStyle = style;
+		void this.host.saveSettings();
+
+		const changes = lineStyleChanges(this.selection, style);
+		if (changes.length > 0) {
+			this.store.transformItems(changes);
+			const after = new Map(changes.map((change) => [change.after.id, change.after]));
+			this.selection = this.selection.map((ref) => {
+				const item = after.get(ref.item.id);
+				return item ? { ...ref, item } : ref;
+			});
+			this.layer.refreshSelection();
+			this.options.repaint();
+		} else if (this.selection.length === 0) {
+			this.textEditor.close(true);
+			this.activate('shape');
+		}
 		this.refresh();
 	}
 

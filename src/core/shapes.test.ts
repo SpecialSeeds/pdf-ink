@@ -4,6 +4,8 @@ import { SHAPE_KINDS } from './items';
 import {
 	ARROW_LENGTH,
 	AXIS_FORESHORTENING,
+	DASH_PATTERN,
+	DOT_PATTERN,
 	type PathCommand,
 	type PathSegment,
 	SHAPE_GEOMETRY,
@@ -574,5 +576,37 @@ describe('Shift constraints', () => {
 	it('preserves a downward triangle drag when locking', () => {
 		const locked = constrainShapeBox('triangle', { x: 0, y: 0, w: 60, h: -5 }, false);
 		near(locked.h, -equilateralHeight(60));
+	});
+});
+
+describe('line styles', () => {
+	it('leaves a solid shape exactly as its kind draws it', () => {
+		expect(shapeGeometry('rect', BOX, WIDTH, 'solid')).toEqual(shapeGeometry('rect', BOX, WIDTH));
+	});
+
+	it('dots every stroked part, scaled by the outline width', () => {
+		for (const segment of shapeGeometry('ellipse', BOX, WIDTH, 'dotted').segments) {
+			expect(segment.dash).toEqual([DOT_PATTERN[0] * WIDTH, DOT_PATTERN[1] * WIDTH]);
+		}
+	});
+
+	it('dashes every stroked part', () => {
+		for (const segment of shapeGeometry('triangle', BOX, WIDTH, 'dashed').segments) {
+			expect(segment.dash).toEqual([DASH_PATTERN[0] * WIDTH, DASH_PATTERN[1] * WIDTH]);
+		}
+	});
+
+	it('never breaks a filled arrowhead', () => {
+		const segments = shapeGeometry('arrow', BOX, WIDTH, 'dotted').segments;
+		expect(segments.filter((s) => s.fill === true).every((s) => s.dash === undefined)).toBe(true);
+		expect(segments.some((s) => s.fill !== true && s.dash !== undefined)).toBe(true);
+	});
+
+	it('keeps the into-page 3D axis dashed whatever the style', () => {
+		const solid = shapeGeometry('axes3d_c', BOX, WIDTH).segments;
+		const dotted = shapeGeometry('axes3d_c', BOX, WIDTH, 'dotted').segments;
+		solid.forEach((segment, index) => {
+			if (segment.dash) expect(dotted[index]?.dash).toEqual(segment.dash);
+		});
 	});
 });
