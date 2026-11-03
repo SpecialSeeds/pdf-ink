@@ -14,9 +14,11 @@ export interface RestoredInkState {
 	readonly pageKey: PageKey | null;
 	/** The page theme this tab was showing, or null to follow Obsidian's. */
 	readonly theme: ThemeName | null;
+	/** Whether this tab was in reading mode. */
+	readonly reading: boolean;
 }
 
-const EMPTY: RestoredInkState = { zoomMode: null, pageKey: null, theme: null };
+const EMPTY: RestoredInkState = { zoomMode: null, pageKey: null, theme: null, reading: false };
 
 /**
  * Parse the keys this view adds to its workspace state.
@@ -59,8 +61,9 @@ export function readInkViewState(state: unknown): RestoredInkState {
 	}
 
 	const theme = isThemeName(raw['theme']) ? raw['theme'] : null;
+	const reading = raw['reading'] === true;
 
-	return { zoomMode, pageKey, theme };
+	return { zoomMode, pageKey, theme, reading };
 }
 
 /**
@@ -76,6 +79,7 @@ export function writeInkViewState(
 	pageNumber: number,
 	pageKey: PageKey | null,
 	theme: ThemeName | null = null,
+	reading = false,
 ): Record<string, unknown> {
 	return {
 		zoomMode: mode.kind,
@@ -83,5 +87,6 @@ export function writeInkViewState(
 		page: pageNumber,
 		...(pageKey === null ? {} : { pageKey }),
 		...(theme === null ? {} : { theme }),
+		...(reading ? { reading } : {}),
 	};
 }

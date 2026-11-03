@@ -157,7 +157,13 @@ in one undoable step. Stroke size is behind the button showing the current value
 
 Ink stays on the page. A stroke that runs off the edge is cut there, and one that
 leaves and comes back is kept as separate pieces. Shapes and text boxes stop at the
-edge, and a selection cannot be moved, scaled or rotated off it.
+edge, and a selection cannot be scaled or rotated off it. Dragged onto another page,
+a selection moves to that page; held near the top or bottom of the view, the
+document scrolls so a page further away can be reached.
+
+**Reading mode** (the book button, or the *Toggle reading mode* command) shows the
+ink without the palette. Nothing draws: the pen and fingers scroll, and a tap follows
+a link.
 
 Ink is drawn at a constant width with every input — stylus, mouse or finger. Pressure
 is ignored, so a line drawn as lightly as the pen can register is as solid as a firm

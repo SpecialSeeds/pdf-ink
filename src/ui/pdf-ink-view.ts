@@ -165,6 +165,11 @@ export class PdfInkView extends FileView implements ZoomHost {
 	/** Strokes for the open document, persisted to a sidecar beside the PDF. */
 	private annotations!: AnnotationStore;
 	private ink: InkController | null = null;
+	/**
+	 * Reading mode: the ink is shown, but the palette is gone and nothing writes.
+	 * Per tab, and saved with the workspace.
+	 */
+	private reading = false;
 	private document: PdfInkDocument | null = null;
 
 	/**
@@ -253,6 +258,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 				this.currentPageNumber(),
 				this.currentPageKey(),
 				this.theme,
+				this.reading,
 			),
 		);
 	}
@@ -272,6 +278,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 			this.theme = restored.theme;
 			if (this.ready) this.applyTheme();
 		}
+		this.setReading(restored.reading);
 
 		// Leave result.history alone — FileView sets it when the file changes, and
 		// overriding it is how the back button breaks.
@@ -334,6 +341,9 @@ export class PdfInkView extends FileView implements ZoomHost {
 			},
 			toggleTheme: () => {
 				this.toggleTheme();
+			},
+			toggleReading: () => {
+				this.toggleReading();
 			},
 			exportPdf: () => {
 				void this.exportAnnotated();
@@ -487,6 +497,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 		this.registerEvent(this.app.vault.on('rename', onAppear));
 		this.applyThemeStyles();
 		this.ready = true;
+		this.applyReading();
 	}
 
 	override async onLoadFile(file: TFile): Promise<void> {
@@ -623,6 +634,25 @@ export class PdfInkView extends FileView implements ZoomHost {
 	}
 
 	/** Switch this tab's notebook and inserted pages between light and dark. */
+	/** Switch reading mode on or off for this tab. */
+	toggleReading(): void {
+		this.setReading(!this.reading);
+		// Per tab, saved with the workspace, like the theme.
+		this.app.workspace.requestSaveLayout();
+	}
+
+	private setReading(on: boolean): void {
+		this.reading = on;
+		this.applyReading();
+	}
+
+	/** Bring the ink and the toolbar in line with {@link reading}. */
+	private applyReading(): void {
+		if (!this.ready) return;
+		this.ink?.setReading(this.reading);
+		this.toolbar.setReading(this.reading);
+	}
+
 	toggleTheme(): void {
 		this.theme = this.theme === 'dark' ? 'light' : 'dark';
 		this.applyTheme();

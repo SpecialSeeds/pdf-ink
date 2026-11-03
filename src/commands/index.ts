@@ -129,6 +129,18 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 	});
 
 	plugin.addCommand({
+		id: 'toggle-reading-mode',
+		name: 'Toggle reading mode',
+		icon: 'book-open',
+		checkCallback: (checking: boolean): boolean => {
+			const active = plugin.app.workspace.getActiveViewOfType(PdfInkView);
+			if (!active?.file) return false;
+			if (!checking) active.toggleReading();
+			return true;
+		},
+	});
+
+	plugin.addCommand({
 		id: 'export-annotated-pdf',
 		name: 'Export annotated PDF',
 		icon: 'file-down',
