@@ -1,6 +1,6 @@
 import type { Vec2 } from 'perfect-freehand';
 import { describe, expect, it } from 'vitest';
-import type { Item, ShapeItem, StrokeSample, TextItem } from './items';
+import type { ImageItem, Item, ShapeItem, StrokeSample, TextItem } from './items';
 import {
 	LASSO_STROKE_THRESHOLD,
 	boundsCenter,
@@ -340,5 +340,42 @@ describe('selectByPoint', () => {
 
 	it('skips an item with no geometry', () => {
 		expect(selectByPoint([stroke([], 'empty')], 0, 0, 5, 'pdf:0')).toBeNull();
+	});
+});
+
+describe('pictures', () => {
+	const picture: ImageItem = {
+		type: 'image',
+		id: 'im',
+		color: '#000000',
+		opacity: 1,
+		rotation: 0,
+		z: 0,
+		updatedAt: 0,
+		box: { x: 100, y: 100, w: 80, h: 60 },
+		src: 'Attachments/photo.png',
+	};
+	const loop: Vec2[] = [
+		[90, 90],
+		[200, 90],
+		[200, 170],
+		[90, 170],
+	];
+
+	it('is caught by a loop around its centre', () => {
+		expect(selectByLasso([picture], loop, 'pdf:0').map((ref) => ref.item.id)).toEqual(['im']);
+	});
+
+	it('is selected by a click inside it', () => {
+		expect(selectByPoint([picture], 140, 130, 1, 'pdf:0')?.item.id).toBe('im');
+	});
+
+	it('gives the selection a box, so it has handles to drag', () => {
+		expect(selectionBounds([{ pageKey: 'pdf:0', index: 0, item: picture }])).toEqual({
+			minX: 100,
+			minY: 100,
+			maxX: 180,
+			maxY: 160,
+		});
 	});
 });

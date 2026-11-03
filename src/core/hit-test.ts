@@ -73,18 +73,25 @@ export function polylineBounds(points: readonly StrokeSample[]): Bounds | null {
 
 /** A cheap bound for prefiltering — no outline generation. */
 export function itemBounds(item: Item): Bounds | null {
-	if (item.type === 'stroke') return polylineBounds(item.points);
-	if (item.type === 'path') return pathBounds(item);
-	if (item.type === 'shape' || item.type === 'text') {
-		const { box } = item;
-		return {
-			minX: Math.min(box.x, box.x + box.w),
-			minY: Math.min(box.y, box.y + box.h),
-			maxX: Math.max(box.x, box.x + box.w),
-			maxY: Math.max(box.y, box.y + box.h),
-		};
+	// Exhaustive, so a new item type cannot silently have no bounds: without
+	// them it can be neither lassoed nor given a selection box.
+	switch (item.type) {
+		case 'stroke':
+			return polylineBounds(item.points);
+		case 'path':
+			return pathBounds(item);
+		case 'shape':
+		case 'text':
+		case 'image': {
+			const { box } = item;
+			return {
+				minX: Math.min(box.x, box.x + box.w),
+				minY: Math.min(box.y, box.y + box.h),
+				maxX: Math.max(box.x, box.x + box.w),
+				maxY: Math.max(box.y, box.y + box.h),
+			};
+		}
 	}
-	return null;
 }
 
 /** Ray casting. Points exactly on an edge may fall either way; callers also
