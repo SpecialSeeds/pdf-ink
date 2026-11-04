@@ -66,7 +66,7 @@ import { pageBounds } from '../core/page-bounds';
 import { placeImage } from '../core/image-placement';
 import { createStrokeId } from '../core/stroke';
 import { onImagesChanged } from './image-cache';
-import { pickImageFile, saveImageAttachment } from '../utils/images';
+import { pickImageFile, saveImage } from '../utils/images';
 import { composePages, pagesSignature } from '../core/page-composition';
 import type { PageKey } from '../core/pages';
 import {
@@ -1238,8 +1238,8 @@ export class PdfInkView extends FileView implements ZoomHost {
 	/**
 	 * Put a picture on a page: the one under `at` if given (a drop), otherwise
 	 * the one in view, centred on what is showing of it. With no picture given,
-	 * the system's chooser asks for one. Saved as an attachment, placed as one
-	 * undoable step, and left selected.
+	 * the system's chooser asks for one. Saved in the `images` folder beside the
+	 * file, placed as one undoable step, and left selected.
 	 */
 	async insertImage(picture?: File, at?: { x: number; y: number }): Promise<void> {
 		const file = this.file;
@@ -1255,7 +1255,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 
 		let saved;
 		try {
-			saved = await saveImageAttachment(this.app, chosen, chosen.name, file.path);
+			saved = await saveImage(this.app, chosen, chosen.name, file.path);
 		} catch (error) {
 			console.error('pdf-ink: could not insert picture', error);
 			new Notice('Could not insert that picture.');

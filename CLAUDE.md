@@ -82,7 +82,8 @@ PageTemplate = "blank" | "lined" | "lined7.5" | "lined10" | "grid5" | "dot"
 - A shape's line style is applied by `shapeGeometry` (absent `dash` is solid), so
   screen and export agree. It breaks every stroked part except those dashed by
   construction (the into-page 3D axis); filled arrowheads are never broken.
-- An image is inserted as an attachment (Obsidian's attachment folder), converted
+- An image is saved in an `images` folder beside its PDF or notebook (as exports
+  go in `annotated`; `imagePathFor` numbers a taken name, never replaces), converted
   to PNG unless it is PNG or JPEG, since those are what a PDF embeds. A moved
   picture is found again by file name. It keeps its own colours under every theme,
   has no colour palette, no eraser touches it (only Delete from a selection), and

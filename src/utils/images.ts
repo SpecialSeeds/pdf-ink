@@ -1,4 +1,5 @@
-import { type App, type TFile, normalizePath } from 'obsidian';
+import type { App, TFile } from 'obsidian';
+import { imagePathFor, parentFolder } from '../core/export-path';
 import type { Item } from '../core/items';
 import type { PageKey } from '../core/pages';
 
@@ -50,14 +51,14 @@ const DIRECT_TYPES: Record<string, string> = {
 };
 
 /**
- * Save a picture as an attachment of `sourcePath`, where Obsidian's attachment
- * setting says attachments go.
+ * Save a picture inserted into `sourcePath` in the `images` folder beside it,
+ * as exports go in `annotated`, so a file's pictures travel with it.
  *
  * PNG and JPEG are kept byte for byte. Anything else the device can decode (WebP,
  * GIF, HEIC on an iPad) is converted to PNG first, because those are the two
  * formats a PDF embeds directly, and an export must be able to draw it.
  */
-export async function saveImageAttachment(
+export async function saveImage(
 	app: App,
 	blob: Blob,
 	name: string,
@@ -70,10 +71,14 @@ export async function saveImageAttachment(
 		const bytes = direct ? await blob.arrayBuffer() : await toPng(bitmap);
 		const extension = direct ?? 'png';
 		const stem = baseName(name) || 'Image';
-		const path = await app.fileManager.getAvailablePathForAttachment(
-			normalizePath(`${stem}.${extension}`),
+		const path = imagePathFor(
 			sourcePath,
+			stem,
+			extension,
+			(candidate) => app.vault.getAbstractFileByPath(candidate) !== null,
 		);
+		const folder = parentFolder(path);
+		if (!app.vault.getFolderByPath(folder)) await app.vault.createFolder(folder);
 		await app.vault.createBinary(path, bytes);
 		return { path, width, height };
 	} finally {
