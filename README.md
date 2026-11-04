@@ -142,7 +142,7 @@ opens outside Obsidian. The pen always draws, over links or not.
 | **Text** | A resizable text box with wrapping. |
 | **Eraser** | Whole-stroke, or a sized rubber that cuts strokes into fragments. |
 | **Select** | Lasso or click, then move (onto another page too), scale, rotate, recolour, duplicate or reorder. |
-| **Insert image** | Choose a picture, or paste or drop one onto the page. It is saved as an attachment and lands selected. |
+| **Insert image** | Choose a picture, or paste or drop one onto the page. It is saved in an `images` folder beside the file and lands selected. |
 
 The tool palette is a vertical column in the top corner of the page, so tools are under
 the hand that is not holding the pen, and stay put when a group of buttons changes

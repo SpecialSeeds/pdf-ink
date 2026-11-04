@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { exportPathFor, parentFolder } from './export-path';
+import { exportPathFor, imagePathFor, parentFolder } from './export-path';
 
 describe('exportPathFor', () => {
 	it('puts the export in an "annotated" folder beside the PDF', () => {
@@ -36,5 +36,23 @@ describe('parentFolder', () => {
 	it('is the folder part of a path', () => {
 		expect(parentFolder('a/b/c.pdf')).toBe('a/b');
 		expect(parentFolder('c.pdf')).toBe('');
+	});
+});
+
+describe('imagePathFor', () => {
+	const none = () => false;
+
+	it('puts a picture in an "images" folder beside the file', () => {
+		expect(imagePathFor('APMA/Worksheets/Wkst 9-28.pdf', 'Photo', 'png', none)).toBe(
+			'APMA/Worksheets/images/Photo.png',
+		);
+		expect(imagePathFor('Notes.inknote', 'Photo', 'jpg', none)).toBe('images/Photo.jpg');
+	});
+
+	it('numbers a name that is taken rather than replace a picture', () => {
+		const taken = new Set(['a/images/Photo.png', 'a/images/Photo 1.png']);
+		expect(imagePathFor('a/b.pdf', 'Photo', 'png', (path) => taken.has(path))).toBe(
+			'a/images/Photo 2.png',
+		);
 	});
 });

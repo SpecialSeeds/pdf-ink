@@ -32,3 +32,24 @@ export function parentFolder(path: string): string {
 
 /** What an export of the original pages alone adds to its name. */
 export const ORIGINAL_PAGES_VARIANT = ' (original pages)';
+
+/** The folder, beside the PDF or notebook, that inserted pictures go into. */
+export const IMAGE_FOLDER = 'images';
+
+/**
+ * Where a picture inserted into `sourcePath` is saved: `notes/paper.pdf` puts
+ * `Photo.png` at `notes/images/Photo.png`, or `notes/images/Photo 1.png` and so on
+ * when that name is taken, so an earlier picture is never replaced.
+ */
+export function imagePathFor(
+	sourcePath: string,
+	stem: string,
+	extension: string,
+	taken: (path: string) => boolean,
+): string {
+	const folder = parentFolder(sourcePath);
+	const base = `${folder ? `${folder}/` : ''}${IMAGE_FOLDER}/${stem}`;
+	let path = `${base}.${extension}`;
+	for (let n = 1; taken(path); n++) path = `${base} ${n}.${extension}`;
+	return path;
+}
