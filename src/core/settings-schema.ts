@@ -58,7 +58,7 @@ export interface PdfInkSettings {
 	shapeLineStyle: ShapeLineStyle;
 	/** Last sized-eraser radius, in screen pixels. */
 	eraserRadiusPx: number;
-	/** Whole-stroke eraser hit radius, in PDF points. */
+	/** Whole-stroke eraser reach (diameter), in screen pixels. */
 	eraserWidth: number;
 	/** Appended to the filename on export, before the extension. */
 	exportSuffix: string;

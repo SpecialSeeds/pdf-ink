@@ -176,7 +176,7 @@ export interface InkLayerOptions {
 	isEditingText(): boolean;
 	/** Commit and close the open editor. */
 	stopEditingText(): void;
-	/** Stroke-mode hit radius, in PDF points. */
+	/** Whole-stroke eraser radius, in screen pixels. */
 	eraserRadius(): number;
 	/** Which eraser behaviour the Pencil button and the tool both use. */
 	eraserMode(): EraserMode;
@@ -1313,8 +1313,9 @@ export class InkLayer {
 			record.cssHeight,
 		);
 		const [pdfX, pdfY] = record.viewport.convertToPdfPoint(cssX, cssY);
-		// The radius is in PDF points, matching the stored outlines.
-		const radius = this.options.eraserRadius();
+		// The reach is set in screen pixels, so it feels the same at any zoom;
+		// the outlines it is tested against are in PDF points.
+		const radius = radiusToPdf(this.options.eraserRadius(), record.viewport.scale);
 
 		let hitAny = false;
 		for (const item of this.store.itemsFor(record.geom.key)) {
@@ -1523,15 +1524,17 @@ export class InkLayer {
 
 	/** Position and size the circle cursor at the eraser's true radius. */
 	private updateCursor(evt: PointerEvent): void {
-		const wanted =
-			this.options.tool() === 'eraser' &&
-			this.options.eraserMode() === 'sized';
-		if (!wanted) {
+		if (this.options.tool() !== 'eraser') {
 			this.hideCursor();
 			return;
 		}
 		const cursorEl = this.cursorEl ?? this.createCursor();
-		const radius = this.options.eraserRadiusPx();
+		// Both modes show their true reach, so a stroke is never taken from
+		// outside the circle.
+		const radius =
+			this.options.eraserMode() === 'sized'
+				? this.options.eraserRadiusPx()
+				: this.options.eraserRadius();
 		const rect = this.pagesEl.getBoundingClientRect();
 		cursorEl.setCssProps({
 			'--pdf-ink-cursor-size': `${String(radius * 2)}px`,
