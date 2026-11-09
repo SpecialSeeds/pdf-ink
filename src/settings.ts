@@ -388,7 +388,7 @@ export class PdfInkSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Whole-stroke reach')
-			.setDesc('How close to a mark you must be to delete it, in PDF points.')
+			.setDesc('How close to a mark you must be to delete it, in screen pixels, so it feels the same at any zoom.')
 			.addSlider((slider) =>
 				slider
 					.setLimits(

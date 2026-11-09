@@ -144,7 +144,7 @@ export const SIZED_ERASER_RANGE: WidthRange = { min: 4, max: 60, step: 1 };
  * The slider range for the active tool.
  *
  * The eraser is the only tool whose quantity changes meaning: stroke mode sets a
- * hit radius in PDF points, sized mode a disc radius in screen pixels.
+ * reach diameter, sized mode a disc radius, both in screen pixels.
  */
 export function widthRangeFor(state: ToolState): WidthRange {
 	if (state.active === 'eraser' && state.eraser.mode === 'sized') {
@@ -155,7 +155,7 @@ export function widthRangeFor(state: ToolState): WidthRange {
 
 /** The unit label for the active slider. */
 export function widthUnitFor(state: ToolState): string {
-	return state.active === 'eraser' && state.eraser.mode === 'sized' ? 'px' : 'pt';
+	return state.active === 'eraser' ? 'px' : 'pt';
 }
 
 export function toggleEraserMode(state: ToolState): EraserMode {
@@ -261,7 +261,11 @@ export function presetFor(state: ToolState): ToolPreset | null {
 	return null;
 }
 
-/** Eraser hit radius in PDF points. */
+/**
+ * Whole-stroke eraser hit radius, in screen pixels. It is converted to PDF
+ * points at the page's zoom when used: a reach fixed in points grew with zoom,
+ * so zoomed in the eraser took strokes well before the pen reached them.
+ */
 export function eraserRadius(state: ToolState): number {
 	return state.eraser.width / 2;
 }
