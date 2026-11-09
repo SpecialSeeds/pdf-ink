@@ -9,6 +9,8 @@ import type { ItemRef } from './history';
 import type { PageKey } from './pages';
 import {
 	type Bounds,
+	boundsContain,
+	expandBounds,
 	hitTestShape,
 	itemBounds,
 	itemHitShape,
@@ -154,6 +156,15 @@ export function selectByPoint(
 		.sort((a, b) => b.item.z - a.item.z || b.index - a.index);
 
 	for (const { item, index } of candidates) {
+		// A tap anywhere in a shape's box selects it, even an unfilled one: its
+		// outline is too thin a target to tap. The eraser tests the outline.
+		if (item.type === 'shape') {
+			const bounds = itemBounds(item);
+			if (bounds && boundsContain(expandBounds(bounds, tolerance), x, y)) {
+				return { pageKey, index, item };
+			}
+			continue;
+		}
 		const shape = itemHitShape(item);
 		if (!shape) continue;
 		if (hitTestShape(shape, x, y, tolerance)) {

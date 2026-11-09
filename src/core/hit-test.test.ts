@@ -9,7 +9,7 @@ import {
 	pointInPolygon,
 	itemHitShape,
 } from './hit-test';
-import type { Stroke, StrokeSample } from './items';
+import type { ShapeItem, Stroke, StrokeSample } from './items';
 import { createStroke } from './stroke';
 import { HIGHLIGHTER_OPACITY } from './tools';
 
@@ -220,5 +220,50 @@ describe('hitTestShape', () => {
 		if (!shape) return;
 		// A 20pt nib should be hit ~8pt off the centreline with no radius.
 		expect(hitTestShape(shape, 150, 708, 0)).toBe(true);
+	});
+});
+
+describe('hit-testing shapes by their drawn geometry', () => {
+	const shapeItem = (kind: ShapeItem['kind'], fill: string | null = null): ShapeItem => ({
+		id: 's',
+		type: 'shape',
+		kind,
+		box: { x: -5, y: -5, w: 10, h: 10 },
+		width: 1,
+		fill,
+		color: '#000000',
+		opacity: 1,
+		rotation: 0,
+		z: 0,
+		updatedAt: 0,
+	});
+
+	it('misses a point off a diagonal line but inside its box', () => {
+		const shape = itemHitShape(shapeItem('line'));
+		if (!shape) throw new Error('no hit shape');
+		expect(hitTestShape(shape, -3, 3, 1)).toBe(false);
+		expect(hitTestShape(shape, 2, 2, 0.1)).toBe(true);
+		// Half the line's width counts as touching it.
+		expect(hitTestShape(shape, 2.3, 2, 0)).toBe(true);
+	});
+
+	it('hits an unfilled rectangle only near its edges', () => {
+		const shape = itemHitShape(shapeItem('rect'));
+		if (!shape) throw new Error('no hit shape');
+		expect(hitTestShape(shape, 0, 0, 1)).toBe(false);
+		expect(hitTestShape(shape, -5, 0, 1)).toBe(true);
+	});
+
+	it('hits a filled rectangle anywhere inside', () => {
+		const shape = itemHitShape(shapeItem('rect', '#ff0000'));
+		if (!shape) throw new Error('no hit shape');
+		expect(hitTestShape(shape, 0, 0, 1)).toBe(true);
+	});
+
+	it('hits an arrowhead inside its triangle', () => {
+		const shape = itemHitShape({ ...shapeItem('arrow'), width: 2 });
+		if (!shape) throw new Error('no hit shape');
+		// Just beside the shaft near the tip, inside the head.
+		expect(hitTestShape(shape, 3, 4, 0)).toBe(true);
 	});
 });
