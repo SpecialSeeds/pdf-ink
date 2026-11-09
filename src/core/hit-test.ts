@@ -9,6 +9,8 @@ import type { Vec2 } from 'perfect-freehand';
 import { type Item, isStroke } from './items';
 import { flattenPath, pathBounds, pathCommands } from './path';
 import type { StrokeSample } from './items';
+import { shapeGeometry, shapeLineStyle } from './shapes';
+import type { ShapeItem } from './items';
 import { strokeOutline } from './stroke';
 
 export interface Bounds {
@@ -173,19 +175,59 @@ export interface ItemHitShape {
 	readonly reach?: number;
 	/** A stroked path is not hit inside its rings. */
 	readonly filled?: boolean;
+	/**
+	 * Rings hit anywhere inside, tested alongside `rings` (which are then only
+	 * hit near the line): a shape's arrowheads and, when it has a fill, its body.
+	 */
+	readonly solid?: readonly (readonly Vec2[])[];
 }
 
 /** Flattening step for hit-testing a path, in PDF points. */
 const PATH_HIT_SPACING = 1;
 
 /**
+ * A shape as it is drawn: the lines `shapeGeometry` strokes, hit only near
+ * them, plus its arrowheads and (when filled) its body, hit inside. Testing the
+ * box instead took a diagonal line from anywhere in the square it spans.
+ */
+function shapeHitShape(item: ShapeItem): ItemHitShape | null {
+	const geometry = shapeGeometry(item.kind, item.box, item.width, shapeLineStyle(item));
+	const rings: Vec2[][] = [];
+	const solid: Vec2[][] = [];
+	for (const segment of geometry.segments) {
+		// Dashes are ignored: a gap in a dashed line is still part of the line.
+		const flat = flattenPath(segment.commands, PATH_HIT_SPACING);
+		if (segment.fill === true) solid.push(...flat);
+		else {
+			rings.push(...flat);
+			if (item.fill !== null) solid.push(...flat.filter((ring) => ring.length >= 3));
+		}
+	}
+	let bounds: Bounds | null = null;
+	for (const ring of [...rings, ...solid]) {
+		const b = outlineBounds(ring);
+		if (!b) continue;
+		bounds = bounds
+			? {
+					minX: Math.min(bounds.minX, b.minX),
+					minY: Math.min(bounds.minY, b.minY),
+					maxX: Math.max(bounds.maxX, b.maxX),
+					maxY: Math.max(bounds.maxY, b.maxY),
+				}
+			: b;
+	}
+	if (!bounds) return null;
+	return { bounds, outline: [], rings, solid, reach: item.width / 2, filled: false };
+}
+
+/**
  * The shape the eraser tests against, dispatched on item type.
  *
- * Shapes and text fall back to their box, which is correct for an axis-aligned
- * item and a usable approximation otherwise; once shapes have real geometry
- * functions this should consume those instead.
+ * Text falls back to its box, which is correct for an axis-aligned item and a
+ * usable approximation otherwise.
  */
 export function itemHitShape(item: Item): ItemHitShape | null {
+	if (item.type === 'shape') return shapeHitShape(item);
 	if (item.type === 'path') {
 		const bounds = pathBounds(item);
 		if (!bounds) return null;
@@ -229,9 +271,17 @@ export function hitTestShape(
 	y: number,
 	radius: number,
 ): boolean {
-	if (!boundsContain(expandBounds(shape.bounds, radius), x, y)) return false;
+	const reach = radius + (shape.reach ?? 0);
+	// The line's own half width counts too, or a thick line's edge is missed.
+	if (!boundsContain(expandBounds(shape.bounds, reach), x, y)) return false;
+	if (shape.solid?.some(
+		(ring) =>
+			(ring.length >= 3 && pointInPolygon(x, y, ring)) ||
+			distanceToPolyline(x, y, ring) <= radius,
+	)) {
+		return true;
+	}
 	if (shape.rings) {
-		const reach = radius + (shape.reach ?? 0);
 		return shape.rings.some(
 			(ring) =>
 				(shape.filled === true && ring.length >= 3 && pointInPolygon(x, y, ring)) ||
