@@ -140,6 +140,14 @@ export class PdfInkView extends FileView implements ZoomHost {
 	/** "Back to page N", shown after following a link within the document. */
 	private backEl!: HTMLElement;
 	private backPlace: Place | null = null;
+	/**
+	 * Where the view was the last time it was on screen. Switching tabs hides the
+	 * view, which loses its scroll position and resizes it to nothing; this is
+	 * what it returns to when shown again.
+	 */
+	private shownPlace: Place | null = null;
+	/** The view was hidden (zero size) at the last resize. */
+	private hidden = false;
 	/** The "no pages" notice of an empty notebook, while it shows. */
 	private emptyEl: HTMLElement | null = null;
 	private toolbar!: PdfInkToolbar;
@@ -375,6 +383,8 @@ export class PdfInkView extends FileView implements ZoomHost {
 		this.scrollEl = bodyEl.createDiv({ cls: 'pdf-ink-scroll' });
 		this.registerDomEvent(this.scrollEl, 'scroll', (evt) => {
 			this.lastScrollAt = evt.timeStamp;
+			// A hidden scroller clamps its scroll to 0, which is not where the user was.
+			if (!this.isHidden()) this.shownPlace = this.capturePlace();
 		});
 		this.find = new PdfFind(bodyEl, this, {
 			pageData: () => this.pageData,
@@ -820,9 +830,23 @@ export class PdfInkView extends FileView implements ZoomHost {
 
 	override onResize(): void {
 		if (!this.ready) return;
+		// A background tab is resized to nothing. Fitting to that would lay every
+		// page out at the minimum zoom and lose the place, so wait to be shown.
+		if (this.isHidden()) {
+			this.hidden = true;
+			return;
+		}
+		const returning = this.hidden ? this.shownPlace : null;
+		this.hidden = false;
 		// Only meaningful in fit-width mode; a fixed zoom just re-centres, which
 		// CSS handles on its own.
 		this.zoom.recomputeFit();
+		if (returning) this.restorePlace(returning);
+		this.shownPlace = this.capturePlace();
+	}
+
+	private isHidden(): boolean {
+		return this.scrollEl.clientWidth === 0 || this.scrollEl.clientHeight === 0;
 	}
 
 	// --- ZoomHost -------------------------------------------------------
@@ -1187,6 +1211,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 
 		const list = this.pageList;
 		this.pageList = null;
+		this.shownPlace = null;
 		if (list) await list.dispose();
 
 		this.emptyEl?.remove();
@@ -1361,14 +1386,30 @@ export class PdfInkView extends FileView implements ZoomHost {
 
 	/** Keep where the view is now, for "Back to page N". */
 	private rememberPlace(): void {
+		const place = this.capturePlace();
+		if (place) this.setBackPlace(place);
+	}
+
+	private capturePlace(): Place | null {
 		const list = this.pageList;
-		if (!list) return;
-		this.setBackPlace({
+		if (!list) return null;
+		return {
 			scrollTop: this.scrollEl.scrollTop,
 			scrollLeft: this.scrollEl.scrollLeft,
 			layout: list.getLayout(),
 			pageNumber: this.currentPageNumber(),
-		});
+		};
+	}
+
+	/** Scroll back to a place, at whatever zoom the view is at now. */
+	private restorePlace(place: Place): void {
+		const list = this.pageList;
+		if (!list) return;
+		const layout = list.getLayout();
+		this.scrollEl.scrollTop = remapOffset(place.layout, layout, place.scrollTop);
+		const widthRatio = place.layout.contentWidth > 0 ? layout.contentWidth / place.layout.contentWidth : 1;
+		this.scrollEl.scrollLeft = place.scrollLeft * widthRatio;
+		list.updateRetainSet();
 	}
 
 	private setBackPlace(place: Place | null): void {
@@ -1381,14 +1422,8 @@ export class PdfInkView extends FileView implements ZoomHost {
 	/** Return to where the view was before the last link, at whatever zoom it is now. */
 	private goBack(): void {
 		const place = this.backPlace;
-		const list = this.pageList;
 		this.setBackPlace(null);
-		if (!place || !list) return;
-		const layout = list.getLayout();
-		this.scrollEl.scrollTop = remapOffset(place.layout, layout, place.scrollTop);
-		const widthRatio = place.layout.contentWidth > 0 ? layout.contentWidth / place.layout.contentWidth : 1;
-		this.scrollEl.scrollLeft = place.scrollLeft * widthRatio;
-		list.updateRetainSet();
+		if (place) this.restorePlace(place);
 	}
 
 	/** Scroll to a 1-based page number, clamped to the document. */
@@ -1407,8 +1442,12 @@ export class PdfInkView extends FileView implements ZoomHost {
 		const list = this.pageList;
 		if (!list) return 1;
 		const layout = list.getLayout();
+		// A background tab has lost its scroll; a workspace save then would record
+		// page 1. Report the page it was showing when it was last on screen.
+		const place = this.isHidden() ? this.shownPlace : null;
+		const scrollTop = place ? remapOffset(place.layout, layout, place.scrollTop) : this.scrollEl.scrollTop;
 		for (const [index, box] of layout.pages.entries()) {
-			if (box.offsetTop + box.cssHeight > this.scrollEl.scrollTop) {
+			if (box.offsetTop + box.cssHeight > scrollTop) {
 				return index + 1;
 			}
 		}
