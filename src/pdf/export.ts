@@ -18,7 +18,14 @@ import {
 	type TextItem,
 	inZOrder,
 } from '../core/items';
-import { pathGeometry } from '../core/path';
+import { pathGeometry, simplifyPathCommands, simplifyRing } from '../core/path';
+import {
+	DEFAULT_EXPORT_QUALITY,
+	type ExportQuality,
+	QUALITY_PROFILES,
+	type QualityProfile,
+	formatCoordinate,
+} from '../core/export-quality';
 import {
 	HEADER_DATE_SIZE,
 	HEADER_RULE_WIDTH,
@@ -28,7 +35,12 @@ import {
 	reserveHeaderBand,
 } from '../core/header';
 import { type InsertedPage, type PageKey, orderPages, pageOrigin } from '../core/pages';
-import { type PathSegment, shapeGeometry, shapeLineStyle } from '../core/shapes';
+import {
+	type PathCommand,
+	type PathSegment,
+	shapeGeometry,
+	shapeLineStyle,
+} from '../core/shapes';
 import { type PageTemplate, templateGeometry, translateTemplate } from '../core/templates';
 import { outlineToPathData, strokeOutline } from '../core/stroke';
 import { layoutTextLines } from '../core/text-layout';
@@ -70,7 +82,12 @@ function toSvgSpace(pathData: string): string {
 	);
 }
 
-function drawStroke(page: PDFPage, stroke: Stroke, blend: HighlighterBlend): void {
+function drawStroke(
+	page: PDFPage,
+	stroke: Stroke,
+	blend: HighlighterBlend,
+	quality: QualityProfile,
+): void {
 	// The same outline generator the screen uses, in PDF points.
 	const outline = strokeOutline(
 		stroke.points,
@@ -81,7 +98,9 @@ function drawStroke(page: PDFPage, stroke: Stroke, blend: HighlighterBlend): voi
 		stroke.dynamic === true,
 	);
 	if (outline.length === 0) return;
-	page.drawSvgPath(toSvgSpace(outlineToPathData(outline)), {
+	// The outline is already written to hundredths at full quality, as on screen.
+	const simplified = simplifyRing(outline, quality.inkTolerance);
+	page.drawSvgPath(toSvgSpace(outlineToPathData(simplified, quality.decimals ?? 2)), {
 		// drawSvgPath reads its path y-DOWN from the anchor, so the path is emitted
 		// with y negated and anchored at the origin. Verified by rasterising against
 		// the cropped-MediaBox and rotated fixtures: absolute user-space coordinates
@@ -103,8 +122,13 @@ function drawStroke(page: PDFPage, stroke: Stroke, blend: HighlighterBlend): voi
 	});
 }
 
-function drawSegment(page: PDFPage, shape: ShapeItem, segment: PathSegment): void {
-	const pathData = toSvgSpace(segmentPathData(segment));
+function drawSegment(
+	page: PDFPage,
+	shape: ShapeItem,
+	segment: PathSegment,
+	decimals: number | null,
+): void {
+	const pathData = toSvgSpace(segmentPathData(segment.commands, decimals));
 	if (pathData.length === 0) return;
 
 	if (segment.fill === true) {
@@ -133,29 +157,38 @@ function drawSegment(page: PDFPage, shape: ShapeItem, segment: PathSegment): voi
 	});
 }
 
-function segmentPathData(segment: PathSegment): string {
+function segmentPathData(commands: readonly PathCommand[], decimals: number | null): string {
+	const n = (value: number): string => formatCoordinate(value, decimals);
 	const parts: string[] = [];
-	for (const command of segment.commands) {
-		if (command.op === 'move') parts.push(`M ${String(command.x)} ${String(command.y)}`);
-		else if (command.op === 'line') parts.push(`L ${String(command.x)} ${String(command.y)}`);
+	for (const command of commands) {
+		if (command.op === 'move') parts.push(`M ${n(command.x)} ${n(command.y)}`);
+		else if (command.op === 'line') parts.push(`L ${n(command.x)} ${n(command.y)}`);
 		else if (command.op === 'cubic') {
 			parts.push(
-				`C ${String(command.x1)} ${String(command.y1)} ${String(command.x2)} ${String(command.y2)} ${String(command.x)} ${String(command.y)}`,
+				`C ${n(command.x1)} ${n(command.y1)} ${n(command.x2)} ${n(command.y2)} ${n(command.x)} ${n(command.y)}`,
 			);
 		} else parts.push('Z');
 	}
 	return parts.join(' ');
 }
 
-function drawShape(page: PDFPage, shape: ShapeItem): void {
+function drawShape(page: PDFPage, shape: ShapeItem, quality: QualityProfile): void {
 	for (const segment of shapeGeometry(shape.kind, shape.box, shape.width, shapeLineStyle(shape))
 		.segments) {
-		drawSegment(page, shape, segment);
+		drawSegment(page, shape, segment, quality.decimals);
 	}
 }
 
+/** The importer's default simplification (`--simplify`), in points. */
+const IMPORTED_PATH_TOLERANCE = 0.1;
+
 /** A path, from the same geometry the screen draws. */
-function drawPath(page: PDFPage, item: PathItem, blend: HighlighterBlend): void {
+function drawPath(
+	page: PDFPage,
+	item: PathItem,
+	blend: HighlighterBlend,
+	quality: QualityProfile,
+): void {
 	const blendMode =
 		item.highlight !== true
 			? BlendMode.Normal
@@ -163,7 +196,13 @@ function drawPath(page: PDFPage, item: PathItem, blend: HighlighterBlend): void 
 				? BlendMode.Screen
 				: BlendMode.Multiply;
 	for (const segment of pathGeometry(item).segments) {
-		const pathData = toSvgSpace(segmentPathData(segment));
+		// Imported ink is already simplified to 0.1 pt, so only a coarser
+		// tolerance than that changes anything.
+		const commands =
+			quality.inkTolerance > IMPORTED_PATH_TOLERANCE
+				? simplifyPathCommands(segment.commands, quality.inkTolerance)
+				: segment.commands;
+		const pathData = toSvgSpace(segmentPathData(commands, quality.decimals));
 		if (pathData.length === 0) continue;
 		if (segment.fill === true) {
 			page.drawSvgPath(pathData, {
@@ -292,6 +331,7 @@ function drawItem(
 	mode: ExportMode,
 	theme: PageTheme,
 	images: ReadonlyMap<string, PDFImage>,
+	quality: QualityProfile,
 ): void {
 	// A picture keeps its own colours under every theme.
 	if (stored.type === 'image') {
@@ -305,16 +345,16 @@ function drawItem(
 			// Shapes and text have no native equivalent that round-trips reliably, so
 			// only strokes take the annotation path; the rest stay flattened.
 			if (mode === 'native' && addInkAnnotation(doc, page, item, blend)) break;
-			drawStroke(page, item, blend);
+			drawStroke(page, item, blend, quality);
 			break;
 		case 'shape':
-			drawShape(page, item);
+			drawShape(page, item, quality);
 			break;
 		case 'text':
 			drawText(page, item, font);
 			break;
 		case 'path':
-			drawPath(page, item, blend);
+			drawPath(page, item, blend, quality);
 			break;
 		case 'image':
 			break;
@@ -453,6 +493,11 @@ export interface ExportOptions {
 	 * from here is left out of the export.
 	 */
 	readonly images?: ReadonlyMap<string, Uint8Array>;
+	/**
+	 * How finely ink is written. Pictures are embedded as given; the caller
+	 * resamples them for the quality first. Defaults to {@link DEFAULT_EXPORT_QUALITY}.
+	 */
+	readonly quality?: ExportQuality;
 }
 
 /**
@@ -505,6 +550,7 @@ export async function exportAnnotatedPdfWithReport(
 		? await PDFDocument.load(options.pdfBytes)
 		: await PDFDocument.create();
 	const themes = options.themes ?? DEFAULT_PAGE_THEMES;
+	const quality = QUALITY_PROFILES[options.quality ?? DEFAULT_EXPORT_QUALITY];
 	const viewTheme = options.theme ?? 'light';
 	const themeFor = (kind: 'pdf' | 'inserted'): PageTheme =>
 		themes[themeForPage(kind, viewTheme)];
@@ -554,7 +600,7 @@ export async function exportAnnotatedPdfWithReport(
 		const page = doc.getPage(index);
 		const theme = themeFor(kindByKey.get(key) ?? 'pdf');
 		for (const item of inZOrder(items)) {
-			drawItem(doc, page, item, font, options.mode ?? 'flatten', theme, images);
+			drawItem(doc, page, item, font, options.mode ?? 'flatten', theme, images, quality);
 		}
 	}
 

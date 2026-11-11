@@ -1,3 +1,8 @@
+import {
+	EXPORT_QUALITIES,
+	QUALITY_PROFILES,
+	isExportQuality,
+} from './core/export-quality';
 import { type App, type Plugin, PluginSettingTab, Setting } from 'obsidian';
 import {
 	DEFAULT_EXPORT_SUFFIX,
@@ -557,7 +562,7 @@ export class PdfInkSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Ask for theme on export')
 			.setDesc(
-				"Choose light or dark pages, or a PDF's original pages only, each time you export. When off, exports use the theme you chose last and include every page.",
+				"Choose light or dark pages, or a PDF's original pages only, and the quality, each time you export, seeing the file size as you go. When off, exports use the theme and quality you chose last and include every page.",
 			)
 			.addToggle((toggle) =>
 				toggle
@@ -581,6 +586,21 @@ export class PdfInkSettingTab extends PluginSettingTab {
 						this.save();
 					}),
 			);
+
+		new Setting(containerEl)
+			.setName('Export quality')
+			.setDesc(
+				'Lower quality simplifies ink outlines and shrinks pictures for a smaller file; ultra high keeps every detail. Used when the question is turned off, and preselected when it is asked.',
+			)
+			.addDropdown((dropdown) => {
+				for (const quality of EXPORT_QUALITIES) {
+					dropdown.addOption(quality, QUALITY_PROFILES[quality].label);
+				}
+				dropdown.setValue(this.plugin.settings.exportQuality).onChange((value) => {
+					if (isExportQuality(value)) this.plugin.settings.exportQuality = value;
+					this.save();
+				});
+			});
 
 		new Setting(containerEl)
 			.setName('Annotations')

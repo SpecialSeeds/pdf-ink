@@ -2,6 +2,11 @@ import type { App, TFile } from 'obsidian';
 import { imagePathFor, parentFolder } from '../core/export-path';
 import type { Item } from '../core/items';
 import type { PageKey } from '../core/pages';
+import {
+	type QualityProfile,
+	largestPlacements,
+	targetPixels,
+} from '../core/export-quality';
 
 /** The picture a vault path names, or, when it has moved, one of the same name. */
 export function resolveImageFile(app: App, src: string): TFile | null {
@@ -36,6 +41,85 @@ export async function collectImageBytes(
 		if (bytes) images.set(src, new Uint8Array(bytes));
 	}
 	return images;
+}
+
+/**
+ * Pictures resampled for an export's quality: shrunk to the resolution it keeps
+ * at the size each is placed, and re-encoded as JPEG where that is allowed and the
+ * picture has no transparency. A picture keeps its own bytes when the result
+ * would not be smaller, or when the device cannot decode it.
+ */
+export async function imagesForQuality(
+	images: ReadonlyMap<string, Uint8Array>,
+	pages: Readonly<Record<PageKey, readonly Item[]>>,
+	quality: QualityProfile,
+): Promise<Map<string, Uint8Array>> {
+	if (quality.imageDpi === null) return new Map(images);
+	const placements = largestPlacements(pages);
+	const out = new Map<string, Uint8Array>();
+	for (const [src, bytes] of images) {
+		const placed = placements.get(src);
+		let resampled: Uint8Array | null = null;
+		if (placed) {
+			try {
+				resampled = await resample(bytes, placed, quality);
+			} catch (err) {
+				console.warn('pdf-ink: could not resample a picture for export', src, err);
+			}
+		}
+		out.set(src, resampled && resampled.byteLength < bytes.byteLength ? resampled : bytes);
+	}
+	return out;
+}
+
+async function resample(
+	bytes: Uint8Array,
+	placed: { readonly w: number; readonly h: number },
+	quality: QualityProfile,
+): Promise<Uint8Array | null> {
+	const isPng = bytes[0] === 0x89 && bytes[1] === 0x50;
+	const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8;
+	if (!isPng && !isJpeg) return null;
+	// A PDF ignores a JPEG's orientation tag, so decoding must too, or a
+	// re-encoded photo would turn where the original does not.
+	const bitmap = await createImageBitmap(new Blob([bytes as BlobPart]), {
+		imageOrientation: 'none',
+	});
+	try {
+		const natural = { width: bitmap.width, height: bitmap.height };
+		const size = targetPixels(natural, placed, quality.imageDpi) ?? natural;
+		const canvas = createEl('canvas');
+		canvas.width = size.width;
+		canvas.height = size.height;
+		const ctx = canvas.getContext('2d', { willReadFrequently: true });
+		if (!ctx) return null;
+		ctx.imageSmoothingQuality = 'high';
+		ctx.drawImage(bitmap, 0, 0, size.width, size.height);
+		const toJpeg = isJpeg || (quality.pngToJpeg && !hasTransparency(ctx, size));
+		// Nothing to gain from re-encoding a PNG at the size it already is.
+		if (!toJpeg && size === natural) return null;
+		const blob = await new Promise<Blob | null>((resolve) => {
+			canvas.toBlob(
+				resolve,
+				toJpeg ? 'image/jpeg' : 'image/png',
+				toJpeg ? quality.jpegQuality : undefined,
+			);
+		});
+		return blob ? new Uint8Array(await blob.arrayBuffer()) : null;
+	} finally {
+		bitmap.close();
+	}
+}
+
+function hasTransparency(
+	ctx: CanvasRenderingContext2D,
+	size: { readonly width: number; readonly height: number },
+): boolean {
+	const { data } = ctx.getImageData(0, 0, size.width, size.height);
+	for (let i = 3; i < data.length; i += 4) {
+		if ((data[i] ?? 255) < 255) return true;
+	}
+	return false;
 }
 
 /** A picture ready to place: saved in the vault, with its size in pixels. */

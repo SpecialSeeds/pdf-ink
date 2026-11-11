@@ -1261,3 +1261,15 @@
 .pdf-ink-thumbnail.is-drop-after {
 	box-shadow: 0 3px 0 0 var(--interactive-accent);
 }
+
+/* Export dialog: the quality level beside its slider, and the measured size. */
+.pdf-ink-export-level {
+	min-width: 6em;
+	text-align: right;
+	color: var(--text-muted);
+}
+
+.pdf-ink-export-size {
+	font-variant-numeric: tabular-nums;
+	font-weight: var(--font-semibold);
+}

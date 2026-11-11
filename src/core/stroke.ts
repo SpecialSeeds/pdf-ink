@@ -8,6 +8,7 @@
 import { getStroke } from 'perfect-freehand';
 import type { StrokeOptions, Vec2 } from 'perfect-freehand';
 import type { PointConverter } from './coords';
+import { formatCoordinate } from './export-quality';
 import { type InkTool, type Stroke, type StrokeSample, systemClock } from './items';
 
 /** Everything the active tool contributes to a new stroke. */
@@ -225,7 +226,12 @@ export function strokeOutlinePdf(stroke: Stroke, minWidth: number): Vec2[] {
  * SVG path data for a closed outline, using midpoint quadratics so the polygon
  * perfect-freehand returns reads as a smooth nib rather than a faceted one.
  */
-export function outlineToPathData(outline: readonly Vec2[]): string {
+export function outlineToPathData(
+	outline: readonly Vec2[],
+	/** Decimal places per coordinate; null writes them in full. */
+	decimals: number | null = 2,
+): string {
+	const round = (value: number): string => formatCoordinate(value, decimals);
 	const first = outline[0];
 	if (first === undefined) return '';
 
@@ -244,8 +250,4 @@ export function outlineToPathData(outline: readonly Vec2[]): string {
 	}
 	parts.push('Z');
 	return parts.join(' ');
-}
-
-function round(value: number): string {
-	return (Math.round(value * 100) / 100).toString();
 }

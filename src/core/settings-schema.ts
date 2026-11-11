@@ -4,6 +4,7 @@
  * src/settings.ts.
  */
 
+import { DEFAULT_EXPORT_QUALITY, type ExportQuality, isExportQuality } from './export-quality';
 import { BUFFER_PAGES } from '../constants';
 import { DEFAULT_RENDER_FOLDER, DEFAULT_TRANSCRIPT_FOLDER, normalizeFolder } from './transcripts';
 import { TAP_MAX_MS, clampTapWindow } from './multitouch-tap';
@@ -125,6 +126,8 @@ export interface PdfInkSettings {
 	exportTheme: ThemeName;
 	/** Ask which theme to export in; off exports in {@link exportTheme} directly. */
 	askExportTheme: boolean;
+	/** The export quality last chosen, preselected next time and used when not asked. */
+	exportQuality: ExportQuality;
 	/** Where transcripts of handwriting live, mirroring their sources' paths. */
 	transcriptFolder: string;
 	/** Where pages are rendered for transcription; a dot folder, hidden from the file explorer. */
@@ -196,6 +199,7 @@ export const DEFAULT_SETTINGS: PdfInkSettings = {
 	pageThemes: emptyThemeOverrides(),
 	exportTheme: 'light',
 	askExportTheme: true,
+	exportQuality: DEFAULT_EXPORT_QUALITY,
 	transcriptFolder: DEFAULT_TRANSCRIPT_FOLDER,
 	renderFolder: DEFAULT_RENDER_FOLDER,
 	openSourcesInsteadOfTranscripts: true,
@@ -337,6 +341,9 @@ export function mergeSettings(stored: unknown): PdfInkSettings {
 
 	const askExportTheme = raw['askExportTheme'];
 	if (typeof askExportTheme === 'boolean') merged.askExportTheme = askExportTheme;
+
+	const exportQuality = raw['exportQuality'];
+	if (isExportQuality(exportQuality)) merged.exportQuality = exportQuality;
 
 	const transcriptFolder = raw['transcriptFolder'];
 	if (typeof transcriptFolder === 'string') {
