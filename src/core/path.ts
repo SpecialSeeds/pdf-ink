@@ -262,6 +262,18 @@ export function simplifyPathCommands(
 	return out;
 }
 
+/**
+ * A closed outline with every vertex dropped that lies within `tolerance` of the
+ * outline without it (Douglas–Peucker around the ring). An outline that would
+ * fall below a triangle is returned unchanged, so a dot never vanishes.
+ */
+export function simplifyRing(points: readonly Vec2[], tolerance: number): Vec2[] {
+	const first = points[0];
+	if (tolerance <= 0 || first === undefined || points.length <= 3) return [...points];
+	const kept = douglasPeucker([...points, first], tolerance).slice(0, -1);
+	return kept.length < 3 ? [...points] : kept;
+}
+
 function douglasPeucker(points: readonly Vec2[], tolerance: number): Vec2[] {
 	const keep = new Uint8Array(points.length);
 	keep[0] = 1;

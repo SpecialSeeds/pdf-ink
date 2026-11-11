@@ -7,7 +7,6 @@ import {
 import type { PdfInkHost } from '../settings';
 import { PdfInkView } from '../ui/pdf-ink-view';
 import { effectiveThemes } from '../core/theme';
-import { resolveExportChoice } from '../ui/export-theme-modal';
 import { createBoard, createNotebook } from '../utils/create-notebook';
 import { FolderPicker, convertImportedTitles } from '../ui/convert-titles-modal';
 import { removeFolder, runRenderCommand } from '../transcription/render';
@@ -171,19 +170,12 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 			if (view instanceof PdfInkView && view.file === target.file) {
 				void view.exportAnnotated();
 			} else {
-				void (async () => {
-					// Not open here, so whether it has inserted pages is unknown: offer anyway.
-					const choice = await resolveExportChoice(plugin.app, plugin, true);
-					if (choice === null) return;
-					await exportAnnotatedCopy(plugin.app, target.file, {
-						suffix: plugin.settings.exportSuffix,
-						mode: plugin.settings.exportMode,
-						theme: choice.theme,
-						insertedPages: choice.insertedPages,
-						themes: effectiveThemes(plugin.settings.pageThemes),
-						headerDateFormat: plugin.settings.headerDateFormat,
-					});
-				})();
+				void exportAnnotatedCopy(
+					plugin.app,
+					plugin,
+					target.file,
+					effectiveThemes(plugin.settings.pageThemes),
+				);
 			}
 			return true;
 		},

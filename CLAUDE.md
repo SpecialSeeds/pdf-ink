@@ -18,6 +18,10 @@ TypeScript, esbuild (sample plugin config), pdf-lib, perfect-freehand.
   everywhere — manifest, package.json, README, LICENSE, workflows. Never write any
   other account name or email into the repo, including one picked up from the git
   config or the environment.
+- Export quality (src/core/export-quality.ts, super low to ultra high) stays vector
+  at every level: it simplifies ink outlines, rounds coordinates and resamples
+  pictures, never rasterises a page. Ultra is the exact geometry. The dialog's size
+  is the real file, built in memory, and exporting that choice reuses those bytes.
 ## Data schema (version 6)
 { version: 6, pages: { [pageKey]: Item[] }, insertedPages: InsertedPage[],
   docId?, layout?: "board", base?: { hash }, header?: { createdAt, dateFormat? } }

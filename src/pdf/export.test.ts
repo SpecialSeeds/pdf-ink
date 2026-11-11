@@ -851,6 +851,8 @@ describe('path export', () => {
 		const bytes = await exportAnnotatedPdf({
 			pdfBytes: await blankPdf(),
 			pages: { 'pdf:0': [path] },
+			// Exact geometry is ultra's promise; lower levels simplify and round.
+			quality: 'ultra',
 		});
 		const drawn = await drawnPaths(bytes, 1);
 		const expected = storedPoints(path);
@@ -1093,5 +1095,37 @@ describe('images export', () => {
 			images: new Map([['junk.png', Uint8Array.from([1, 2, 3])]]),
 		});
 		expect(await imagesOnFirstPage(bytes)).toBe(0);
+	});
+});
+
+describe('export quality', () => {
+	function handwriting(): Item[] {
+		const items: Item[] = [];
+		for (let s = 0; s < 60; s++) {
+			const stroke = createStroke({ tool: 'pen', color: '#000000', width: 1.5, opacity: 1 }, `q${String(s)}`);
+			const x0 = 40 + (s % 10) * 50;
+			const y0 = 80 + Math.floor(s / 10) * 60;
+			for (let i = 0; i < 40; i++) {
+				stroke.points.push([x0 + i * 0.8 + Math.sin(i / 3) * 6, y0 + Math.cos(i / 2.5) * 9, 0.5]);
+			}
+			items.push(stroke);
+		}
+		return items;
+	}
+
+	it('gets smaller at every step down, and every level is a readable PDF', async () => {
+		const pdfBytes = await blankPdf();
+		const pages = { 'pdf:0': handwriting() };
+		const sizes: number[] = [];
+		for (const quality of ['ultra', 'high', 'medium', 'low', 'super-low'] as const) {
+			const bytes = await exportAnnotatedPdf({ pdfBytes, pages, quality });
+			expect((await PDFDocument.load(bytes)).getPageCount()).toBe(2);
+			sizes.push(bytes.byteLength);
+		}
+		for (let i = 1; i < sizes.length; i++) {
+			expect(sizes[i]).toBeLessThan(sizes[i - 1] ?? 0);
+		}
+		// Super low is a real saving, not a rounding error.
+		expect(sizes[4] ?? 0).toBeLessThan((sizes[0] ?? 0) * 0.75);
 	});
 });
