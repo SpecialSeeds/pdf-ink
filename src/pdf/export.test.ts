@@ -3,18 +3,19 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BlendMode, PDFDict, PDFDocument, PDFName, StandardFonts, degrees } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
-import type { ImageItem, Item, PathItem, ShapeItem, TextItem } from '../core/items';
+import type { ImageItem, Item, PathItem, ShapeItem, Stroke, TextItem } from '../core/items';
 import { pathCommands } from '../core/path';
 import { HEADER_BAND, HEADER_RULE } from '../core/header';
 import { DEFAULT_PAGE_THEMES } from '../core/theme';
 import type { InsertedPage } from '../core/pages';
 import type { PageTemplate } from '../core/templates';
 import { layoutTextLines, wrapText } from '../core/text-layout';
-import { createStroke } from '../core/stroke';
+import { MIN_VISIBLE_STROKE_CSS, createStroke, strokeOutlinePdf } from '../core/stroke';
 import {
 	MAX_PDF_PAGE_SIDE,
 	exportAnnotatedPdf,
 	exportAnnotatedPdfWithReport,
+	exportStrokeOutline,
 	parseColor,
 	scaledNote,
 } from './export';
@@ -1127,5 +1128,55 @@ describe('export quality', () => {
 		}
 		// Super low is a real saving, not a rounding error.
 		expect(sizes[4] ?? 0).toBeLessThan((sizes[0] ?? 0) * 0.75);
+	});
+});
+
+describe('small handwriting exports whole', () => {
+	// A pencil stroke written at worksheet size: points every 0.25 pt.
+	const along = (from: [number, number], to: [number, number]): [number, number, number][] => {
+		const n = Math.round(Math.hypot(to[0] - from[0], to[1] - from[1]) / 0.25);
+		return Array.from({ length: n }, (_, i) => [
+			from[0] + ((to[0] - from[0]) * (i + 1)) / n,
+			from[1] + ((to[1] - from[1]) * (i + 1)) / n,
+			0.12,
+		]);
+	};
+	const pencil = (points: [number, number, number][]): Stroke => ({
+		...createStroke({ tool: 'pen', color: '#1f1f1f', width: 1, opacity: 1 }),
+		points,
+		dynamic: true,
+	});
+	const inside = (outline: readonly (readonly [number, number])[], [x, y]: [number, number]): boolean => {
+		let hit = false;
+		for (let i = 0, j = outline.length - 1; i < outline.length; j = i++) {
+			const [xi, yi] = outline[i] ?? [0, 0];
+			const [xj, yj] = outline[j] ?? [0, 0];
+			if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) hit = !hit;
+		}
+		return hit;
+	};
+
+	it('is the outline the screen draws', () => {
+		const stroke = pencil([[0, 0, 0.12], ...along([0, 0], [0, -6])]);
+		expect(exportStrokeOutline(stroke)).toEqual(strokeOutlinePdf(stroke, MIN_VISIBLE_STROKE_CSS));
+	});
+
+	it('keeps the hook at the end of a stroke', () => {
+		// Down a stem, then a 1.5 pt foot and a 1.5 pt flick up: the last 3 pt.
+		// Worked out in whole points, those became one chord across the corner.
+		const stroke = pencil([
+			[0, 0, 0.12],
+			...along([0, 0], [0, -6]),
+			...along([0, -6], [1.5, -6]),
+			...along([1.5, -6], [1.5, -4.5]),
+		]);
+		expect(inside(exportStrokeOutline(stroke), [1.4, -6])).toBe(true);
+	});
+
+	it('draws a short dash as a dash, not a blob', () => {
+		const stroke = pencil([[0, 0, 0.12], ...along([0, 0], [2, 0])]);
+		const ys = exportStrokeOutline(stroke).map((p) => p[1]);
+		// No taller than the 1.4 pt nib (plus a little for the round caps).
+		expect(Math.max(...ys) - Math.min(...ys)).toBeLessThan(1.6);
 	});
 });

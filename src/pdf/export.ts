@@ -9,6 +9,7 @@ import {
 	rgb,
 } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
+import type { Vec2 } from 'perfect-freehand';
 import {
 	type ImageItem,
 	type Item,
@@ -42,7 +43,7 @@ import {
 	shapeLineStyle,
 } from '../core/shapes';
 import { type PageTemplate, templateGeometry, translateTemplate } from '../core/templates';
-import { outlineToPathData, strokeOutline } from '../core/stroke';
+import { MIN_VISIBLE_STROKE_CSS, outlineToPathData, strokeOutlinePdf } from '../core/stroke';
 import { layoutTextLines } from '../core/text-layout';
 import { normalizeHex, parseHex } from '../core/color';
 import {
@@ -82,21 +83,26 @@ function toSvgSpace(pathData: string): string {
 	);
 }
 
+/**
+ * A stroke's outline for export: the screen's own outline, worked out in
+ * quarter points (`strokeOutlinePdf`), never at the scale of a point.
+ * perfect-freehand's fixed lengths are in units: it draws the last 3 units of a
+ * stroke as one straight chord and needs a unit between kept points. In whole
+ * points that is 3 pt, half a letter of small handwriting, so every hook at a
+ * stroke's end became a chord that twisted into a hairline and a loose dot, and
+ * a stroke under 3 pt became a blob. The narrowest width stays 1.4 pt, as before.
+ */
+export function exportStrokeOutline(stroke: Stroke): Vec2[] {
+	return strokeOutlinePdf(stroke, MIN_VISIBLE_STROKE_CSS);
+}
+
 function drawStroke(
 	page: PDFPage,
 	stroke: Stroke,
 	blend: HighlighterBlend,
 	quality: QualityProfile,
 ): void {
-	// The same outline generator the screen uses, in PDF points.
-	const outline = strokeOutline(
-		stroke.points,
-		stroke.width,
-		true,
-		stroke.tool,
-		{ start: stroke.cutStart, end: stroke.cutEnd },
-		stroke.dynamic === true,
-	);
+	const outline = exportStrokeOutline(stroke);
 	if (outline.length === 0) return;
 	// The outline is already written to hundredths at full quality, as on screen.
 	const simplified = simplifyRing(outline, quality.inkTolerance);
