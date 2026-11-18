@@ -80,7 +80,8 @@
  * locked axis makes iOS reset that axis to zero as soon as the user scrolls.
  */
 .pdf-ink-scroll.is-scroll-vertical,
-.pdf-ink-scroll.is-scroll-horizontal {
+.pdf-ink-scroll.is-scroll-horizontal,
+.pdf-ink-scroll.is-scroll-none {
 	touch-action: none;
 }
 

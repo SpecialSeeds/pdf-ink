@@ -286,6 +286,7 @@ describe('scrollAxis', () => {
 	it('keeps a stored choice', () => {
 		expect(mergeSettings({ scrollAxis: 'vertical' }).scrollAxis).toBe('vertical');
 		expect(mergeSettings({ scrollAxis: 'horizontal' }).scrollAxis).toBe('horizontal');
+		expect(mergeSettings({ scrollAxis: 'none' }).scrollAxis).toBe('none');
 	});
 
 	it('ignores anything it does not know', () => {

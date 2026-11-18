@@ -34,12 +34,13 @@ export type DefaultZoomMode = 'fit-width' | 'actual-size';
 /**
  * Which ways one-finger scrolling may move the page. `vertical` locks left and
  * right, so a crooked swipe down a PDF only goes down; `horizontal` locks up and
- * down, for panning along a board.
+ * down, for panning along a board; `none` locks both, so the page stays put
+ * while it is written on (page buttons and zoom still move it).
  */
-export type ScrollAxis = 'both' | 'vertical' | 'horizontal';
+export type ScrollAxis = 'both' | 'vertical' | 'horizontal' | 'none';
 
 export function isScrollAxis(value: unknown): value is ScrollAxis {
-	return value === 'both' || value === 'vertical' || value === 'horizontal';
+	return value === 'both' || value === 'vertical' || value === 'horizontal' || value === 'none';
 }
 
 export interface PdfInkSettings {

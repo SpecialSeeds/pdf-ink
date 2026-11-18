@@ -269,8 +269,8 @@ export class ZoomController {
 		// Two fingers pan as well as zoom, but never along an axis that is locked.
 		if (drift) {
 			this.drift = {
-				x: this.axis === 'vertical' ? 0 : drift.x,
-				y: this.axis === 'horizontal' ? 0 : drift.y,
+				x: this.axis === 'vertical' || this.axis === 'none' ? 0 : drift.x,
+				y: this.axis === 'horizontal' || this.axis === 'none' ? 0 : drift.y,
 			};
 		}
 		if (this.frame !== 0) return;

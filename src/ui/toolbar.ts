@@ -41,6 +41,11 @@ const SCROLL_AXES: Record<ScrollAxis, { icon: string; label: string; title: stri
 		label: 'Scroll lock: left and right only',
 		title: 'Lock up and down (scroll left and right only)',
 	},
+	none: {
+		icon: 'lock',
+		label: 'Scroll lock: on',
+		title: 'Lock both ways (no scrolling)',
+	},
 };
 
 /**
@@ -187,7 +192,7 @@ export class PdfInkToolbar {
 			SCROLL_AXES.both.label,
 			() => {
 				const menu = new Menu();
-				for (const axis of ['both', 'vertical', 'horizontal'] as const) {
+				for (const axis of ['both', 'vertical', 'horizontal', 'none'] as const) {
 					menu.addItem((item) =>
 						item
 							.setTitle(SCROLL_AXES[axis].title)

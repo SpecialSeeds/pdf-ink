@@ -73,6 +73,8 @@ export class LockedScroll {
 	private onTouches(evt: TouchEvent, phase: 'start' | 'move' | 'end'): void {
 		if (this.axis === 'both') return;
 		if (phase === 'start') this.stopFling();
+		// Locked both ways: touch-action already holds the page; nothing moves it.
+		if (this.axis === 'none') return;
 
 		const fingers = Array.from(evt.touches).filter((touch) => touch.touchType !== 'stylus');
 		const usable =
@@ -144,6 +146,10 @@ export class LockedScroll {
 	private onWheel(evt: WheelEvent): void {
 		// Ctrl and Cmd scrolls are zooms, handled in zoom-gestures.ts.
 		if (this.axis === 'both' || evt.ctrlKey || evt.metaKey) return;
+		if (this.axis === 'none') {
+			evt.preventDefault();
+			return;
+		}
 		const stray = this.axis === 'vertical' ? evt.deltaX : evt.deltaY;
 		if (stray === 0) return;
 		evt.preventDefault();

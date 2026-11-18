@@ -112,6 +112,7 @@ const SCROLL_AXIS_NOTICES: Record<ScrollAxis, string> = {
 	both: 'Scrolling unlocked',
 	vertical: 'Scrolling up and down only',
 	horizontal: 'Scrolling left and right only',
+	none: 'Scrolling locked',
 };
 
 /**
@@ -817,6 +818,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 		const axis = this.host.settings.scrollAxis;
 		this.scrollEl.toggleClass('is-scroll-vertical', axis === 'vertical');
 		this.scrollEl.toggleClass('is-scroll-horizontal', axis === 'horizontal');
+		this.scrollEl.toggleClass('is-scroll-none', axis === 'none');
 		this.zoom.setScrollAxis(axis);
 		this.lockedScroll.setAxis(axis);
 		this.toolbar.setScrollAxis(axis);
