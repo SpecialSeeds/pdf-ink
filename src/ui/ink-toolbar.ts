@@ -51,6 +51,7 @@ const SHAPES: { kind: ShapeKind; icon: string; label: string }[] = [
 	{ kind: 'axes2d_q', icon: 'move-up-right', label: '2D axes (origin at 0.25)' },
 	{ kind: 'axes2d_c', icon: 'plus', label: '2D axes (origin at 0.5)' },
 	{ kind: 'axes3d_c', icon: 'box', label: '3D axes' },
+	{ kind: 'graph', icon: 'grid-3x3', label: 'Graph (5 mm squares)' },
 ];
 
 /** The floating tool palette: tools, shapes, colours, width, undo and redo. */
@@ -71,6 +72,7 @@ export class InkToolbar {
 	private readonly widthLabelEl: HTMLElement;
 	private readonly widthButtonEl: HTMLButtonElement;
 	private readonly widthPopoverEl: HTMLElement;
+	private readonly eraserGroupEl: HTMLElement;
 	private readonly eraserPopoverEl: HTMLElement;
 	private readonly eraserModeButtons = new Map<EraserMode, HTMLElement>();
 	private readonly eraserRadiusEl: HTMLInputElement;
@@ -109,65 +111,14 @@ export class InkToolbar {
 		this.toolButtons.set('shape', this.shapeButtonEl);
 
 		const eraser = TOOLS.find((tool) => tool.kind === 'eraser');
-		const eraserWrapEl = toolsEl.createDiv({ cls: 'pdf-ink-eraser-wrap' });
 		if (eraser) {
 			this.toolButtons.set(
 				'eraser',
-				this.addButton(eraserWrapEl, eraser.icon, eraser.label, () => {
+				this.addButton(toolsEl, eraser.icon, eraser.label, () => {
 					this.callbacks.selectTool('eraser');
 				}),
 			);
 		}
-		const eraserChevronEl = this.addButton(
-			eraserWrapEl,
-			'chevron-up',
-			'Eraser options',
-			() => {
-				this.toggle(this.eraserPopoverEl);
-			},
-		);
-		eraserChevronEl.addClass('pdf-ink-chevron');
-
-		this.eraserPopoverEl = eraserWrapEl.createDiv({
-			cls: 'pdf-ink-popover is-hidden',
-		});
-		const modesEl = this.eraserPopoverEl.createDiv({ cls: 'pdf-ink-mode-row' });
-		for (const mode of [
-			{ kind: 'stroke' as EraserMode, label: 'Whole stroke' },
-			{ kind: 'sized' as EraserMode, label: 'Sized' },
-		]) {
-			const buttonEl = modesEl.createEl('button', {
-				cls: 'pdf-ink-mode-button',
-				text: mode.label,
-				attr: { type: 'button' },
-			});
-			this.component.registerDomEvent(buttonEl, 'click', () => {
-				this.callbacks.setEraserMode(mode.kind);
-			});
-			this.eraserModeButtons.set(mode.kind, buttonEl);
-		}
-		const radiusRowEl = this.eraserPopoverEl.createDiv({
-			cls: 'pdf-ink-custom-color',
-		});
-		radiusRowEl.createSpan({ text: 'Radius', cls: 'pdf-ink-toolbar-text' });
-		this.eraserRadiusLabelEl = radiusRowEl.createSpan({
-			cls: 'pdf-ink-width-label',
-		});
-		this.eraserRadiusEl = this.eraserPopoverEl.createEl('input', {
-			cls: 'pdf-ink-width',
-			attr: { type: 'range', 'aria-label': 'Eraser radius' },
-		});
-		this.component.registerDomEvent(this.eraserRadiusEl, 'input', () => {
-			const value = Number.parseFloat(this.eraserRadiusEl.value);
-			if (Number.isFinite(value)) this.callbacks.setWidth(value);
-		});
-
-		this.component.registerDomEvent(barEl.doc, 'pointerdown', (evt) => {
-			if (this.eraserPopoverEl.hasClass('is-hidden')) return;
-			const target = evt.target;
-			if (target instanceof Node && eraserWrapEl.contains(target)) return;
-			this.eraserPopoverEl.addClass('is-hidden');
-		});
 
 		const lasso = TOOLS.find((tool) => tool.kind === 'lasso');
 		if (lasso) {
@@ -230,6 +181,67 @@ export class InkToolbar {
 		});
 
 		/*
+		 * --- eraser options ------------------------------------------------
+		 *
+		 * In the colour group's place, which the eraser has no use for, so every
+		 * tool's options open from the same spot below the tools.
+		 */
+		this.eraserGroupEl = barEl.createDiv({
+			cls: 'pdf-ink-floating-group pdf-ink-eraser-options is-hidden',
+		});
+		const eraserMoreEl = this.eraserGroupEl.createDiv({ cls: 'pdf-ink-color-more' });
+		const eraserChevronEl = this.addButton(
+			eraserMoreEl,
+			'chevron-up',
+			'Eraser options',
+			() => {
+				this.toggle(this.eraserPopoverEl);
+			},
+		);
+		eraserChevronEl.addClass('pdf-ink-chevron');
+
+		this.eraserPopoverEl = eraserMoreEl.createDiv({
+			cls: 'pdf-ink-popover is-hidden',
+		});
+		const modesEl = this.eraserPopoverEl.createDiv({ cls: 'pdf-ink-mode-row' });
+		for (const mode of [
+			{ kind: 'stroke' as EraserMode, label: 'Whole stroke' },
+			{ kind: 'sized' as EraserMode, label: 'Sized' },
+		]) {
+			const buttonEl = modesEl.createEl('button', {
+				cls: 'pdf-ink-mode-button',
+				text: mode.label,
+				attr: { type: 'button' },
+			});
+			this.component.registerDomEvent(buttonEl, 'click', () => {
+				this.callbacks.setEraserMode(mode.kind);
+			});
+			this.eraserModeButtons.set(mode.kind, buttonEl);
+		}
+		const radiusRowEl = this.eraserPopoverEl.createDiv({
+			cls: 'pdf-ink-custom-color',
+		});
+		radiusRowEl.createSpan({ text: 'Radius', cls: 'pdf-ink-toolbar-text' });
+		this.eraserRadiusLabelEl = radiusRowEl.createSpan({
+			cls: 'pdf-ink-width-label',
+		});
+		this.eraserRadiusEl = this.eraserPopoverEl.createEl('input', {
+			cls: 'pdf-ink-width',
+			attr: { type: 'range', 'aria-label': 'Eraser radius' },
+		});
+		this.component.registerDomEvent(this.eraserRadiusEl, 'input', () => {
+			const value = Number.parseFloat(this.eraserRadiusEl.value);
+			if (Number.isFinite(value)) this.callbacks.setWidth(value);
+		});
+
+		this.component.registerDomEvent(barEl.doc, 'pointerdown', (evt) => {
+			if (this.eraserPopoverEl.hasClass('is-hidden')) return;
+			const target = evt.target;
+			if (target instanceof Node && eraserMoreEl.contains(target)) return;
+			this.eraserPopoverEl.addClass('is-hidden');
+		});
+
+		/*
 		 * --- width ---------------------------------------------------------
 		 *
 		 * Behind a button rather than inline. A range input cannot be laid out
@@ -277,14 +289,15 @@ export class InkToolbar {
 		});
 	}
 
-	/** Dock the palette to one side, for whichever hand is free. */
 	/** Take the palette away, for reading mode, or bring it back. */
 	setHidden(hidden: boolean): void {
 		this.barEl.toggleClass('is-hidden', hidden);
 	}
 
+	/** Dock the palette to one side, for whichever hand is free, or along the bottom. */
 	setSide(side: ToolbarSide): void {
 		this.barEl.toggleClass('is-right', side === 'right');
+		this.barEl.toggleClass('is-bottom', side === 'bottom');
 	}
 
 	update(state: ToolState, canUndo: boolean, canRedo: boolean): void {
@@ -347,6 +360,7 @@ export class InkToolbar {
 		for (const [mode, buttonEl] of this.eraserModeButtons) {
 			buttonEl.toggleClass('is-active', state.eraser.mode === mode);
 		}
+		this.eraserGroupEl.toggleClass('is-hidden', state.active !== 'eraser');
 		if (state.active !== 'eraser') this.eraserPopoverEl.addClass('is-hidden');
 
 		this.undoEl.disabled = !canUndo;

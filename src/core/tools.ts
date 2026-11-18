@@ -132,7 +132,7 @@ export const WIDTH_RANGES: Record<ToolKind, WidthRange> = {
 	shape: { min: 0.5, max: 12, step: 0.5 },
 	// For text the slider is the font size.
 	text: { min: 6, max: 72, step: 1 },
-	eraser: { min: 6, max: 48, step: 1 },
+	eraser: { min: 2, max: 120, step: 1 },
 	// The lasso has no size of its own; the slider is hidden for it.
 	lasso: { min: 1, max: 1, step: 1 },
 };

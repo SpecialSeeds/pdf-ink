@@ -160,18 +160,19 @@ export class PdfInkSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName('Tool palette side')
+			.setName('Tool palette position')
 			.setDesc(
-				'Which edge the floating tool palette sits against. Put it under the hand that is not holding the pen.',
+				'Which edge the floating tool palette sits against: a column on the left or right, under the hand that is not holding the pen, or a row along the bottom.',
 			)
 			.addDropdown((dropdown) =>
 				dropdown
 					.addOption('left', 'Left')
 					.addOption('right', 'Right')
+					.addOption('bottom', 'Bottom')
 					.setValue(this.plugin.settings.toolbarSide)
 					.onChange((value) => {
 						this.plugin.settings.toolbarSide =
-							value === 'right' ? 'right' : 'left';
+							value === 'right' || value === 'bottom' ? value : 'left';
 						this.save();
 					}),
 			);

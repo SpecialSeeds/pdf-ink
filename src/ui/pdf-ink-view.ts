@@ -17,7 +17,7 @@ import {
 } from '../core/canvas-budget';
 import { computeLayout, maxBaseHeight, maxBaseWidth, remapOffset } from '../core/layout';
 import { type PdfLink, linkAt } from '../core/pdf-links';
-import { type Bounds, boundsContain, itemBounds } from '../core/hit-test';
+import { type Bounds, boundsContain, itemBounds, itemsBounds } from '../core/hit-test';
 import { grownBoardPage } from '../core/board';
 import { type BlockBox, blockBox, segmentPage } from '../core/blocks';
 import { type InkTarget, blockBoxFrom, parseInkSubpath, transcriptPathFor } from '../core/transcripts';
@@ -55,7 +55,7 @@ interface Place {
 import { type HeaderText, headerText, headerTitleBox } from '../core/header';
 import { HeaderEditor } from './header-editor';
 import { renameNotebookFromTitle } from '../utils/rename-notebook';
-import type { Item } from '../core/items';
+import { type InkData, type Item, isLive } from '../core/items';
 import {
 	NOTEBOOK_EXTENSION,
 	isNotebookPath,
@@ -63,10 +63,12 @@ import {
 	shouldAppendPage,
 } from '../core/new-notebook';
 import { pageBounds } from '../core/page-bounds';
-import { placeImage } from '../core/image-placement';
+import { placeImages } from '../core/image-placement';
 import { createStrokeId } from '../core/stroke';
 import { onImagesChanged } from './image-cache';
-import { pickImageFile, saveImage } from '../utils/images';
+import { type SavedImage, pickImageFiles, saveCanvasImage, saveImage } from '../utils/images';
+import { sendToNotebook } from './send-to-notebook';
+import { canvasDataPath, grownCanvasPage } from '../core/canvas';
 import { composePages, pagesSignature } from '../core/page-composition';
 import type { PageKey } from '../core/pages';
 import {
@@ -79,6 +81,7 @@ import {
 } from '../core/theme';
 import { readInkViewState, writeInkViewState } from '../core/view-state';
 import { AnnotationStore } from '../pdf/annotation-store';
+import type { ItemRef } from '../core/history';
 import {
 	type PdfInkDocument,
 	notebookDocument,
@@ -106,6 +109,9 @@ import { LockedScroll } from './locked-scroll';
 import { PdfFind } from './pdf-find';
 import { frontmatterOf } from '../transcription/frontmatter';
 import type { ScrollAxis } from '../core/settings-schema';
+
+/** How long scrolling must rest before a temporary board grows to meet it, in ms. */
+const CANVAS_GROW_SETTLE_MS = 180;
 
 /** What a scroll lock change says, as a zoom lock change does. */
 const SCROLL_AXIS_NOTICES: Record<ScrollAxis, string> = {
@@ -183,6 +189,13 @@ export class PdfInkView extends FileView implements ZoomHost {
 	 */
 	private reading = false;
 	private document: PdfInkDocument | null = null;
+	/**
+	 * The temporary board shown, when this is one: it has no file, and its ink
+	 * and pictures live in a hidden folder named by this id (src/core/canvas.ts).
+	 */
+	protected boardId: string | null = null;
+	/** Waits for scrolling to settle before a temporary board grows to meet it. */
+	private canvasGrowTimer = 0;
 
 	/**
 	 * Bumped on every file switch and on close. A render that completes after
@@ -241,6 +254,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 	}
 
 	override getDisplayText(): string {
+		if (this.boardId !== null) return 'Board';
 		return this.file ? this.file.basename : 'PDF ink';
 	}
 
@@ -358,7 +372,12 @@ export class PdfInkView extends FileView implements ZoomHost {
 				this.toggleReading();
 			},
 			exportPdf: () => {
-				void this.exportAnnotated();
+				// A temporary board keeps nothing itself: what is kept goes to a notebook.
+				if (this.boardId !== null) this.sendBoardToNotebook();
+				else void this.exportAnnotated();
+			},
+			clearBoard: () => {
+				this.clearBoard();
 			},
 			goToPage: (pageNumber) => {
 				this.goToPage(pageNumber);
@@ -386,6 +405,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 			this.lastScrollAt = evt.timeStamp;
 			// A hidden scroller clamps its scroll to 0, which is not where the user was.
 			if (!this.isHidden()) this.shownPlace = this.capturePlace();
+			this.scheduleCanvasGrowth();
 		});
 		this.find = new PdfFind(bodyEl, this, {
 			pageData: () => this.pageData,
@@ -453,7 +473,11 @@ export class PdfInkView extends FileView implements ZoomHost {
 				recordForPage: (pageKey) => this.pageList?.recordForKey(pageKey),
 				recordAtPoint: (clientX, clientY) => this.recordAtPoint(clientX, clientY),
 				insertImage: () => {
-					void this.insertImage();
+					void this.insertImages();
+				},
+				canSendToNotebook: () => this.boardId !== null,
+				sendToNotebook: (items) => {
+					this.sendBoardToNotebook(items);
 				},
 				repaint: () => {
 					this.repaintInk();
@@ -523,10 +547,10 @@ export class PdfInkView extends FileView implements ZoomHost {
 		// typing: a paste into a text box or the page field is theirs.
 		this.registerDomEvent(this.contentEl, 'paste', (evt) => {
 			if (this.reading || isTyping(evt.target)) return;
-			const picture = imageFileIn(evt.clipboardData);
-			if (!picture) return;
+			const pictures = imageFilesIn(evt.clipboardData);
+			if (pictures.length === 0) return;
 			evt.preventDefault();
-			void this.insertImage(picture);
+			void this.insertImages(pictures);
 		});
 		this.registerDomEvent(this.scrollEl, 'dragover', (evt) => {
 			if (this.reading || !evt.dataTransfer?.types.includes('Files')) return;
@@ -535,10 +559,10 @@ export class PdfInkView extends FileView implements ZoomHost {
 		});
 		this.registerDomEvent(this.scrollEl, 'drop', (evt) => {
 			if (this.reading) return;
-			const picture = imageFileIn(evt.dataTransfer);
-			if (!picture) return;
+			const pictures = imageFilesIn(evt.dataTransfer);
+			if (pictures.length === 0) return;
 			evt.preventDefault();
-			void this.insertImage(picture, { x: evt.clientX, y: evt.clientY });
+			void this.insertImages(pictures, { x: evt.clientX, y: evt.clientY });
 		});
 		this.applyThemeStyles();
 		this.ready = true;
@@ -583,6 +607,55 @@ export class PdfInkView extends FileView implements ZoomHost {
 			this.setStatus(`Could not open this ${noun}.`);
 			new Notice(`Could not open this ${noun}.`);
 		}
+	}
+
+	/**
+	 * Show temporary board `id`, from its hidden file, or as `fresh` when it has
+	 * none yet. False when there is no such board and nothing fresh: it was
+	 * thrown away when the app quit, and the caller closes the tab.
+	 */
+	protected async loadScratchBoard(id: string, fresh: InkData | null): Promise<boolean> {
+		const epoch = ++this.epoch;
+		await this.releaseDocument();
+		if (epoch !== this.epoch) return true;
+		this.setStatus('Loading board…');
+		try {
+			const loaded = notebookDocument();
+			this.document = loaded;
+			this.boardId = id;
+			const found = await this.annotations.loadScratch(canvasDataPath(id), fresh);
+			if (epoch !== this.epoch) return true;
+			if (!found) {
+				this.document = null;
+				this.boardId = null;
+				return false;
+			}
+			this.mountDocument(loaded);
+			this.repaintInk();
+			this.setStatus(null);
+			// Room to move every way: open in the middle of the canvas.
+			this.scrollEl.scrollLeft = (this.scrollEl.scrollWidth - this.scrollEl.clientWidth) / 2;
+			this.scrollEl.scrollTop = (this.scrollEl.scrollHeight - this.scrollEl.clientHeight) / 2;
+		} catch (err) {
+			if (epoch !== this.epoch) return true;
+			console.error('pdf-ink: could not open the board', err);
+			this.setStatus('Could not open this board.');
+		}
+		return true;
+	}
+
+	/**
+	 * Stop saving the temporary board shown, which is being thrown away, and
+	 * wait for any save under way. It stays on screen until the tab goes.
+	 */
+	protected async abandonScratchBoard(): Promise<void> {
+		await this.annotations.abandonScratch();
+	}
+
+	/** Every item on a temporary board's one page, live or not, as saved. */
+	protected boardItems(): readonly Item[] {
+		const page = this.composed[0];
+		return page ? this.annotations.itemsFor(page.key) : [];
 	}
 
 	override async onUnloadFile(_file: TFile): Promise<void> {
@@ -752,6 +825,11 @@ export class PdfInkView extends FileView implements ZoomHost {
 	 */
 	private growNotebook(pageKey: PageKey, items: readonly Item[]): void {
 		if (this.document?.kind !== 'notebook') return;
+		if (this.annotations.isScratch) {
+			const ink = itemsBounds(items);
+			if (ink) this.growCanvas(ink);
+			return;
+		}
 		if (this.annotations.layout === 'board') {
 			this.growBoard(pageKey, items);
 			return;
@@ -772,23 +850,80 @@ export class PdfInkView extends FileView implements ZoomHost {
 		}
 	}
 
+	/**
+	 * Grow a temporary board so that `region`, and a screen's worth of room
+	 * around it, is on the canvas; a growing side gains two screens at least.
+	 * What is on screen stays where it is: growing left or up moves the page's
+	 * corner, and the scroll moves with it. Quiet: never an undo step.
+	 */
+	private growCanvas(region: Bounds): void {
+		const geom = this.composed[0];
+		const list = this.pageList;
+		if (geom?.source.kind !== 'inserted' || !list || this.zoom.isGesturing) return;
+		const box = list.getLayout().pages[0];
+		if (!box || box.cssWidth <= 0) return;
+		const perPoint = box.cssWidth / geom.source.page.size.width;
+		const screenW = this.scrollEl.clientWidth / perPoint;
+		const screenH = this.scrollEl.clientHeight / perPoint;
+		const grown = grownCanvasPage(
+			geom.source.page,
+			{
+				minX: region.minX - screenW,
+				minY: region.minY - screenH,
+				maxX: region.maxX + screenW,
+				maxY: region.maxY + screenH,
+			},
+			2 * Math.max(screenW, screenH),
+			Date.now(),
+		);
+		if (!grown) return;
+		const left = this.scrollEl.scrollLeft;
+		const top = this.scrollEl.scrollTop;
+		this.annotations.replacePageQuietly(grown.page);
+		const after = this.pageList?.getLayout().pages[0];
+		const scale = after && after.cssWidth > 0 ? after.cssWidth / grown.page.size.width : perPoint;
+		this.scrollEl.scrollLeft = left + grown.left * scale;
+		this.scrollEl.scrollTop = top + grown.top * scale;
+	}
+
+	/**
+	 * Once scrolling settles on a temporary board, grow it to keep a screen of
+	 * canvas beyond whatever is in view, so there is always more to move into.
+	 */
+	private scheduleCanvasGrowth(): void {
+		if (!this.annotations.isScratch) return;
+		const win = this.scrollEl.win;
+		win.clearTimeout(this.canvasGrowTimer);
+		this.canvasGrowTimer = win.setTimeout(() => {
+			this.canvasGrowTimer = 0;
+			if (!this.annotations.isScratch || this.ink?.isGesturing) return;
+			const visible = this.visibleCanvasRegion();
+			if (visible) this.growCanvas(visible);
+		}, CANVAS_GROW_SETTLE_MS);
+	}
+
+	/** What of a temporary board's page is in view, in PDF space. */
+	private visibleCanvasRegion(): Bounds | null {
+		const key = this.composed[0]?.key;
+		const record = key === undefined ? undefined : this.pageList?.recordForKey(key);
+		if (!record) return null;
+		const view = this.scrollEl.getBoundingClientRect();
+		const rect = record.inkCanvasEl.getBoundingClientRect();
+		const [x1 = 0, y1 = 0] = record.viewport.convertToPdfPoint(view.left - rect.left, view.top - rect.top);
+		const [x2 = 0, y2 = 0] = record.viewport.convertToPdfPoint(view.right - rect.left, view.bottom - rect.top);
+		return {
+			minX: Math.min(x1, x2),
+			minY: Math.min(y1, y2),
+			maxX: Math.max(x1, x2),
+			maxY: Math.max(y1, y2),
+		};
+	}
+
 	/** Widen or lengthen a board page when ink lands near its right or bottom edge. */
 	private growBoard(pageKey: PageKey, items: readonly Item[]): void {
 		const geom = this.composed.find((g) => g.key === pageKey);
 		if (geom?.source.kind !== 'inserted') return;
-		let ink: Bounds | null = null;
-		for (const item of items) {
-			const b = itemBounds(item);
-			if (!b) continue;
-			ink = ink
-				? {
-						minX: Math.min(ink.minX, b.minX),
-						minY: Math.min(ink.minY, b.minY),
-						maxX: Math.max(ink.maxX, b.maxX),
-						maxY: Math.max(ink.maxY, b.maxY),
-					}
-				: b;
-		}
+		const ink = itemsBounds(items);
 		if (!ink) return;
 		const grown = grownBoardPage(geom.source.page, ink, Date.now());
 		if (grown) this.annotations.resizePageJoined(grown);
@@ -890,6 +1025,8 @@ export class PdfInkView extends FileView implements ZoomHost {
 	// --- internals ------------------------------------------------------
 
 	private mountDocument(loaded: PdfInkDocument): void {
+		this.toolbar.setBoard(this.annotations.layout === 'board', this.annotations.isScratch);
+		this.scrollEl.toggleClass('is-canvas', this.annotations.isScratch);
 		const list = new PageList(
 			this.sizerEl,
 			this.pagesEl,
@@ -942,6 +1079,7 @@ export class PdfInkView extends FileView implements ZoomHost {
 				},
 				documentRuling: () => loaded.ruling,
 				app: () => this.app,
+				isBoard: () => this.annotations.layout === 'board',
 			},
 		);
 
@@ -1192,6 +1330,10 @@ export class PdfInkView extends FileView implements ZoomHost {
 		// views, so this is what makes ink survive a tab switch, not just a close.
 		// Commits any open text editor before the flush, so nothing typed is lost.
 		this.ink?.cancelActive();
+		if (this.canvasGrowTimer !== 0) {
+			this.scrollEl.win.clearTimeout(this.canvasGrowTimer);
+			this.canvasGrowTimer = 0;
+		}
 		await this.annotations.flush();
 		this.annotations.discard();
 
@@ -1251,31 +1393,42 @@ export class PdfInkView extends FileView implements ZoomHost {
 	}
 
 	/**
-	 * Put a picture on a page: the one under `at` if given (a drop), otherwise
-	 * the one in view, centred on what is showing of it. With no picture given,
-	 * the system's chooser asks for one. Saved in the `images` folder beside the
-	 * file, placed as one undoable step, and left selected.
+	 * Put pictures on a page: the one under `at` if given (a drop), otherwise
+	 * the one in view, centred on what is showing of it. With none given, the
+	 * system's chooser asks, and several may be picked. Each is saved in the
+	 * `images` folder beside the file; together they are laid out in a grid,
+	 * placed as ONE undoable step, and left selected.
 	 */
-	async insertImage(picture?: File, at?: { x: number; y: number }): Promise<void> {
-		const file = this.file;
+	async insertImages(pictures?: readonly File[], at?: { x: number; y: number }): Promise<void> {
 		const ink = this.ink;
-		if (!file || !ink || this.reading) return;
-		const chosen = picture ?? (await pickImageFile(this.contentEl.doc));
-		if (!chosen) return;
+		if (!this.canInsertImages || !ink) return;
+		const chosen = pictures ?? (await pickImageFiles(this.contentEl.doc));
+		if (chosen.length === 0) return;
 
 		const dropped = at ? this.recordAtPoint(at.x, at.y) : undefined;
 		const key = dropped?.geom.key ?? this.currentPageKey();
 		const record = key === null ? undefined : this.pageList?.recordForKey(key);
 		if (key === null || !record) return;
 
-		let saved;
-		try {
-			saved = await saveImage(this.app, chosen, chosen.name, file.path);
-		} catch (error) {
-			console.error('pdf-ink: could not insert picture', error);
-			new Notice('Could not insert that picture.');
-			return;
+		// One at a time: a name taken by the first is numbered for the second.
+		const saved: { path: string; width: number; height: number }[] = [];
+		let failed = 0;
+		for (const picture of chosen) {
+			try {
+				saved.push(await this.savePicture(picture));
+			} catch (error) {
+				console.error('pdf-ink: could not insert picture', error);
+				failed++;
+			}
 		}
+		if (failed > 0) {
+			new Notice(
+				saved.length === 0
+					? `Could not insert ${failed === 1 ? 'that picture' : 'those pictures'}.`
+					: `Could not insert ${String(failed)} of the pictures.`,
+			);
+		}
+		if (saved.length === 0) return;
 
 		const { geom } = record;
 		const page = pageBounds(geom.baseViewport, geom.baseWidth, geom.baseHeight);
@@ -1290,18 +1443,78 @@ export class PdfInkView extends FileView implements ZoomHost {
 			? [px, py]
 			: [(page.minX + page.maxX) / 2, (page.minY + page.maxY) / 2];
 
-		ink.placeItem(key, {
-			type: 'image',
-			id: createStrokeId(),
-			// Unused by a picture, but every item has one.
-			color: '#000000',
-			opacity: 1,
-			rotation: 0,
-			z: 0,
-			updatedAt: Date.now(),
-			box: placeImage(saved.width, saved.height, page, centre),
-			src: saved.path,
+		const boxes = placeImages(saved, page, centre);
+		const now = Date.now();
+		ink.placeItems(
+			key,
+			saved.map((picture, i) => ({
+				type: 'image' as const,
+				id: createStrokeId(),
+				// Unused by a picture, but every item has one.
+				color: '#000000',
+				opacity: 1,
+				rotation: 0,
+				z: 0,
+				updatedAt: now,
+				box: boxes[i] ?? { x: centre[0], y: centre[1], w: 1, h: 1 },
+				src: picture.path,
+			})),
+		);
+	}
+
+	/** Whether pictures can be put on what is shown: a file or a board, not reading. */
+	get canInsertImages(): boolean {
+		return (this.file !== null || this.boardId !== null) && !this.reading;
+	}
+
+	/**
+	 * Save a picture for this document: beside its file, or in a temporary
+	 * board's hidden folder, where it goes when the board does.
+	 */
+	private async savePicture(picture: File): Promise<SavedImage> {
+		if (this.boardId !== null) {
+			return await saveCanvasImage(this.app, picture, picture.name, this.boardId);
+		}
+		const file = this.file;
+		if (!file) throw new Error('No file to put the picture beside');
+		return await saveImage(this.app, picture, picture.name, file.path);
+	}
+
+	/**
+	 * Wipe a temporary board clean, like a boogie board: every item, pictures
+	 * included, goes in ONE removal, so a single undo brings it all back.
+	 */
+	clearBoard(): void {
+		if (this.boardId === null || this.reading) return;
+		const page = this.composed[0];
+		if (!page) return;
+		this.ink?.cancelActive();
+		const refs: ItemRef[] = [];
+		this.annotations.itemsFor(page.key).forEach((item, index) => {
+			if (isLive(item)) refs.push({ pageKey: page.key, index, item });
 		});
+		if (refs.length === 0) return;
+		this.annotations.removeItems(refs);
+		this.ink?.pruneSelection();
+		this.ink?.refreshSelectionBox();
+		this.repaintInk();
+		new Notice('Board cleared. Undo brings it back.');
+	}
+
+	/**
+	 * Send ink from this temporary board to a notebook, chosen or made on the
+	 * spot: `items` when given (a selection), otherwise everything on it. The
+	 * board keeps its ink; the notebook gets copies.
+	 */
+	protected sendBoardToNotebook(items?: readonly Item[]): void {
+		if (this.boardId === null) return;
+		this.ink?.flushText();
+		const sending = (items ?? this.boardItems()).filter(isLive);
+		if (sending.length === 0) {
+			new Notice('There is nothing on the board to send.');
+			return;
+		}
+		void sendToNotebook(this.app, this.host.settings, sending);
 	}
 
 	/**
@@ -1463,6 +1676,9 @@ export class PdfInkView extends FileView implements ZoomHost {
 	}
 
 	private defaultZoomMode(): ZoomMode {
+		// A temporary board is a canvas at its natural size; fitting it would zoom
+		// out every time it grew.
+		if (this.annotations.isScratch) return { kind: 'fixed', zoom: 1 };
 		// A board opens with its whole height in view, to pan along its width.
 		if (this.annotations.layout === 'board') return { kind: 'fit-height' };
 		return this.host.settings.defaultZoomMode === 'actual-size'
@@ -1492,11 +1708,8 @@ function obsidianTheme(): ThemeName {
 }
 
 /** The first picture among a paste's or a drop's files, if there is one. */
-function imageFileIn(data: DataTransfer | null): File | null {
-	for (const file of Array.from(data?.files ?? [])) {
-		if (file.type.startsWith('image/')) return file;
-	}
-	return null;
+function imageFilesIn(data: DataTransfer | null): File[] {
+	return Array.from(data?.files ?? []).filter((file) => file.type.startsWith('image/'));
 }
 
 /** Whether an event landed where text is being typed. */

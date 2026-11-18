@@ -1,7 +1,7 @@
 import { Keymap, type Plugin, TFile, TFolder } from 'obsidian';
-import { BOARD_ICON, NOTEBOOK_ICON, PDF_INK_ICON, VIEW_TYPE_PDF_INK } from '../constants';
+import { NOTEBOOK_ICON, PDF_INK_ICON, VIEW_TYPE_PDF_INK } from '../constants';
 import type { PdfInkHost } from '../settings';
-import { createBoard, createNotebook } from '../utils/create-notebook';
+import { createNotebook } from '../utils/create-notebook';
 import { createPdf } from '../utils/create-pdf';
 import {
 	openInInkViewSafely,
@@ -36,15 +36,6 @@ export function registerFileMenu(plugin: Plugin & PdfInkHost): void {
 						.setSection('action-primary')
 						.onClick(() => {
 							void createNotebook(plugin.app, { titleHeader: plugin.settings.addTitleHeader }, file);
-						}),
-				);
-				menu.addItem((item) =>
-					item
-						.setTitle('New board')
-						.setIcon(BOARD_ICON)
-						.setSection('action-primary')
-						.onClick(() => {
-							void createBoard(plugin.app, { titleHeader: plugin.settings.addTitleHeader }, file);
 						}),
 				);
 				return;

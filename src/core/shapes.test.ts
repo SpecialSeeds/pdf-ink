@@ -6,6 +6,7 @@ import {
 	AXIS_FORESHORTENING,
 	DASH_PATTERN,
 	DOT_PATTERN,
+	GRAPH_CELL,
 	type PathCommand,
 	type PathSegment,
 	SHAPE_GEOMETRY,
@@ -13,6 +14,7 @@ import {
 	constrainShapeBox,
 	equilateralHeight,
 	normalizeBox,
+	snapGraphBox,
 	originFractionFor,
 	shapeGeometry,
 	snapToAngle,
@@ -360,10 +362,30 @@ describe('2D axes', () => {
 			SHAPE_GEOMETRY.axes2d_c(box, WIDTH).segments,
 		);
 		if (!xPositive || !xNegative || !yPositive || !yNegative) return;
-		expect(vertices(xPositive)[1]).toEqual([100, 50]);
-		expect(vertices(xNegative)[1]).toEqual([0, 50]);
-		expect(vertices(yPositive)[1]).toEqual([50, 100]);
-		expect(vertices(yNegative)[1]).toEqual([50, 0]);
+		// Each line stops where its head starts; the head's point is at the edge.
+		const head = ARROW_LENGTH * WIDTH;
+		expect(vertices(xPositive)[1]).toEqual([100 - head, 50]);
+		expect(vertices(xNegative)[1]).toEqual([0 + head, 50]);
+		expect(vertices(yPositive)[1]).toEqual([50, 100 - head]);
+		expect(vertices(yNegative)[1]).toEqual([50, 0 + head]);
+		const tips = heads(SHAPE_GEOMETRY.axes2d_c(box, WIDTH).segments).map((h) => vertices(h)[0]);
+		expect(tips).toEqual(
+			expect.arrayContaining([
+				[100, 50],
+				[0, 50],
+				[50, 100],
+				[50, 0],
+			]),
+		);
+	});
+
+	it('adds the head on past the end of the line, so its point is last', () => {
+		const geometry = SHAPE_GEOMETRY.arrow({ x: 0, y: 0, w: 100, h: 0 }, WIDTH);
+		const [shaft] = strokes(geometry.segments);
+		const [tip] = heads(geometry.segments).map((h) => vertices(h)[0]);
+		if (!shaft || !tip) throw new Error('no arrow');
+		expect(tip).toEqual([100, 0]);
+		expect(vertices(shaft)[1]).toEqual([100 - ARROW_LENGTH * WIDTH, 0]);
 	});
 });
 
@@ -372,9 +394,16 @@ describe('3D axes use cabinet projection', () => {
 
 	/** The out-of-page axis: the fifth stroked half-axis (x+, x-, y+, y-, then it). */
 	function outOfPage(kind: 'axes3d_c', b: Box = box) {
-		const segment = strokes(SHAPE_GEOMETRY[kind](b, WIDTH).segments)[4];
-		const points = segment ? vertices(segment) : [];
-		return { origin: points[0], end: points[1] };
+		const { segments } = SHAPE_GEOMETRY[kind](b, WIDTH);
+		const segment = strokes(segments)[4];
+		const origin = segment ? vertices(segment)[0] : undefined;
+		// The axis ends at its head's point, past where the line stops.
+		const end = origin
+			? heads(segments)
+					.map((h) => vertices(h)[0])
+					.find((tip) => tip !== undefined && tip[0] < origin[0] && tip[1] < origin[1])
+			: undefined;
+		return { origin, end };
 	}
 
 	it('adds an out-of-page axis at 45 degrees', () => {
@@ -559,7 +588,7 @@ describe('Shift constraints', () => {
 	it('leaves everything alone without Shift', () => {
 		const box: Box = { x: 0, y: 0, w: 90, h: -30 };
 		for (const kind of SHAPE_KINDS) {
-			if (kind === 'triangle') continue;
+			if (kind === 'triangle' || kind === 'graph') continue;
 			expect(constrainShapeBox(kind, box, false), kind).toEqual(box);
 		}
 	});
@@ -608,5 +637,47 @@ describe('line styles', () => {
 		solid.forEach((segment, index) => {
 			if (segment.dash) expect(dotted[index]?.dash).toEqual(segment.dash);
 		});
+	});
+});
+
+describe('graph', () => {
+	const strokedLines = (box: Box): number =>
+		strokes(SHAPE_GEOMETRY.graph(box, 1).segments).reduce(
+			(n, segment) => n + segment.commands.filter((c) => c.op === 'move').length,
+			0,
+		);
+
+	it('is 5 mm squares', () => {
+		expect(GRAPH_CELL).toBeCloseTo(14.1732, 3);
+	});
+
+	it('adds squares as it grows, never stretching them', () => {
+		// 4 x 2 squares: the border, 3 inner verticals and 1 inner horizontal.
+		const box: Box = { x: 0, y: 0, w: 4 * GRAPH_CELL, h: 2 * GRAPH_CELL };
+		expect(strokedLines(box)).toBe(1 + 3 + 1);
+		const bigger: Box = { ...box, w: 8 * GRAPH_CELL };
+		expect(strokedLines(bigger)).toBe(1 + 7 + 1);
+	});
+
+	it('snaps a drag to whole squares from where it started', () => {
+		const snapped = constrainShapeBox('graph', { x: 10, y: 20, w: 3.4 * GRAPH_CELL, h: -1.6 * GRAPH_CELL }, false);
+		expect(snapped.x).toBe(10);
+		expect(snapped.y).toBe(20);
+		expect(snapped.w).toBeCloseTo(3 * GRAPH_CELL, 6);
+		expect(snapped.h).toBeCloseTo(-2 * GRAPH_CELL, 6);
+	});
+
+	it('is at least one square', () => {
+		const snapped = constrainShapeBox('graph', { x: 0, y: 0, w: 1, h: 1 }, false);
+		expect(snapped.w).toBeCloseTo(GRAPH_CELL, 6);
+		expect(snapped.h).toBeCloseTo(GRAPH_CELL, 6);
+	});
+
+	it('keeps its top-left corner when snapped', () => {
+		const b = snapGraphBox({ x: 0, y: 0, w: 2.2 * GRAPH_CELL, h: 3.7 * GRAPH_CELL });
+		expect(b.x).toBe(0);
+		expect(b.y + b.h).toBeCloseTo(3.7 * GRAPH_CELL, 6);
+		expect(b.w).toBeCloseTo(2 * GRAPH_CELL, 6);
+		expect(b.h).toBeCloseTo(4 * GRAPH_CELL, 6);
 	});
 });

@@ -7,14 +7,16 @@ import {
 import type { PdfInkHost } from '../settings';
 import { PdfInkView } from '../ui/pdf-ink-view';
 import { effectiveThemes } from '../core/theme';
-import { createBoard, createNotebook } from '../utils/create-notebook';
+import { createNotebook } from '../utils/create-notebook';
+import type { BoardLifecycle } from '../ui/board-lifecycle';
+import { BoardView } from '../ui/board-view';
 import { FolderPicker, convertImportedTitles } from '../ui/convert-titles-modal';
 import { removeFolder, runRenderCommand } from '../transcription/render';
 import { createPdf } from '../utils/create-pdf';
 import { exportAnnotatedCopy } from '../utils/export-pdf';
 import { resolvePdfTarget } from '../utils/pdf-target';
 
-export function registerCommands(plugin: Plugin & PdfInkHost): void {
+export function registerCommands(plugin: Plugin & PdfInkHost, boards: BoardLifecycle): void {
 	plugin.addCommand({
 		id: 'annotate-current-pdf',
 		name: 'Annotate current PDF',
@@ -51,12 +53,37 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 		},
 	});
 
+	// A temporary infinite canvas, thrown away when its tab closes.
 	plugin.addCommand({
 		id: 'create-board',
 		name: 'New board',
 		icon: BOARD_ICON,
 		callback: () => {
-			void createBoard(plugin.app, { titleHeader: plugin.settings.addTitleHeader });
+			void boards.create();
+		},
+	});
+
+	plugin.addCommand({
+		id: 'send-board-to-notebook',
+		name: 'Send board to a notebook',
+		icon: 'notebook-pen',
+		checkCallback: (checking: boolean): boolean => {
+			const active = plugin.app.workspace.getActiveViewOfType(BoardView);
+			if (!active?.shownBoardId) return false;
+			if (!checking) active.sendToNotebook();
+			return true;
+		},
+	});
+
+	plugin.addCommand({
+		id: 'clear-board',
+		name: 'Clear the board',
+		icon: 'trash-2',
+		checkCallback: (checking: boolean): boolean => {
+			const active = plugin.app.workspace.getActiveViewOfType(BoardView);
+			if (!active?.shownBoardId) return false;
+			if (!checking) active.clearBoard();
+			return true;
 		},
 	});
 
@@ -133,8 +160,8 @@ export function registerCommands(plugin: Plugin & PdfInkHost): void {
 		icon: 'image-plus',
 		checkCallback: (checking: boolean): boolean => {
 			const active = plugin.app.workspace.getActiveViewOfType(PdfInkView);
-			if (!active?.file || active.isReading) return false;
-			if (!checking) void active.insertImage();
+			if (!active?.canInsertImages) return false;
+			if (!checking) void active.insertImages();
 			return true;
 		},
 	});

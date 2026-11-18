@@ -66,6 +66,10 @@ export interface InkControllerOptions {
 	recordAtPoint(clientX: number, clientY: number): PageRecord | undefined;
 	/** Choose a picture and put it on the page in view. */
 	insertImage(): void;
+	/** Whether what is shown is a temporary board, whose ink can go to a notebook. */
+	canSendToNotebook(): boolean;
+	/** Send these items from a temporary board to a notebook. */
+	sendToNotebook(items: readonly Item[]): void;
 	/** A tap or Ctrl/Cmd+click that does not draw; see InkLayerOptions.followLink. */
 	followLink(clientX: number, clientY: number, startedAt: number | null): void;
 }
@@ -186,6 +190,10 @@ export class InkController {
 			recordAtPoint: (clientX, clientY) => this.options.recordAtPoint(clientX, clientY),
 			deleteSelection: () => {
 				this.deleteSelection();
+			},
+			canSendToNotebook: () => this.options.canSendToNotebook(),
+			sendSelectionToNotebook: () => {
+				this.options.sendToNotebook(this.selection.map((ref) => ref.item));
 			},
 			duplicateSelection: () => {
 				this.duplicateSelection();
@@ -580,16 +588,32 @@ export class InkController {
 	 * Add an item made outside the tools — an inserted picture — as one undoable
 	 * step, and leave it selected so it can be moved and sized straight away.
 	 */
+	/** Whether a stroke, erase, lasso or drag is in progress. */
+	get isGesturing(): boolean {
+		return this.layer.isGesturing;
+	}
+
 	placeItem(pageKey: PageKey, item: Item): void {
-		if (this.reading) return;
+		this.placeItems(pageKey, [item]);
+	}
+
+	/**
+	 * Put several items on a page as one undoable step and leave them selected,
+	 * with the lasso, ready to be moved together.
+	 */
+	placeItems(pageKey: PageKey, placed: readonly Item[]): void {
+		if (this.reading || placed.length === 0) return;
 		this.textEditor.close(true);
-		this.store.addItem(pageKey, item);
-		this.options.itemsCommitted(pageKey, [item]);
+		this.store.addItems(pageKey, placed);
+		this.options.itemsCommitted(pageKey, placed);
 		this.activate('lasso');
 		const items = this.store.itemsFor(pageKey);
-		const index = items.findIndex((candidate) => candidate.id === item.id);
-		const stored = items[index];
-		this.selection = stored ? [{ pageKey, index, item: stored }] : [];
+		const ids = new Set(placed.map((item) => item.id));
+		const selected: ItemRef[] = [];
+		items.forEach((item, index) => {
+			if (ids.has(item.id)) selected.push({ pageKey, index, item });
+		});
+		this.selection = selected;
 		this.layer.refreshSelection();
 		this.options.repaint();
 		this.refresh();

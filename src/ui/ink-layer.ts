@@ -227,6 +227,9 @@ export interface InkLayerOptions {
 	recordAtPoint(clientX: number, clientY: number): PageRecord | undefined;
 	deleteSelection(): void;
 	duplicateSelection(): void;
+	/** Whether the selection can be sent to a notebook: on a temporary board. */
+	canSendToNotebook(): boolean;
+	sendSelectionToNotebook(): void;
 	/** Recolour the selected items on one layer: ink, or highlighter. */
 	recolorSelection(layer: ColorLayer, color: string): void;
 	bringSelectionForward(): void;
@@ -354,6 +357,10 @@ export class InkLayer {
 			},
 			recolor: (layer, color) => {
 				this.options.recolorSelection(layer, color);
+			},
+			canSendToNotebook: () => this.options.canSendToNotebook(),
+			sendToNotebook: () => {
+				this.options.sendSelectionToNotebook();
 			},
 		};
 		this.overlay = new SelectionOverlay(component, overlayCallbacks);
@@ -690,6 +697,11 @@ export class InkLayer {
 	 */
 	private get penIsDrawing(): boolean {
 		return this.hasActiveGesture && this.gesturePointerType === 'pen';
+	}
+
+	/** Whether a stroke, erase, lasso or drag is in progress. */
+	get isGesturing(): boolean {
+		return this.hasActiveGesture;
 	}
 
 	/** True while any pointer gesture of ours is running. */

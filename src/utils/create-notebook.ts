@@ -1,5 +1,4 @@
 import { type App, Notice, type TFolder } from 'obsidian';
-import { newBoardData } from '../core/board';
 import { serializeInkData } from '../core/ink-serialization';
 import { NOTEBOOK_EXTENSION, newNotebookData } from '../core/new-notebook';
 import { untitledPath } from '../core/new-pdf';
@@ -24,21 +23,9 @@ export interface NewNotebookOptions {
 	readonly titleHeader: boolean;
 }
 
-/**
- * Make a new board — one wide ruled page that grows as it is written on — and
- * open it in a new tab. A board is a notebook file like any other.
- */
-export async function createBoard(
-	app: App,
-	options: NewNotebookOptions,
-	folder?: TFolder,
-): Promise<void> {
-	await createNotebookFile(app, 'board', options, folder);
-}
-
 async function createNotebookFile(
 	app: App,
-	kind: 'notebook' | 'board',
+	kind: 'notebook',
 	options: NewNotebookOptions,
 	folder?: TFolder,
 ): Promise<void> {
@@ -53,7 +40,7 @@ async function createNotebookFile(
 		);
 		const now = Date.now();
 		const header = options.titleHeader ? { createdAt: now } : undefined;
-		const data = kind === 'board' ? newBoardData(now) : newNotebookData(now);
+		const data = newNotebookData(now);
 		const text = serializeInkData(header ? { ...data, header } : data);
 		const file = await app.vault.create(path, text);
 		await openInInkView(app, file, app.workspace.getLeaf('tab'));

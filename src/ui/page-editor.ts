@@ -4,8 +4,10 @@ import { pageSizes, sizeLookup } from '../core/page-composition';
 import {
 	type InsertedPage,
 	type PageKey,
+	type PageOrientation,
 	createInsertedPage,
 	orderPages,
+	pageOrientation,
 	parsePageKey,
 	sizeForInsertion,
 } from '../core/pages';
@@ -36,6 +38,8 @@ export interface PageEditorHost {
 	documentRuling(): PageTemplate | null;
 	/** For the dialogs this opens. */
 	app(): App;
+	/** A board is one canvas: it never takes another page, moves or loses its one. */
+	isBoard(): boolean;
 }
 
 /**
@@ -119,6 +123,7 @@ export class PageEditor {
 	 * the same paper, without the user having to say so.
 	 */
 	insertAt(at: number): void {
+		if (this.host.isBoard()) return;
 		this.store.insertPage(this.pageFor(at));
 		// The list has already been rebuilt by the store's change callback.
 		this.host.scrollToPage(at);
@@ -130,6 +135,7 @@ export class PageEditor {
 	 * from it, and undoing the stroke that grew it should take the page back too.
 	 */
 	appendPage(): void {
+		if (this.host.isBoard()) return;
 		this.store.insertPage(this.pageFor(this.host.geometry().length), true);
 	}
 
@@ -175,6 +181,31 @@ export class PageEditor {
 		if (to !== null) this.movePage(key, to);
 	}
 
+	/** Turn an inserted page to portrait or landscape, as one undoable step. */
+	setOrientation(key: PageKey, orientation: PageOrientation): void {
+		const parsed = parsePageKey(key);
+		if (parsed?.kind !== 'inserted') return;
+		this.store.setPageOrientation(parsed.id, orientation);
+	}
+
+	/**
+	 * The ruling choices, as a flat checked group rather than a submenu: Obsidian's
+	 * Menu has no submenu in the public API, and six items is not worth nesting.
+	 */
+	private addTemplateItems(menu: Menu, key: PageKey, current: PageTemplate): void {
+		for (const template of PAGE_TEMPLATES) {
+			menu.addItem((item) =>
+				item
+					.setTitle(TEMPLATE_LABELS[template])
+					.setChecked(template === current)
+					.setSection('pdf-ink-template')
+					.onClick(() => {
+						this.setTemplate(key, template);
+					}),
+			);
+		}
+	}
+
 	setTemplate(key: PageKey, template: PageTemplate): void {
 		const parsed = parsePageKey(key);
 		if (parsed?.kind !== 'inserted') return;
@@ -217,7 +248,7 @@ export class PageEditor {
 			this.hideGap();
 			return;
 		}
-		const boundary = this.nearestBoundary(evt);
+		const boundary = this.host.isBoard() ? null : this.nearestBoundary(evt);
 		if (boundary === null) {
 			this.hideGap();
 			return;
@@ -301,6 +332,15 @@ export class PageEditor {
 
 		const menu = new Menu();
 		const key = geom.key;
+		const board = this.host.isBoard();
+
+		// A board's one page takes ruling only: nothing is inserted beside it,
+		// and it has no orientation, since it grows to whatever it needs.
+		if (board) {
+			if (geom.source.kind !== 'inserted') return null;
+			this.addTemplateItems(menu, key, geom.source.page.template);
+			return menu;
+		}
 
 		menu.addItem((item) =>
 			item
@@ -355,20 +395,24 @@ export class PageEditor {
 					}),
 			);
 
-			const current = geom.source.page.template;
-			// A flat checked group rather than a submenu: Obsidian's Menu has no
-			// submenu in the public API, and six items is not worth nesting anyway.
-			for (const template of PAGE_TEMPLATES) {
+			const orientation = pageOrientation(geom.source.page.size);
+			for (const [kind, title, icon] of [
+				['portrait', 'Portrait', 'rectangle-vertical'],
+				['landscape', 'Landscape', 'rectangle-horizontal'],
+			] as const) {
 				menu.addItem((item) =>
 					item
-						.setTitle(TEMPLATE_LABELS[template])
-						.setChecked(template === current)
-						.setSection('pdf-ink-template')
+						.setTitle(title)
+						.setIcon(icon)
+						.setChecked(orientation === kind)
+						.setSection('pdf-ink-orientation')
 						.onClick(() => {
-							this.setTemplate(key, template);
+							this.setOrientation(key, kind);
 						}),
 				);
 			}
+
+			this.addTemplateItems(menu, key, geom.source.page.template);
 			menu.addItem((item) =>
 				item
 					.setTitle('Delete page')

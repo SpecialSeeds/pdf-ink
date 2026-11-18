@@ -144,7 +144,7 @@ export interface PdfInkSettings {
 }
 
 /** The edge the tool palette docks to. */
-export type ToolbarSide = 'left' | 'right';
+export type ToolbarSide = 'left' | 'right' | 'bottom';
 
 /** Tools whose size is a width rather than a font size. */
 export type SizedTool = 'pen' | 'highlighter' | 'shape';
@@ -318,7 +318,7 @@ export function mergeSettings(stored: unknown): PdfInkSettings {
 	if (typeof diagnostics === 'boolean') merged.inputDiagnostics = diagnostics;
 
 	const side = raw['toolbarSide'];
-	if (side === 'left' || side === 'right') merged.toolbarSide = side;
+	if (side === 'left' || side === 'right' || side === 'bottom') merged.toolbarSide = side;
 
 	const byDefault = raw['openByDefault'];
 	if (typeof byDefault === 'boolean') merged.openByDefault = byDefault;

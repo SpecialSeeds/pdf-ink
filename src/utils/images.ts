@@ -1,4 +1,5 @@
 import type { App, TFile } from 'obsidian';
+import { canvasDataPath, isCanvasPath } from '../core/canvas';
 import { imagePathFor, parentFolder } from '../core/export-path';
 import type { Item } from '../core/items';
 import type { PageKey } from '../core/pages';
@@ -20,6 +21,12 @@ export function resolveImageFile(app: App, src: string): TFile | null {
 
 /** A picture's bytes, or null when it cannot be found. */
 export async function readImageBytes(app: App, src: string): Promise<ArrayBuffer | null> {
+	// A temporary board's pictures are in its hidden folder, out of the vault's
+	// index, and are never looked for anywhere else.
+	if (isCanvasPath(src)) {
+		const adapter = app.vault.adapter;
+		return (await adapter.exists(src)) ? await adapter.readBinary(src) : null;
+	}
 	const file = resolveImageFile(app, src);
 	return file ? await app.vault.readBinary(file) : null;
 }
@@ -148,13 +155,7 @@ export async function saveImage(
 	name: string,
 	sourcePath: string,
 ): Promise<SavedImage> {
-	const bitmap = await createImageBitmap(blob);
-	try {
-		const { width, height } = bitmap;
-		const direct = DIRECT_TYPES[blob.type];
-		const bytes = direct ? await blob.arrayBuffer() : await toPng(bitmap);
-		const extension = direct ?? 'png';
-		const stem = baseName(name) || 'Image';
+	return await encodeAndSave(blob, name, async (stem, extension, bytes) => {
 		const path = imagePathFor(
 			sourcePath,
 			stem,
@@ -164,6 +165,52 @@ export async function saveImage(
 		const folder = parentFolder(path);
 		if (!app.vault.getFolderByPath(folder)) await app.vault.createFolder(folder);
 		await app.vault.createBinary(path, bytes);
+		return path;
+	});
+}
+
+/**
+ * Save a picture put on temporary board `boardId`, in the `images` folder of
+ * the board's hidden folder, through the adapter, so it goes when the board
+ * does. Converted exactly as {@link saveImage} converts.
+ */
+export async function saveCanvasImage(
+	app: App,
+	blob: Blob,
+	name: string,
+	boardId: string,
+): Promise<SavedImage> {
+	const adapter = app.vault.adapter;
+	return await encodeAndSave(blob, name, async (stem, extension, bytes) => {
+		const sourcePath = canvasDataPath(boardId);
+		const folder = parentFolder(imagePathFor(sourcePath, stem, extension, () => false));
+		if (!(await adapter.exists(folder))) await adapter.mkdir(folder);
+		const listed = await adapter.list(folder);
+		const taken = new Set(listed.files);
+		const path = imagePathFor(sourcePath, stem, extension, (candidate) => taken.has(candidate));
+		await adapter.writeBinary(path, bytes);
+		return path;
+	});
+}
+
+/**
+ * Decode `blob` for its size, keep PNG and JPEG bytes as they are and turn
+ * anything else into PNG, then hand the bytes to `write`, which says where it
+ * put them.
+ */
+async function encodeAndSave(
+	blob: Blob,
+	name: string,
+	write: (stem: string, extension: string, bytes: ArrayBuffer) => Promise<string>,
+): Promise<SavedImage> {
+	const bitmap = await createImageBitmap(blob);
+	try {
+		const { width, height } = bitmap;
+		const direct = DIRECT_TYPES[blob.type];
+		const bytes = direct ? await blob.arrayBuffer() : await toPng(bitmap);
+		const extension = direct ?? 'png';
+		const stem = baseName(name) || 'Image';
+		const path = await write(stem, extension, bytes);
 		return { path, width, height };
 	} finally {
 		bitmap.close();
@@ -193,20 +240,22 @@ async function toPng(bitmap: ImageBitmap): Promise<ArrayBuffer> {
 }
 
 /**
- * Ask for a picture through the system's file chooser: the photo library and
- * camera on a tablet, the file browser on a desktop. Null when nothing is chosen.
+ * Ask for pictures through the system's file chooser: the photo library and
+ * camera on a tablet, the file browser on a desktop. Several may be chosen at
+ * once; empty when nothing is.
  */
-export function pickImageFile(doc: Document): Promise<File | null> {
+export function pickImageFiles(doc: Document): Promise<File[]> {
 	return new Promise((resolve) => {
 		const input = doc.createElement('input');
 		input.type = 'file';
 		input.accept = 'image/*';
+		input.multiple = true;
 		input.addEventListener('change', () => {
-			resolve(input.files?.item(0) ?? null);
+			resolve(Array.from(input.files ?? []));
 		});
 		// Never fires on some platforms; an unanswered chooser just resolves nothing.
 		input.addEventListener('cancel', () => {
-			resolve(null);
+			resolve([]);
 		});
 		input.click();
 	});

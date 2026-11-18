@@ -136,7 +136,7 @@ describe('tool widths', () => {
 	it('clamps the text size and the eraser reach', () => {
 		expect(mergeSettings({ textFontSize: 500 }).textFontSize).toBe(72);
 		expect(mergeSettings({ textFontSize: 1 }).textFontSize).toBe(6);
-		expect(mergeSettings({ eraserWidth: 999 }).eraserWidth).toBe(48);
+		expect(mergeSettings({ eraserWidth: 999 }).eraserWidth).toBe(120);
 	});
 });
 
@@ -233,10 +233,11 @@ describe('toolbarSide', () => {
 	it('accepts either edge', () => {
 		expect(mergeSettings({ toolbarSide: 'right' }).toolbarSide).toBe('right');
 		expect(mergeSettings({ toolbarSide: 'left' }).toolbarSide).toBe('left');
+		expect(mergeSettings({ toolbarSide: 'bottom' }).toolbarSide).toBe('bottom');
 	});
 
 	it('ignores anything else', () => {
-		for (const side of ['top', 'bottom', '', 3, null]) {
+		for (const side of ['top', 'Bottom', '', 3, null]) {
 			expect(mergeSettings({ toolbarSide: side }).toolbarSide).toBe('left');
 		}
 	});

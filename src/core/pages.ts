@@ -391,3 +391,36 @@ export function createInsertedPage(
 	const { afterPdfPage, sortKey } = insertionAt(order, at);
 	return { id, afterPdfPage, sortKey, template, size, updatedAt: now };
 }
+
+export type PageOrientation = 'portrait' | 'landscape';
+
+/** Portrait unless wider than tall; a square page counts as portrait. */
+export function pageOrientation(size: PageSize): PageOrientation {
+	return size.width > size.height ? 'landscape' : 'portrait';
+}
+
+/**
+ * The page record turned to `orientation`, or null when it already is. Width
+ * and height swap and the top-left corner stays where it was (the origin takes
+ * up the change in height), so writing that starts at the top of the page stays
+ * at the top. No item moves: anything now past the right or bottom edge is
+ * still stored, and turning back shows it again.
+ */
+export function reorientedPage(
+	page: InsertedPage,
+	orientation: PageOrientation,
+	now: number,
+): InsertedPage | null {
+	if (pageOrientation(page.size) === orientation) return null;
+	const { width, height } = page.size;
+	if (width === height) return null;
+	const origin = pageOrigin(page);
+	const nextOrigin = { x: origin.x, y: origin.y + height - width };
+	const { origin: _old, ...rest } = page;
+	return {
+		...rest,
+		size: { width: height, height: width },
+		...(nextOrigin.x === 0 && nextOrigin.y === 0 ? {} : { origin: nextOrigin }),
+		updatedAt: now,
+	};
+}

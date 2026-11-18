@@ -760,10 +760,50 @@
 	right: calc(100% + var(--size-4-2));
 }
 
-.pdf-ink-eraser-wrap {
-	position: relative;
+.pdf-ink-eraser-options.is-hidden {
+	display: none;
+}
+
+/*
+ * Along the bottom: the same groups in a row, centred, so the palette can sit
+ * under the page rather than beside it. Popovers open upward, over the page.
+ */
+.pdf-ink-floating.is-bottom {
+	top: auto;
+	bottom: var(--size-4-2);
+	left: 50%;
+	transform: translateX(-50%);
+	flex-direction: row;
+	padding: var(--size-4-1) var(--size-4-2);
+	max-height: none;
+	/* Not scrollable: overflow would clip the popovers that open above it. */
+	max-width: calc(100% - 2 * var(--size-4-2));
+}
+
+.pdf-ink-floating.is-bottom .pdf-ink-floating-group {
+	flex-direction: row;
+}
+
+.pdf-ink-floating.is-bottom .pdf-ink-floating-group + .pdf-ink-floating-group,
+.pdf-ink-floating.is-bottom .pdf-ink-width-wrap,
+.pdf-ink-floating.is-bottom .pdf-ink-colors {
+	padding-top: 0;
+	border-top: none;
+	padding-left: var(--size-4-2);
+	border-left: 1px solid var(--background-modifier-border);
+}
+
+/* Swatches in one row, the chevron after them. */
+.pdf-ink-floating.is-bottom .pdf-ink-colors {
 	display: flex;
-	align-items: center;
+	flex-direction: row;
+}
+
+.pdf-ink-floating.is-bottom .pdf-ink-popover {
+	left: 50%;
+	top: auto;
+	bottom: calc(100% + var(--size-4-2));
+	transform: translateX(-50%);
 }
 
 /* The width control: a button showing the current size, opening a slider. */
@@ -1273,4 +1313,16 @@
 .pdf-ink-export-size {
 	font-variant-numeric: tabular-nums;
 	font-weight: var(--font-semibold);
+}
+
+/* ---- temporary boards --------------------------------------------------- */
+
+/* A canvas, not a sheet of paper: no shadow marking out its edge. */
+.pdf-ink-scroll.is-canvas .pdf-ink-page {
+	box-shadow: none;
+}
+
+/* The second line of a choice in the send-to-notebook picker. */
+.pdf-ink-muted {
+	color: var(--text-muted);
 }

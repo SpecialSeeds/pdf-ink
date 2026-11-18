@@ -24,6 +24,8 @@ export interface ToolbarCallbacks {
 	/** Show the ink without the palette or any way to change it, or go back. */
 	toggleReading(): void;
 	exportPdf(): void;
+	/** Wipe a temporary board clean, as one undo step. */
+	clearBoard(): void;
 	/** Open the find bar. */
 	find(): void;
 }
@@ -70,6 +72,9 @@ export class PdfInkToolbar {
 	private readonly fitHeightButtonEl: HTMLButtonElement;
 	private readonly zoomLockButtonEl: HTMLButtonElement;
 	private readonly scrollLockButtonEl: HTMLButtonElement;
+	private readonly insertButtonEls: HTMLElement[] = [];
+	private readonly exportButtonEl: HTMLElement;
+	private readonly clearButtonEl: HTMLElement;
 	private scrollAxis: ScrollAxis = 'both';
 	private readonly themeButtonEl: HTMLButtonElement;
 	private readonly readingButtonEl: HTMLButtonElement;
@@ -211,7 +216,7 @@ export class PdfInkToolbar {
 		const actionsGroupEl = toolbarEl.createDiv({
 			cls: 'pdf-ink-toolbar-group pdf-ink-toolbar-actions',
 		});
-		this.addButton(
+		const insertAboveEl = this.addButton(
 			actionsGroupEl,
 			component,
 			'arrow-up-to-line',
@@ -220,13 +225,14 @@ export class PdfInkToolbar {
 				callbacks.insertPageAbove();
 			},
 		);
-		this.addButton(
+		const insertBelowEl = this.addButton(
 			actionsGroupEl,
 			component,
 			'arrow-down-to-line',
 			'Insert page below',
 			() => {
 				callbacks.insertPageBelow();
+		this.insertButtonEls.push(insertAboveEl, insertBelowEl);
 			},
 		);
 		const pageOptionsEl = this.addButton(
@@ -257,7 +263,7 @@ export class PdfInkToolbar {
 				callbacks.toggleTheme();
 			},
 		);
-		this.addButton(
+		this.exportButtonEl = this.addButton(
 			actionsGroupEl,
 			component,
 			'file-down',
@@ -266,6 +272,17 @@ export class PdfInkToolbar {
 				callbacks.exportPdf();
 			},
 		);
+		// Shown on a temporary board only (setBoard).
+		this.clearButtonEl = this.addButton(
+			actionsGroupEl,
+			component,
+			'trash-2',
+			'Clear the board',
+			() => {
+				callbacks.clearBoard();
+			},
+		);
+		this.clearButtonEl.addClass('is-hidden');
 
 		const submitPage = (): void => {
 			const value = Number.parseInt(this.pageInputEl.value, 10);
@@ -311,6 +328,20 @@ export class PdfInkToolbar {
 	}
 
 	/** Show the theme in effect: the sun for light pages, the moon for dark. */
+	/**
+	 * A board takes no pages, so it shows no way to insert one. A temporary
+	 * board keeps nothing of its own: its export sends the ink to a notebook.
+	 */
+	setBoard(on: boolean, temporary: boolean): void {
+		for (const buttonEl of this.insertButtonEls) buttonEl.toggleClass('is-hidden', on);
+		this.clearButtonEl.toggleClass('is-hidden', !temporary);
+		const [icon, label] = temporary
+			? ['notebook-pen', 'Send board to a notebook']
+			: ['file-down', 'Export annotated PDF'];
+		setIcon(this.exportButtonEl, icon);
+		this.exportButtonEl.setAttribute('aria-label', label);
+	}
+
 	setReading(on: boolean): void {
 		this.readingButtonEl.toggleClass('is-active', on);
 		this.readingButtonEl.setAttribute('aria-pressed', String(on));

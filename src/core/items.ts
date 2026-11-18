@@ -22,9 +22,12 @@
  * Version 6 adds the `image` item, and an optional `dash` on shapes. A v5 file
  * reads as v6 unchanged. The bump is what keeps an older build, which would drop
  * an image it cannot parse and then save without it, from opening the file.
+ *
+ * Version 7 adds the `graph` shape kind, bumped for the same reason: an older
+ * build would drop a shape kind it does not know. A v6 file reads as v7 unchanged.
  */
 
-export const INK_DATA_VERSION = 6;
+export const INK_DATA_VERSION = 7;
 
 /** The oldest schema this build can read and migrate. */
 export const OLDEST_SUPPORTED_VERSION = 1;
@@ -98,7 +101,8 @@ export type ShapeKind =
 	| 'triangle'
 	| 'axes2d_q'
 	| 'axes2d_c'
-	| 'axes3d_c';
+	| 'axes3d_c'
+	| 'graph';
 
 export const SHAPE_KINDS: readonly ShapeKind[] = [
 	'line',
@@ -109,6 +113,7 @@ export const SHAPE_KINDS: readonly ShapeKind[] = [
 	'axes2d_q',
 	'axes2d_c',
 	'axes3d_c',
+	'graph',
 ];
 
 /** How a shape's outline is drawn. Solid is stored as an absent `dash`. */

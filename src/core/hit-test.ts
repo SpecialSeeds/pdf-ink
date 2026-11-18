@@ -291,3 +291,21 @@ export function hitTestShape(
 	if (pointInPolygon(x, y, shape.outline)) return true;
 	return distanceToPolygonEdge(x, y, shape.outline) <= radius;
 }
+
+/** The box around every item that has one, or null when none does. */
+export function itemsBounds(items: readonly Item[]): Bounds | null {
+	let bounds: Bounds | null = null;
+	for (const item of items) {
+		const b = itemBounds(item);
+		if (!b) continue;
+		bounds = bounds
+			? {
+					minX: Math.min(bounds.minX, b.minX),
+					minY: Math.min(bounds.minY, b.minY),
+					maxX: Math.max(bounds.maxX, b.maxX),
+					maxY: Math.max(bounds.maxY, b.maxY),
+				}
+			: b;
+	}
+	return bounds;
+}

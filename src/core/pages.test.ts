@@ -15,7 +15,10 @@ import {
 	dropPosition,
 	movedPage,
 	orderPages,
+	pageOrientation,
+	pageOrigin,
 	parsePageKey,
+	reorientedPage,
 	pdfPageKey,
 	sizeForInsertion,
 	slotForKey,
@@ -443,5 +446,49 @@ describe('dropPosition', () => {
 		expect(dropPosition(2, 2, false)).toBe(2);
 		expect(dropPosition(2, 2, true)).toBe(2);
 		expect(dropPosition(2, 1, true)).toBe(2);
+	});
+});
+
+describe('reorientedPage', () => {
+	const portrait: InsertedPage = {
+		id: 'p',
+		afterPdfPage: -1,
+		sortKey: 'a0',
+		template: 'lined',
+		size: { width: 612, height: 792 },
+		updatedAt: 1,
+	};
+	const top = (page: InsertedPage): number => pageOrigin(page).y + page.size.height;
+
+	it('reads a page as portrait or landscape', () => {
+		expect(pageOrientation({ width: 612, height: 792 })).toBe('portrait');
+		expect(pageOrientation({ width: 792, height: 612 })).toBe('landscape');
+		expect(pageOrientation({ width: 600, height: 600 })).toBe('portrait');
+	});
+
+	it('swaps the sides and keeps the top-left corner', () => {
+		const turned = reorientedPage(portrait, 'landscape', 5);
+		expect(turned?.size).toEqual({ width: 792, height: 612 });
+		expect(pageOrigin(turned!).x).toBe(0);
+		expect(top(turned!)).toBe(top(portrait));
+		expect(turned?.updatedAt).toBe(5);
+	});
+
+	it('turns back to exactly where it started', () => {
+		const back = reorientedPage(reorientedPage(portrait, 'landscape', 5)!, 'portrait', 6);
+		expect(back?.size).toEqual(portrait.size);
+		expect(back?.origin).toBeUndefined();
+	});
+
+	it('keeps an existing origin', () => {
+		const moved = { ...portrait, origin: { x: 10, y: -100 } };
+		const turned = reorientedPage(moved, 'landscape', 5)!;
+		expect(pageOrigin(turned).x).toBe(10);
+		expect(top(turned)).toBe(top(moved));
+	});
+
+	it('does nothing to a page already that way, or a square one', () => {
+		expect(reorientedPage(portrait, 'portrait', 5)).toBeNull();
+		expect(reorientedPage({ ...portrait, size: { width: 600, height: 600 } }, 'landscape', 5)).toBeNull();
 	});
 });

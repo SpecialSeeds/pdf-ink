@@ -20,6 +20,9 @@ export interface SelectionOverlayCallbacks {
 	bringForward(): void;
 	sendBack(): void;
 	recolor(layer: ColorLayer, color: string): void;
+	/** Whether the selection can be sent to a notebook: on a temporary board. */
+	canSendToNotebook(): boolean;
+	sendToNotebook(): void;
 }
 
 const LAYER_COLORS: Record<ColorLayer, readonly NamedColor[]> = {
@@ -166,6 +169,11 @@ export class SelectionOverlay {
 		this.addAction(actionsEl, 'send-to-back', 'Send back', () => {
 			this.callbacks.sendBack();
 		});
+		if (this.callbacks.canSendToNotebook()) {
+			this.addAction(actionsEl, 'notebook-pen', 'Send to a notebook', () => {
+				this.callbacks.sendToNotebook();
+			});
+		}
 
 		return boxEl;
 	}

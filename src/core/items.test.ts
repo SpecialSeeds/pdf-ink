@@ -50,10 +50,10 @@ function strokeAt(id: string, z: number): Item {
 }
 
 describe('schema', () => {
-	it('is version 6', () => {
-		expect(INK_DATA_VERSION).toBe(6);
+	it('is version 7', () => {
+		expect(INK_DATA_VERSION).toBe(7);
 		expect(emptyInkData()).toEqual({
-			version: 6,
+			version: 7,
 			pages: {},
 			insertedPages: [],
 		});
@@ -69,6 +69,7 @@ describe('schema', () => {
 			'axes2d_q',
 			'axes2d_c',
 			'axes3d_c',
+			'graph',
 		]);
 	});
 

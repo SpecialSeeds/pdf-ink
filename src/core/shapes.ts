@@ -122,6 +122,40 @@ function arrowHead(
 	};
 }
 
+/**
+ * Where a line capped by a head at `tip` stops: at the head's base, so the head
+ * is added on to the end of the line and its point is the last thing drawn. A
+ * line run all the way to the tip shows its round cap past the point.
+ */
+function shaftEnd(
+	tipX: number,
+	tipY: number,
+	fromX: number,
+	fromY: number,
+	width: number,
+): { x: number; y: number } {
+	const dx = tipX - fromX;
+	const dy = tipY - fromY;
+	const length = Math.hypot(dx, dy);
+	if (length === 0) return { x: tipX, y: tipY };
+	const head = Math.min(width * ARROW_LENGTH, length);
+	return { x: tipX - (dx / length) * head, y: tipY - (dy / length) * head };
+}
+
+/** A line from `from` to `tip` with a head on the `tip` end, line first. */
+function headedLine(
+	into: { segments: PathSegment[]; heads: PathSegment[] },
+	fromX: number,
+	fromY: number,
+	tipX: number,
+	tipY: number,
+	width: number,
+): void {
+	const end = shaftEnd(tipX, tipY, fromX, fromY, width);
+	into.segments.push(strokeSegment([move(fromX, fromY), line(end.x, end.y)], width, false));
+	pushHead(into.heads, tipX, tipY, fromX, fromY, width);
+}
+
 function strokeSegment(
 	commands: readonly PathCommand[],
 	width: number,
@@ -146,14 +180,9 @@ export const lineGeometry: ShapeGeometryFn = (box, width) => {
 };
 
 export const arrowGeometry: ShapeGeometryFn = (box, width) => {
-	const tipX = box.x + box.w;
-	const tipY = box.y + box.h;
-	const segments: PathSegment[] = [
-		strokeSegment([move(box.x, box.y), line(tipX, tipY)], width, false),
-	];
-	const head = arrowHead(tipX, tipY, box.x, box.y, width);
-	if (head) segments.push(head);
-	return { segments };
+	const parts = { segments: [] as PathSegment[], heads: [] as PathSegment[] };
+	headedLine(parts, box.x, box.y, box.x + box.w, box.y + box.h, width);
+	return { segments: [...parts.segments, ...parts.heads] };
 };
 
 export const rectGeometry: ShapeGeometryFn = (box, width) => {
@@ -237,28 +266,21 @@ function axesGeometry(
 
 	const segments: PathSegment[] = [];
 	const heads: PathSegment[] = [];
+	const parts = { segments, heads };
 
 	// In 3D the negative half-axes are dashed; in 2D everything is solid.
 	const negativeDashed = options.threeD;
 
-	// X axis.
-	segments.push(strokeSegment([move(ox, oy), line(right, oy)], width, false));
-	segments.push(
-		strokeSegment([move(ox, oy), line(left, oy)], width, negativeDashed),
-	);
-	// Y axis.
-	segments.push(strokeSegment([move(ox, oy), line(ox, top)], width, false));
-	segments.push(
-		strokeSegment([move(ox, oy), line(ox, bottom)], width, negativeDashed),
-	);
-
-	// Positive ends always get an arrowhead.
-	pushHead(heads, right, oy, ox, oy, width);
-	pushHead(heads, ox, top, ox, oy, width);
-	if (options.arrowBothEnds) {
-		pushHead(heads, left, oy, ox, oy, width);
-		pushHead(heads, ox, bottom, ox, oy, width);
-	}
+	// Positive ends always get an arrowhead, added on past the line's end.
+	// Stroked in the order x+, x-, y+, y-.
+	const negative = (x: number, y: number): void => {
+		if (options.arrowBothEnds) headedLine(parts, ox, oy, x, y, width);
+		else segments.push(strokeSegment([move(ox, oy), line(x, y)], width, negativeDashed));
+	};
+	headedLine(parts, ox, oy, right, oy, width);
+	negative(left, oy);
+	headedLine(parts, ox, oy, ox, top, width);
+	negative(ox, bottom);
 
 	if (options.threeD) {
 		/*
@@ -281,7 +303,7 @@ function axesGeometry(
 
 		const outX = ox + unitX * outward;
 		const outY = oy + unitY * outward;
-		segments.push(strokeSegment([move(ox, oy), line(outX, outY)], width, false));
+		headedLine(parts, ox, oy, outX, outY, width);
 		segments.push(
 			strokeSegment(
 				[move(ox, oy), line(ox - unitX * inward, oy - unitY * inward)],
@@ -289,7 +311,6 @@ function axesGeometry(
 				true,
 			),
 		);
-		pushHead(heads, outX, outY, ox, oy, width);
 	}
 
 	// Heads last, so they paint over the line ends.
@@ -330,6 +351,58 @@ export const axes3dCentreGeometry: ShapeGeometryFn = (box, width) =>
 		arrowBothEnds: false,
 	});
 
+/** A graph's square, in points: 5 mm, as the 5 mm grid ruling. */
+export const GRAPH_CELL = (5 * 72) / 25.4;
+
+/** How many whole squares a graph side of `length` points holds: at least one. */
+export function graphCells(length: number): number {
+	return Math.max(1, Math.round(Math.abs(length) / GRAPH_CELL - 1e-9));
+}
+
+/**
+ * A graph box made of whole squares, anchored at `box`'s top-left corner. A
+ * graph is enlarged by adding squares, never by stretching them, so every
+ * box that draws or resizes one goes through this.
+ */
+export function snapGraphBox(box: Box): Box {
+	const b = normalizeBox(box);
+	const w = graphCells(b.w) * GRAPH_CELL;
+	const h = graphCells(b.h) * GRAPH_CELL;
+	return { x: b.x, y: b.y + b.h - h, w, h };
+}
+
+/**
+ * Graph paper: 5 mm squares filling the box, counted from its top-left corner.
+ * The squares never change size; a bigger box has more of them.
+ */
+export const graphGeometry: ShapeGeometryFn = (box, width) => {
+	const b = snapGraphBox(box);
+	const left = b.x;
+	const right = b.x + b.w;
+	const bottom = b.y;
+	const top = b.y + b.h;
+	const border: PathCommand[] = [
+		move(left, top),
+		line(right, top),
+		line(right, bottom),
+		line(left, bottom),
+		{ op: 'close' },
+	];
+	const inner: PathCommand[] = [];
+	for (let i = 1; i < graphCells(b.w); i++) {
+		const x = left + i * GRAPH_CELL;
+		inner.push(move(x, top), line(x, bottom));
+	}
+	for (let j = 1; j < graphCells(b.h); j++) {
+		const y = top - j * GRAPH_CELL;
+		inner.push(move(left, y), line(right, y));
+	}
+	// The border first, so a fill goes under the lines.
+	const segments = [strokeSegment(border, width, false)];
+	if (inner.length > 0) segments.push(strokeSegment(inner, width, false));
+	return { segments };
+};
+
 /** The one geometry function per shape kind. */
 export const SHAPE_GEOMETRY: Record<ShapeKind, ShapeGeometryFn> = {
 	line: lineGeometry,
@@ -340,6 +413,7 @@ export const SHAPE_GEOMETRY: Record<ShapeKind, ShapeGeometryFn> = {
 	axes2d_q: axes2dQuarterGeometry,
 	axes2d_c: axes2dCentreGeometry,
 	axes3d_c: axes3dCentreGeometry,
+	graph: graphGeometry,
 };
 
 /**
@@ -400,6 +474,19 @@ export function constrainShapeBox(
 	box: Box,
 	shift: boolean,
 ): Box {
+	if (kind === 'graph') {
+		// Whole squares only, grown from where the drag started; Shift squares it.
+		const cells = (length: number): number => graphCells(length);
+		let cols = cells(box.w);
+		let rows = cells(box.h);
+		if (shift) cols = rows = Math.min(cols, rows);
+		return {
+			...box,
+			w: Math.sign(box.w || 1) * cols * GRAPH_CELL,
+			h: Math.sign(box.h || 1) * rows * GRAPH_CELL,
+		};
+	}
+
 	if (kind === 'triangle') {
 		// Always equilateral, Shift or not.
 		const direction = box.h < 0 ? -1 : 1;

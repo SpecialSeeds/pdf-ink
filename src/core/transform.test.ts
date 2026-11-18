@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ItemRef } from './history';
 import type { ImageItem, Item, ShapeItem, StrokeSample, TextItem } from './items';
 import { createStroke } from './stroke';
+import { GRAPH_CELL } from './shapes';
 import {
 	IDENTITY_TRANSFORM,
 	duplicateItems,
@@ -424,5 +425,22 @@ describe('movedToPage', () => {
 		movedToPage([ref(original)], translation(10, 10), 'pdf:1', () => 'n', 0, 0);
 		expect(original.box).toEqual({ x: 0, y: 0, w: 100, h: 20 });
 		expect(original.id).toBe('a');
+	});
+});
+
+describe('transformItem on a graph', () => {
+	it('adds squares when stretched, keeping each one 5 mm', () => {
+		const cell = GRAPH_CELL;
+		const graph: ShapeItem = {
+			...shape('g'),
+			kind: 'graph',
+			box: { x: 0, y: 0, w: 2 * cell, h: 2 * cell },
+		};
+		// Stretched 2.6 times wide about its left edge.
+		const moved = transformItem(graph, scaleAbout(0, cell, 2.6, 1));
+		if (moved.type !== 'shape') throw new Error('not a shape');
+		expect(moved.box.w / cell).toBeCloseTo(5, 6);
+		expect(moved.box.h / cell).toBeCloseTo(2, 6);
+		expect(moved.box.x).toBeCloseTo(0, 6);
 	});
 });

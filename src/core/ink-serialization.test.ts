@@ -86,11 +86,11 @@ describe('schema version validation', () => {
 	});
 
 	it('rejects a newer version and reports it', () => {
-		const result = parseInkData(doc({}, 7));
+		const result = parseInkData(doc({}, 8));
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('unsupported-version');
-		expect(result.version).toBe(7);
+		expect(result.version).toBe(8);
 	});
 
 	it('rejects a version below the oldest it can migrate', () => {
@@ -99,25 +99,60 @@ describe('schema version validation', () => {
 		if (!result.ok) expect(result.reason).toBe('unsupported-version');
 	});
 
-	it('reports version 6 as current, needing no migration', () => {
-		const result = parseInkData(doc({ 'pdf:0': [validStroke()] }, 6));
+	it('reports version 7 as current, needing no migration', () => {
+		const result = parseInkData(doc({ 'pdf:0': [validStroke()] }, 7));
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
-		expect(result.sourceVersion).toBe(6);
+		expect(result.sourceVersion).toBe(7);
 		expect(result.migrated).toBe(false);
 	});
 
-	it('reads a version 5 file as version 6 unchanged', () => {
+	it('reads version 5 and 6 files as version 7 unchanged', () => {
+		for (const version of [5, 6]) {
+			const stroke = validStroke();
+			const result = parseInkData(doc({ 'pdf:0': [stroke] }, version));
+			expect(result.ok).toBe(true);
+			if (!result.ok) return;
+			expect(result.migrated).toBe(true);
+			expect(result.data.version).toBe(7);
+			expect(result.data.pages['pdf:0']).toHaveLength(1);
+		}
+	});
+
+	it('reads a graph shape, which only version 7 has', () => {
+		const result = parseInkData(
+			doc({
+				'pdf:0': [
+					{
+						id: 'g1',
+						type: 'shape',
+						kind: 'graph',
+						box: { x: 0, y: 0, w: 56.69, h: 28.35 },
+						width: 1,
+						fill: null,
+						color: '#000000',
+						opacity: 1,
+						rotation: 0,
+						z: 0,
+						updatedAt: 1,
+					},
+				],
+			}),
+		);
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.data.pages['pdf:0']).toEqual([expect.objectContaining({ kind: 'graph' })]);
+	});
+
+	it('still reads a version 5 file', () => {
 		const stroke = validStroke();
 		const result = parseInkData(doc({ 'pdf:0': [stroke] }, 5));
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
-		expect(result.migrated).toBe(true);
-		expect(result.data.version).toBe(6);
 		expect(result.data.pages['pdf:0']).toHaveLength(1);
 	});
 
-	it('migrates a version 4 file to version 6 with its items intact', () => {
+	it('migrates a version 4 file to version 7 with its items intact', () => {
 		const stroke = validStroke();
 		const result = parseInkData(
 			JSON.stringify({
@@ -131,12 +166,12 @@ describe('schema version validation', () => {
 		if (!result.ok) return;
 		expect(result.sourceVersion).toBe(4);
 		expect(result.migrated).toBe(true);
-		expect(result.data.version).toBe(6);
+		expect(result.data.version).toBe(7);
 		expect(result.data.docId).toBe('doc-1');
 		expect(result.data.pages['pdf:0']).toEqual([
 			expect.objectContaining({ id: stroke.id, type: 'stroke', points: stroke.points }),
 		]);
-		expect((JSON.parse(serializeInkData(result.data)) as { version: number }).version).toBe(6);
+		expect((JSON.parse(serializeInkData(result.data)) as { version: number }).version).toBe(7);
 	});
 
 	it('migrates a version 2 file', () => {
@@ -368,7 +403,7 @@ describe('serialize / parse round-trip', () => {
 		const text = serializeInkData(data);
 		expect(text.endsWith('\n')).toBe(true);
 		expect(JSON.parse(text)).toEqual({
-			version: 6,
+			version: 7,
 			pages: {},
 			insertedPages: [],
 		});

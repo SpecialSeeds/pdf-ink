@@ -10,6 +10,7 @@ import type { ItemChange, ItemRef } from './history';
 import type { Box, Item } from './items';
 import type { PageKey } from './pages';
 import { mapPath } from './path';
+import { snapGraphBox } from './shapes';
 import { selectionBounds } from './lasso';
 import type { Bounds } from './hit-test';
 import { shiftInside } from './page-bounds';
@@ -132,6 +133,10 @@ export function transformItem(item: Item, t: SelectionTransform): Item {
 		box: transformBox(item.box, t),
 		rotation: item.rotation + t.degrees,
 	};
+	if (transformed.type === 'shape' && transformed.kind === 'graph') {
+		// Resizing a graph adds or takes away squares; they keep their size.
+		return { ...transformed, box: snapGraphBox(transformed.box) };
+	}
 	if (transformed.type === 'text') {
 		// Vertical scale drives the font size; horizontal scale only changes the
 		// wrap width, which is what dragging a box wider should do.

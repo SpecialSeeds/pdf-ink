@@ -32,11 +32,12 @@ import {
 	isLivePage,
 	movedPage,
 	orderPages,
+	reorientedPage,
 } from '../core/pages';
 import type { PageTemplate } from '../core/templates';
 import type { DocumentLayout, InkData } from '../core/items';
 import type { NotebookHeader } from '../core/header';
-import type { PageKey } from '../core/pages';
+import type { PageKey, PageOrientation } from '../core/pages';
 import { InkStore, type ItemStore } from '../core/ink-store';
 import {
 	BASE_SUFFIX,
@@ -94,6 +95,12 @@ export class AnnotationStore implements ItemStore {
 	 */
 	private lastContentHash = '';
 	private file: TFile | null = null;
+	/**
+	 * Set while the document is a temporary board: the hidden file its ink is
+	 * written to, through the adapter. It is never a vault file, never merged,
+	 * and never backed up; it only has to outlive the app being killed.
+	 */
+	private scratchPath: string | null = null;
 	/** Whether {@link file} is a notebook, holding its own ink, rather than a PDF. */
 	private notebook = false;
 
@@ -179,6 +186,23 @@ export class AnnotationStore implements ItemStore {
 				},
 			],
 		});
+		this.afterMutation();
+	}
+
+	/**
+	 * Add several items to one page as ONE undoable operation, in the order
+	 * given, each painted above the last. Several pictures dropped at once go
+	 * away with one undo.
+	 */
+	addItems(pageKey: PageKey, items: readonly Item[]): void {
+		if (items.length === 0) return;
+		const refs: ItemRef[] = [];
+		for (const item of items) {
+			item.z = this.ink.nextZ(pageKey);
+			this.ink.add(pageKey, item);
+			refs.push({ pageKey, index: this.ink.itemsFor(pageKey).length - 1, item });
+		}
+		this.history.push({ kind: 'add', refs });
 		this.afterMutation();
 	}
 
@@ -317,6 +341,23 @@ export class AnnotationStore implements ItemStore {
 		return true;
 	}
 
+	/**
+	 * Turn an inserted page to portrait or landscape as one undoable operation.
+	 * The top-left corner stays put; see {@link reorientedPage}.
+	 */
+	setPageOrientation(id: string, orientation: PageOrientation): void {
+		const now = Date.now();
+		// An unchanged record is no change, and pageChangeFor says so with null.
+		const change = this.ink.pageChangeFor(
+			id,
+			(page) => reorientedPage(page, orientation, now) ?? page,
+		);
+		if (!change) return;
+		this.ink.replacePage(change.after);
+		this.history.push({ kind: 'page-transform', changes: [change] });
+		this.afterMutation();
+	}
+
 	setPageTemplate(id: string, template: PageTemplate): void {
 		const change = this.ink.pageChangeFor(id, (page) => ({ ...page, template }));
 		if (!change) return;
@@ -411,8 +452,85 @@ export class AnnotationStore implements ItemStore {
 		return this.notebook ? 'notebook' : 'annotations';
 	}
 
+	/**
+	 * Open a temporary board from its hidden file at `path`, or, with none there,
+	 * start it as `fresh` and write it at once. Returns false, holding nothing,
+	 * when there is no board there and nothing fresh to start: it was thrown away
+	 * when the app quit. Never throws.
+	 */
+	async loadScratch(path: string, fresh: InkData | null): Promise<boolean> {
+		this.saveSoon.cancel();
+		this.ink.clear();
+		this.history.clear();
+		this.frozen = false;
+		this.backedUp = true;
+		this.baseElsewhere = null;
+		this.file = null;
+		this.notebook = true;
+		this.scratchPath = path;
+		this.lastSeenMtime = 0;
+		this.lastContentHash = '';
+
+		let data: InkData | null = null;
+		try {
+			if (await this.app.vault.adapter.exists(path)) {
+				const result = parseInkData(await this.app.vault.adapter.read(path));
+				if (result.ok) data = result.data;
+				else console.error(`pdf-ink: ${result.reason} in ${path}`);
+			}
+		} catch (err) {
+			console.error(`pdf-ink: could not read ${path}`, err);
+		}
+		if (data) {
+			this.ink.load(data);
+			this.savedRevision = this.ink.version;
+		} else if (fresh) {
+			this.ink.load(fresh);
+			// Dirty, so it is on disk before the first stroke.
+			this.savedRevision = this.ink.version - 1;
+			this.saveSoon();
+		} else {
+			this.scratchPath = null;
+			return false;
+		}
+		this.onChanged();
+		return true;
+	}
+
+	/**
+	 * Stop writing a temporary board, which is about to be thrown away, and wait
+	 * for any write already under way, so none lands after its folder is gone.
+	 */
+	async abandonScratch(): Promise<void> {
+		this.saveSoon.cancel();
+		this.scratchPath = null;
+		await this.writing;
+	}
+
+	/** Whether the document is a temporary board; see {@link loadScratch}. */
+	get isScratch(): boolean {
+		return this.scratchPath !== null;
+	}
+
+	/** Every live page record and item, as it would be saved. */
+	snapshot(): InkData {
+		return this.ink.toData();
+	}
+
+	/**
+	 * Replace a page record without an undo step: a temporary board growing.
+	 * It only ever grows, so there is nothing an undo would need to put back.
+	 */
+	replacePageQuietly(next: InsertedPage): void {
+		const change = this.ink.pageChangeFor(next.id, () => next);
+		if (!change) return;
+		this.ink.replacePage(change.after);
+		this.afterMutation();
+	}
+
 	/** Read the ink for `file`, if there is any. Never throws. */
 	async load(file: TFile): Promise<void> {
+		this.scratchPath = null;
 		this.saveSoon.cancel();
 		this.ink.clear();
 		this.history.clear();
@@ -587,6 +705,30 @@ export class AnnotationStore implements ItemStore {
 		}
 	}
 
+	/**
+	 * Write a temporary board to its hidden file. Plainly, through the adapter:
+	 * nothing else writes it, so there is nothing to merge, and its folder is
+	 * made on the first write.
+	 */
+	private async saveScratch(path: string): Promise<void> {
+		if (!this.isDirty) return;
+		const revision = this.ink.version;
+		this.writing = this.writing.then(async () => {
+			// Thrown away while waiting its turn: do not bring it back.
+			if (this.scratchPath !== path) return;
+			try {
+				const adapter = this.app.vault.adapter;
+				const folder = path.slice(0, path.lastIndexOf('/'));
+				if (!(await adapter.exists(folder))) await adapter.mkdir(folder);
+				await adapter.write(path, serializeInkData(this.ink.toData()));
+				this.savedRevision = revision;
+			} catch (err) {
+				console.error(`pdf-ink: could not save the board to ${path}`, err);
+			}
+		});
+		await this.writing;
+	}
+
 	/** Write immediately if there is anything pending. Safe to call repeatedly. */
 	async flush(): Promise<void> {
 		this.saveSoon.cancel();
@@ -597,6 +739,7 @@ export class AnnotationStore implements ItemStore {
 	discard(): void {
 		this.saveSoon.cancel();
 		this.file = null;
+		this.scratchPath = null;
 		this.ink.clear();
 		this.history.clear();
 	}
@@ -932,6 +1075,10 @@ export class AnnotationStore implements ItemStore {
 
 	private async save(): Promise<void> {
 		if (this.frozen) return;
+		if (this.scratchPath !== null) {
+			await this.saveScratch(this.scratchPath);
+			return;
+		}
 		const file = this.file;
 		if (!file || !this.isDirty) return;
 

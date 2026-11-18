@@ -11,6 +11,8 @@ import {
 	mergeSettings,
 } from './settings';
 import { PdfInkView } from './ui/pdf-ink-view';
+import { BoardLifecycle, VIEW_TYPE_BOARD } from './ui/board-lifecycle';
+import { BoardView } from './ui/board-view';
 import { NOTE_SEARCH_ICON, NoteSearchView, VIEW_TYPE_NOTE_SEARCH } from './ui/search-view';
 import { transcriptRedirectHandler } from './transcription/redirect';
 import { transcriptHandlers } from './transcription/transcript-sync';
@@ -23,6 +25,7 @@ import { DefaultPdfViewer } from './utils/default-viewer';
 export default class PdfInkPlugin extends Plugin {
 	settings: PdfInkSettings = DEFAULT_SETTINGS;
 	private readonly defaultViewer = new DefaultPdfViewer(this);
+	private readonly boards = new BoardLifecycle(this);
 
 	override async onload(): Promise<void> {
 		// Registered before any await: a restored workspace holding a pdf-ink-view
@@ -38,6 +41,9 @@ export default class PdfInkPlugin extends Plugin {
 		// A notebook has no other viewer, so it is ours outright — unlike `.pdf`,
 		// which the core viewer owns until the user hands it over.
 		this.registerExtensions([NOTEBOOK_EXTENSION], VIEW_TYPE_PDF_INK);
+		// Temporary boards: no file, so a view type of their own, restored by id.
+		this.registerView(VIEW_TYPE_BOARD, (leaf) => new BoardView(leaf, this, this.boards));
+		this.boards.register();
 
 		// Like a drawing plugin's "new drawing": one click from the sidebar ribbon
 		// to a fresh page to write on.
@@ -90,7 +96,7 @@ export default class PdfInkPlugin extends Plugin {
 			}),
 		);
 
-		registerCommands(this);
+		registerCommands(this, this.boards);
 		registerFileMenu(this);
 		// Vault-wide, so a PDF renamed while closed does not orphan its sidecar.
 		registerSidecarEvents(this);
@@ -121,7 +127,10 @@ export default class PdfInkPlugin extends Plugin {
 		this.defaultViewer.apply(this.settings.openByDefault);
 		// Settings that change how an open view behaves — the diagnostics overlay —
 		// take effect where the user can see them, not on the next reopen.
-		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_PDF_INK)) {
+		for (const leaf of [
+			...this.app.workspace.getLeavesOfType(VIEW_TYPE_PDF_INK),
+			...this.app.workspace.getLeavesOfType(VIEW_TYPE_BOARD),
+		]) {
 			const view = leaf.view;
 			if (view instanceof PdfInkView) view.refreshSettings();
 		}

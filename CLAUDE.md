@@ -22,8 +22,8 @@ TypeScript, esbuild (sample plugin config), pdf-lib, perfect-freehand.
   at every level: it simplifies ink outlines, rounds coordinates and resamples
   pictures, never rasterises a page. Ultra is the exact geometry. The dialog's size
   is the real file, built in memory, and exporting that choice reuses those bytes.
-## Data schema (version 6)
-{ version: 6, pages: { [pageKey]: Item[] }, insertedPages: InsertedPage[],
+## Data schema (version 7)
+{ version: 7, pages: { [pageKey]: Item[] }, insertedPages: InsertedPage[],
   docId?, layout?: "board", base?: { hash }, header?: { createdAt, dateFormat? } }
 PageKey = "pdf:<0-based index>" for a page of the source PDF
         | "ins:<uuid>"          for an inserted page
@@ -34,7 +34,7 @@ Stroke  = Base & { type: "stroke", tool: "pen"|"highlighter", width, points: [x,
 Shape   = Base & { type: "shape", kind: ShapeKind, box: {x,y,w,h}, width, fill: null|color,
                    dash?: "dashed"|"dotted" }
 ShapeKind = "line" | "arrow" | "rect" | "ellipse" | "triangle"
-          | "axes2d_q" | "axes2d_c" | "axes3d_c"
+          | "axes2d_q" | "axes2d_c" | "axes3d_c" | "graph"
 TextBox = Base & { type: "text", box: {x,y,w,h}, text, fontSize }
 Path    = Base & { type: "path", d, strokeWidth?, highlight? }
   d = SVG-style path data, absolute M, L, C, Z only, in PDF user space
@@ -61,14 +61,19 @@ PageTemplate = "blank" | "lined" | "lined7.5" | "lined10" | "grid5" | "dot"
 - Deleting a page tombstones the page and every item on it as ONE history
   operation, so a single undo restores both. A page that came back empty would be
   worse than no undo at all.
-- Only inserted pages can be deleted, re-ruled or moved. The source PDF is never
+- Only inserted pages can be deleted, re-ruled, turned or moved. The source PDF is never
   modified and there is no record that could represent a missing original page.
   Moving a page (`movedPage` in src/core/pages.ts) changes only its `afterPdfPage`
   and `sortKey`, as one undoable page edit; original pages keep their order.
+- Portrait/landscape (`reorientedPage` in src/core/pages.ts) swaps the page's sides
+  as one undoable page edit, keeping its top-left corner (the origin takes up the
+  height change). No item moves; ink past the new edge is kept and shows again
+  when turned back.
 - Every template has ONE geometry function in src/core/templates.ts returning lines
   and dots in PDF space. Canvas rendering and pdf-lib export both consume it.
 - Grid level of detail is screen only: below 8 px spacing only every 5th grid line
-  or dot (counted from the left and top, which a growing board never moves) is
+  or dot (counted from the left and top, which a growing board moves only by whole
+  multiples of five cells) is
   drawn, and minor lines fade in by 16 px. Export always draws the full grid.
 - An inserted page has no pdf.js page, so it gets a synthetic PageViewport
   (src/core/page-viewport.ts) that behaves exactly like pdf.js's for an unrotated
@@ -81,8 +86,15 @@ PageTemplate = "blank" | "lined" | "lined7.5" | "lined10" | "grid5" | "dot"
   transforms bake into its points (rotation stays 0), recolour changes `color`,
   the stroke eraser hits it, and the sized eraser removes it WHOLE, never cuts it.
 - A v4 file reads as v5 unchanged; only its version is bumped on the next save.
-  Likewise a v5 file reads as v6 unchanged. v6 exists so an older build, which
-  would drop an image it cannot parse and save without it, refuses the file.
+  Likewise a v5 file reads as v6, and a v6 file as v7, unchanged. v6 exists so an
+  older build, which would drop an image it cannot parse and save without it,
+  refuses the file; v7 does the same for the graph shape.
+- A graph shape is 5 mm squares (`GRAPH_CELL`) counted from its box's top-left
+  corner. The squares never change size: drawing and every lasso resize snap the
+  box to whole squares (`snapGraphBox`), so enlarging one adds squares.
+- An arrowhead is added on to the end of its line: the line stops at the head's
+  base (`headedLine`), so the point is the last thing drawn and no round cap
+  shows past it. The tip stays at the box edge.
 - A shape's line style is applied by `shapeGeometry` (absent `dash` is solid), so
   screen and export agree. It breaks every stroked part except those dashed by
   construction (the into-page 3D axis); filled arrowheads are never broken.
@@ -173,7 +185,31 @@ PageTemplate = "blank" | "lined" | "lined7.5" | "lined10" | "grid5" | "dot"
   notebook's base is trashed.
 
 ## Boards
-- A board is a notebook with `layout: "board"` and ONE inserted page, as wide as
+- A board never takes another page: no insert, move, delete or orientation, by
+  any path (toolbar, command, gap "+", page menu); only its ruling can change.
+- "New board" makes a TEMPORARY board (src/core/canvas.ts, src/ui/board-view.ts,
+  src/ui/board-lifecycle.ts): an infinite canvas with no vault file. Its ink and
+  pictures live in `.pdf-ink-boards/<id>/`, written only through the adapter. Its
+  tab (view type `pdf-ink-board`, state `{ board: id }`) is pinned so a file never
+  replaces it. Closing the tab removes the folder after a 10 s "Reopen" notice;
+  the `quit` event removes every board, first stopping each one's saves so none
+  lands after; a restored tab whose folder is gone closes itself; folders no tab
+  shows are swept on layout ready. Plugin unload never removes one.
+- "Clear the board" (toolbar and command, temporary boards only) tombstones every
+  live item, pictures included, as ONE `remove`, so one undo restores it all.
+- A temporary board grows on any side that ink or the settled view comes within a
+  screen of, by two screens at least, always in whole multiples of five grid
+  cells (`canvasStep`), so the grid and its major lines never shift. Growing left
+  or up moves the page's origin and the scroll with it, never an item. Growth is
+  quiet (`replacePageQuietly`, no undo step) and capped at `MAX_CANVAS_SIDE`. It
+  opens at 100% in the middle of the canvas, never fit-to-page.
+- What is kept from a temporary board is SENT to a notebook (new, named on the
+  spot, or existing), never saved in place: `withSentPage` copies the selection
+  (or everything) with NEW ids onto a new page at the notebook's end, at its
+  last page's size and ruling, enlarged to fit, below the header band on a first
+  page. Pictures are copied out of the hidden folder beside the notebook.
+- A persistent board (existing files, and OneNote imports of wide canvases) is a
+  notebook with `layout: "board"` and ONE inserted page, as wide as
   it needs to be. It never appends a page. Ink committed within 10% of the right
   or bottom edge grows that page (src/core/board.ts) in the SAME undo step as the
   ink (`resizePageJoined`, a joined `page-transform`).
@@ -183,8 +219,8 @@ PageTemplate = "blank" | "lined" | "lined7.5" | "lined10" | "grid5" | "dot"
   MediaBox) honours the origin.
 - Growth comes in whole multiples of the template's spacing, so the ruling under
   existing ink never shifts.
-- A board opens at fit-height and pans both ways. Two fingers pan while pinching.
-- Export: a board is one PDF page at its size. A side over 14,400 pt (PDF's limit)
+- A persistent board opens at fit-height and pans both ways. Two fingers pan while pinching.
+- Export: a persistent board is one PDF page at its size. A side over 14,400 pt (PDF's limit)
   is scaled uniformly to fit, and the export notice says so.
 
 ## OneNote importer (tools/onenote-pdf-import)
