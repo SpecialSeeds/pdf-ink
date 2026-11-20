@@ -66,7 +66,6 @@ describe('styles.css and the code agree on custom properties', () => {
 			'pdf-ink-swatch',
 			'pdf-ink-swatch-fill',
 			'pdf-ink-color-input',
-			'pdf-ink-mode-button',
 			'pdf-ink-selection',
 			'pdf-ink-handle',
 			'pdf-ink-selection-bar',

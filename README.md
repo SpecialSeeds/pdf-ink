@@ -163,7 +163,7 @@ built-in link support (such as Canvas), so the graph is where these links show.
 | **Highlighter** | Flat, translucent ink that multiplies with the page, so text reads through it. |
 | **Shapes** | Line, arrow, rectangle, ellipse, equilateral triangle, 2D and 3D axes, in solid, dashed or dotted line. |
 | **Text** | A resizable text box with wrapping. |
-| **Eraser** | Whole-stroke, or a sized rubber that cuts strokes into fragments. |
+| **Eraser** | Whole-stroke, or a sized rubber that cuts strokes into fragments: the two buttons under the tools switch between them. |
 | **Select** | Lasso or click, then move (onto another page too), scale, rotate, recolour, duplicate or reorder. |
 | **Insert image** | Choose a picture, or paste or drop one onto the page. It is saved in an `images` folder beside the file and lands selected. |
 

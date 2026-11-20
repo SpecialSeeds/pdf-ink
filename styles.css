@@ -828,23 +828,6 @@
 	cursor: pointer;
 }
 
-.pdf-ink-mode-row {
-	display: flex;
-	gap: var(--size-4-1);
-}
-
-.pdf-ink-mode-button {
-	flex: 1;
-	padding: var(--size-4-1) var(--size-4-2);
-	font-size: var(--font-ui-smaller);
-	cursor: pointer;
-}
-
-.pdf-ink-mode-button.is-active {
-	color: var(--text-on-accent);
-	background-color: var(--interactive-accent);
-}
-
 /*
  * The sized eraser's circle cursor, at its true radius. Positioned inside the
  * pages container, so it scrolls with the document rather than lagging behind it.
@@ -1330,4 +1313,9 @@
 /* The second line of a choice in the send-to-notebook picker. */
 .pdf-ink-muted {
 	color: var(--text-muted);
+}
+
+/* Over a text box [[link]] a click would follow: reading mode, or Ctrl/Cmd held. */
+.pdf-ink-scroll.pdf-ink-over-link .pdf-ink-ink {
+	cursor: pointer;
 }

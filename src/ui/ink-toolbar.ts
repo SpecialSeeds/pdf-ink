@@ -73,10 +73,7 @@ export class InkToolbar {
 	private readonly widthButtonEl: HTMLButtonElement;
 	private readonly widthPopoverEl: HTMLElement;
 	private readonly eraserGroupEl: HTMLElement;
-	private readonly eraserPopoverEl: HTMLElement;
 	private readonly eraserModeButtons = new Map<EraserMode, HTMLElement>();
-	private readonly eraserRadiusEl: HTMLInputElement;
-	private readonly eraserRadiusLabelEl: HTMLElement;
 	private readonly undoEl: HTMLButtonElement;
 	private readonly redoEl: HTMLButtonElement;
 
@@ -183,63 +180,25 @@ export class InkToolbar {
 		/*
 		 * --- eraser options ------------------------------------------------
 		 *
-		 * In the colour group's place, which the eraser has no use for, so every
-		 * tool's options open from the same spot below the tools.
+		 * In the colour group's place, which the eraser has no use for: a tool's
+		 * choices sit in the same spot below the tools, whichever tool it is.
 		 */
 		this.eraserGroupEl = barEl.createDiv({
 			cls: 'pdf-ink-floating-group pdf-ink-eraser-options is-hidden',
 		});
-		const eraserMoreEl = this.eraserGroupEl.createDiv({ cls: 'pdf-ink-color-more' });
-		const eraserChevronEl = this.addButton(
-			eraserMoreEl,
-			'chevron-up',
-			'Eraser options',
-			() => {
-				this.toggle(this.eraserPopoverEl);
-			},
-		);
-		eraserChevronEl.addClass('pdf-ink-chevron');
-
-		this.eraserPopoverEl = eraserMoreEl.createDiv({
-			cls: 'pdf-ink-popover is-hidden',
-		});
-		const modesEl = this.eraserPopoverEl.createDiv({ cls: 'pdf-ink-mode-row' });
+		// The two modes as buttons, like the tools above them. The size button
+		// below already sets the reach or radius, so there is nothing to open.
 		for (const mode of [
-			{ kind: 'stroke' as EraserMode, label: 'Whole stroke' },
-			{ kind: 'sized' as EraserMode, label: 'Sized' },
+			{ kind: 'stroke' as EraserMode, icon: 'squiggle', label: 'Erase whole strokes' },
+			{ kind: 'sized' as EraserMode, icon: 'circle-dashed', label: 'Sized eraser' },
 		]) {
-			const buttonEl = modesEl.createEl('button', {
-				cls: 'pdf-ink-mode-button',
-				text: mode.label,
-				attr: { type: 'button' },
-			});
-			this.component.registerDomEvent(buttonEl, 'click', () => {
-				this.callbacks.setEraserMode(mode.kind);
-			});
-			this.eraserModeButtons.set(mode.kind, buttonEl);
+			this.eraserModeButtons.set(
+				mode.kind,
+				this.addButton(this.eraserGroupEl, mode.icon, mode.label, () => {
+					this.callbacks.setEraserMode(mode.kind);
+				}),
+			);
 		}
-		const radiusRowEl = this.eraserPopoverEl.createDiv({
-			cls: 'pdf-ink-custom-color',
-		});
-		radiusRowEl.createSpan({ text: 'Radius', cls: 'pdf-ink-toolbar-text' });
-		this.eraserRadiusLabelEl = radiusRowEl.createSpan({
-			cls: 'pdf-ink-width-label',
-		});
-		this.eraserRadiusEl = this.eraserPopoverEl.createEl('input', {
-			cls: 'pdf-ink-width',
-			attr: { type: 'range', 'aria-label': 'Eraser radius' },
-		});
-		this.component.registerDomEvent(this.eraserRadiusEl, 'input', () => {
-			const value = Number.parseFloat(this.eraserRadiusEl.value);
-			if (Number.isFinite(value)) this.callbacks.setWidth(value);
-		});
-
-		this.component.registerDomEvent(barEl.doc, 'pointerdown', (evt) => {
-			if (this.eraserPopoverEl.hasClass('is-hidden')) return;
-			const target = evt.target;
-			if (target instanceof Node && eraserMoreEl.contains(target)) return;
-			this.eraserPopoverEl.addClass('is-hidden');
-		});
 
 		/*
 		 * --- width ---------------------------------------------------------
@@ -276,7 +235,6 @@ export class InkToolbar {
 				!this.widthPopoverEl.hasClass('is-hidden'),
 			);
 			this.colorPopoverEl.addClass('is-hidden');
-			this.eraserPopoverEl.addClass('is-hidden');
 		});
 
 		// --- history -------------------------------------------------------
@@ -343,25 +301,27 @@ export class InkToolbar {
 			'aria-label',
 			`Size: ${String(width)}${unit}`,
 		);
-		for (const sliderEl of [this.widthEl, this.eraserRadiusEl]) {
-			sliderEl.min = String(range.min);
-			sliderEl.max = String(range.max);
-			sliderEl.step = String(range.step);
-			sliderEl.value = String(width);
-		}
+		this.widthEl.min = String(range.min);
+		this.widthEl.max = String(range.max);
+		this.widthEl.step = String(range.step);
+		this.widthEl.value = String(width);
 		this.widthLabelEl.setText(`${String(width)} ${unit}`);
 		// The slider is the font size while the text tool is active.
 		this.widthEl.setAttribute(
 			'aria-label',
-			state.active === 'text' ? 'Font size' : 'Stroke width',
+			state.active === 'text'
+				? 'Font size'
+				: state.active === 'eraser'
+					? state.eraser.mode === 'sized'
+						? 'Eraser radius'
+						: 'Eraser reach'
+					: 'Stroke width',
 		);
-		this.eraserRadiusLabelEl.setText(`${String(width)} ${unit}`);
 
 		for (const [mode, buttonEl] of this.eraserModeButtons) {
 			buttonEl.toggleClass('is-active', state.eraser.mode === mode);
 		}
 		this.eraserGroupEl.toggleClass('is-hidden', state.active !== 'eraser');
-		if (state.active !== 'eraser') this.eraserPopoverEl.addClass('is-hidden');
 
 		this.undoEl.disabled = !canUndo;
 		this.redoEl.disabled = !canRedo;
