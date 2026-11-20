@@ -3,7 +3,7 @@ import type { ExportMode } from '../core/settings-schema';
 import { confirm } from '../ui/confirm-modal';
 import { type ExportChoice, resolveExportChoice } from '../ui/export-theme-modal';
 import { parseInkData, sidecarPathFor } from '../core/ink-serialization';
-import { type ExportReport, exportAnnotatedPdfWithReport, scaledNote } from '../pdf/export';
+import { type ExportReport, type LinkUri, exportAnnotatedPdfWithReport, scaledNote } from '../pdf/export';
 import { readBaseLayer } from '../pdf/base-file';
 import { layerPages } from '../core/base-layer';
 import { ORIGINAL_PAGES_VARIANT, exportPathFor, parentFolder } from '../core/export-path';
@@ -27,6 +27,26 @@ export interface ExportSource {
 	readonly header?: HeaderText;
 	/** Every placed picture's bytes, as stored in the vault. */
 	readonly images: ReadonlyMap<string, Uint8Array>;
+	/** Where text box links point in the export. */
+	readonly linkUri: LinkUri;
+}
+
+/**
+ * Text box links in an export open their target in this vault, through an
+ * `obsidian://open` URI, as a PDF reader can follow one. A link that finds no
+ * file gets no annotation: it is drawn, with nothing to click.
+ */
+export function vaultLinkUri(app: App, sourcePath: string): LinkUri {
+	const vault = encodeURIComponent(app.vault.getName());
+	return (link) => {
+		const target = link.linkpath.length === 0
+			? app.vault.getFileByPath(sourcePath)
+			: app.metadataCache.getFirstLinkpathDest(link.linkpath, sourcePath);
+		if (!target) return null;
+		// A heading travels with a note; a PDF's `#page=` means nothing to the URI.
+		const subpath = target.extension === 'md' ? link.subpath : '';
+		return `obsidian://open?vault=${vault}&file=${encodeURIComponent(target.path + subpath)}`;
+	};
 }
 
 /**
@@ -74,6 +94,7 @@ export async function loadExportSource(
 			? { header: headerText(file.path, parsed.data.header, headerDateFormat) }
 			: {}),
 		images: await collectImageBytes(app, pages),
+		linkUri: vaultLinkUri(app, file.path),
 	};
 }
 
@@ -115,6 +136,7 @@ export function exportBuilder(
 					themes: settings.themes,
 					images: await picturesFor(choice.quality),
 					quality: choice.quality,
+					linkUri: source.linkUri,
 					...(source.header ? { header: source.header } : {}),
 				}))();
 			// A failed build is not remembered, so asking again tries again.

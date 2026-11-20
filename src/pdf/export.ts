@@ -5,6 +5,7 @@ import {
 	type PDFFont,
 	type PDFImage,
 	type PDFPage,
+	PDFString,
 	degrees,
 	rgb,
 } from 'pdf-lib';
@@ -44,7 +45,14 @@ import {
 } from '../core/shapes';
 import { type PageTemplate, templateGeometry, translateTemplate } from '../core/templates';
 import { MIN_VISIBLE_STROKE_CSS, outlineToPathData, strokeOutlinePdf } from '../core/stroke';
-import { layoutTextLines } from '../core/text-layout';
+import {
+	type InkLink,
+	UNDERLINE_OFFSET,
+	UNDERLINE_WIDTH,
+	layoutLinkedText,
+	rotateClockwise,
+	runRect,
+} from '../core/ink-links';
 import { normalizeHex, parseHex } from '../core/color';
 import {
 	DEFAULT_PAGE_THEMES,
@@ -233,37 +241,94 @@ function drawPath(
 	}
 }
 
-function drawText(page: PDFPage, item: TextItem, font: PDFFont): void {
+/** Where a text box's link goes in the exported file, or null for no annotation. */
+export type LinkUri = (link: InkLink) => string | null;
+
+/**
+ * A text box, as it reads: each `[[link]]` drawn as its display text, in the
+ * theme's link colour and underlined, with a link annotation over it when
+ * `linkUri` says where it goes.
+ */
+function drawText(
+	doc: PDFDocument,
+	page: PDFPage,
+	item: TextItem,
+	font: PDFFont,
+	theme: PageTheme,
+	linkUri: LinkUri | undefined,
+): void {
 	// Measured with the embedded font, so the wrapping is the same as on screen.
-	const lines = layoutTextLines(item.text, item.box, item.fontSize, (text) =>
+	const lines = layoutLinkedText(item.text, item.box, item.fontSize, (text) =>
 		font.widthOfTextAtSize(text, item.fontSize),
 	);
 	const color = toRgb(item.color);
+	const linkColor = toRgb(theme.link);
 	const centreX = item.box.x + item.box.w / 2;
 	const centreY = item.box.y + item.box.h / 2;
-	const radians = (item.rotation * Math.PI) / 180;
+	// Clockwise about the box centre, matching ItemBase.rotation.
+	const turn = (x: number, y: number): [number, number] =>
+		rotateClockwise(x, y, centreX, centreY, item.rotation);
 
 	for (const line of lines) {
-		if (line.text.length === 0) continue;
-		let { x, y } = line;
-		if (item.rotation !== 0) {
-			// Clockwise about the box centre, matching ItemBase.rotation.
-			const dx = x - centreX;
-			const dy = y - centreY;
-			x = centreX + dx * Math.cos(radians) + dy * Math.sin(radians);
-			y = centreY - dx * Math.sin(radians) + dy * Math.cos(radians);
+		for (const run of line.runs) {
+			if (run.text.length === 0) continue;
+			const [x, y] = turn(run.x, line.y);
+			page.drawText(run.text, {
+				x,
+				y,
+				size: item.fontSize,
+				font,
+				color: run.link ? linkColor : color,
+				opacity: item.opacity,
+				// pdf-lib rotates counter-clockwise, so the sign flips.
+				rotate: degrees(-item.rotation),
+			});
+			if (!run.link) continue;
+			const under = line.y - UNDERLINE_OFFSET * item.fontSize;
+			const [sx, sy] = turn(run.x, under);
+			const [ex, ey] = turn(run.x + run.width, under);
+			page.drawLine({
+				start: { x: sx, y: sy },
+				end: { x: ex, y: ey },
+				thickness: UNDERLINE_WIDTH * item.fontSize,
+				color: linkColor,
+				opacity: item.opacity,
+			});
+			const uri = linkUri?.(run.link);
+			if (uri) addLinkAnnotation(doc, page, runBounds(line, run, item.fontSize, turn), uri);
 		}
-		page.drawText(line.text, {
-			x,
-			y,
-			size: item.fontSize,
-			font,
-			color,
-			opacity: item.opacity,
-			// pdf-lib rotates counter-clockwise, so the sign flips.
-			rotate: degrees(-item.rotation),
-		});
 	}
+}
+
+/** A run's area on the page, rotated with its box: the bounds of its four corners. */
+function runBounds(
+	line: Parameters<typeof runRect>[0],
+	run: Parameters<typeof runRect>[1],
+	fontSize: number,
+	turn: (x: number, y: number) => [number, number],
+): [number, number, number, number] {
+	const [x1, y1, x2, y2] = runRect(line, run, fontSize);
+	const corners = [turn(x1, y1), turn(x2, y1), turn(x2, y2), turn(x1, y2)];
+	const xs = corners.map((c) => c[0]);
+	const ys = corners.map((c) => c[1]);
+	return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+}
+
+/** A borderless URI link over `rect`, as any PDF reader follows it. */
+function addLinkAnnotation(
+	doc: PDFDocument,
+	page: PDFPage,
+	rect: [number, number, number, number],
+	uri: string,
+): void {
+	const annotation = doc.context.obj({
+		Type: 'Annot',
+		Subtype: 'Link',
+		Rect: rect,
+		Border: [0, 0, 0],
+		A: { Type: 'Action', S: 'URI', URI: PDFString.of(uri) },
+	});
+	page.node.addAnnot(doc.context.register(annotation));
 }
 
 /**
@@ -338,6 +403,7 @@ function drawItem(
 	theme: PageTheme,
 	images: ReadonlyMap<string, PDFImage>,
 	quality: QualityProfile,
+	linkUri: LinkUri | undefined,
 ): void {
 	// A picture keeps its own colours under every theme.
 	if (stored.type === 'image') {
@@ -357,7 +423,7 @@ function drawItem(
 			drawShape(page, item, quality);
 			break;
 		case 'text':
-			drawText(page, item, font);
+			drawText(doc, page, item, font, theme, linkUri);
 			break;
 		case 'path':
 			drawPath(page, item, blend, quality);
@@ -504,6 +570,11 @@ export interface ExportOptions {
 	 * resamples them for the quality first. Defaults to {@link DEFAULT_EXPORT_QUALITY}.
 	 */
 	readonly quality?: ExportQuality;
+	/**
+	 * Where each text box link points in the exported file. Without it, or where
+	 * it returns null, a link is drawn as styled text with nothing to click.
+	 */
+	readonly linkUri?: LinkUri;
 }
 
 /**
@@ -606,7 +677,7 @@ export async function exportAnnotatedPdfWithReport(
 		const page = doc.getPage(index);
 		const theme = themeFor(kindByKey.get(key) ?? 'pdf');
 		for (const item of inZOrder(items)) {
-			drawItem(doc, page, item, font, options.mode ?? 'flatten', theme, images, quality);
+			drawItem(doc, page, item, font, options.mode ?? 'flatten', theme, images, quality, options.linkUri);
 		}
 	}
 

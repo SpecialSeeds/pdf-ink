@@ -1310,6 +1310,11 @@
 	color: var(--text-muted);
 }
 
+/* Over a text box [[link]] a click would follow: reading mode, or Ctrl/Cmd held. */
+.pdf-ink-scroll.pdf-ink-over-link .pdf-ink-ink {
+	cursor: pointer;
+}
+
 .pdf-ink-export-size {
 	font-variant-numeric: tabular-nums;
 	font-weight: var(--font-semibold);

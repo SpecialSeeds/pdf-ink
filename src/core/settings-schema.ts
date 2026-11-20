@@ -139,6 +139,11 @@ export interface PdfInkSettings {
 	deleteRendersAfterTranscription: boolean;
 	/** Give new notebooks and boards a title header, as OneNote pages have. */
 	addTitleHeader: boolean;
+	/**
+	 * Put text box `[[links]]` into Obsidian's link index, so the graph draws a
+	 * line from a PDF or notebook to what it links to. Off removes every entry.
+	 */
+	inkLinksInGraph: boolean;
 	/** How a header writes its date, unless the notebook says otherwise. */
 	headerDateFormat: HeaderDateFormat;
 }
@@ -206,6 +211,7 @@ export const DEFAULT_SETTINGS: PdfInkSettings = {
 	openSourcesInsteadOfTranscripts: true,
 	deleteRendersAfterTranscription: true,
 	addTitleHeader: true,
+	inkLinksInGraph: true,
 	headerDateFormat: 'onenote',
 };
 
@@ -361,6 +367,9 @@ export function mergeSettings(stored: unknown): PdfInkSettings {
 
 	const addTitleHeader = raw['addTitleHeader'];
 	if (typeof addTitleHeader === 'boolean') merged.addTitleHeader = addTitleHeader;
+
+	const inkLinksInGraph = raw['inkLinksInGraph'];
+	if (typeof inkLinksInGraph === 'boolean') merged.inkLinksInGraph = inkLinksInGraph;
 
 	const headerDateFormat = raw['headerDateFormat'];
 	if (isHeaderDateFormat(headerDateFormat)) merged.headerDateFormat = headerDateFormat;

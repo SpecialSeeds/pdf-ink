@@ -355,3 +355,11 @@ describe('title header settings', () => {
 		expect(mergeSettings({ headerDateFormat: 'roman' }).headerDateFormat).toBe('onenote');
 	});
 });
+
+describe('inkLinksInGraph', () => {
+	it('is on by default and keeps a stored choice', () => {
+		expect(DEFAULT_SETTINGS.inkLinksInGraph).toBe(true);
+		expect(mergeSettings({ inkLinksInGraph: false }).inkLinksInGraph).toBe(false);
+		expect(mergeSettings({ inkLinksInGraph: 'no' }).inkLinksInGraph).toBe(true);
+	});
+});

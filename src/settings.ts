@@ -73,6 +73,10 @@ const THEME_KEY_LABELS: Record<PageThemeKey, { name: string; desc: string }> = {
 		name: 'Header date',
 		desc: "The date under a notebook's title.",
 	},
+	link: {
+		name: 'Links',
+		desc: 'A [[link]] typed into a text box.',
+	},
 };
 
 const TOOL_LABELS: Record<string, string> = {
@@ -100,6 +104,7 @@ export class PdfInkSettingTab extends PluginSettingTab {
 		this.addNewPdfSection();
 		this.addPageThemeSection();
 		this.addExportSection();
+		this.addLinksSection();
 		this.addTranscriptionSection();
 		this.addDiagnosticsSection();
 	}
@@ -495,6 +500,23 @@ export class PdfInkSettingTab extends PluginSettingTab {
 					this.plugin.settings.pageThemes = emptyThemeOverrides();
 					this.save();
 					this.display();
+				}),
+			);
+	}
+
+	private addLinksSection(): void {
+		const { containerEl } = this;
+		new Setting(containerEl).setName('Links').setHeading();
+
+		new Setting(containerEl)
+			.setName('Show ink links in graph and backlinks')
+			.setDesc(
+				"A [[link]] typed into a text box links its PDF or notebook to the file it names, in the graph view. Renaming that file updates the link when Obsidian is set to update internal links automatically.",
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.inkLinksInGraph).onChange((value) => {
+					this.plugin.settings.inkLinksInGraph = value;
+					this.save();
 				}),
 			);
 	}

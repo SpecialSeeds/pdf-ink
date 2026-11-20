@@ -251,6 +251,31 @@ PageTemplate = "blank" | "lined" | "lined7.5" | "lined10" | "grid5" | "dot"
   adapter. When a transcript is written, its source's block boxes are copied into
   its `blocks` frontmatter, so lookups never need the renders.
 
+## Text box links
+- A `[[...]]` in a TextBox's text is a link (src/core/ink-links.ts). Nothing about
+  a link is stored but the text: no schema change. Screen, hit testing and export
+  all lay out the DISPLAY text (alias, or the name without brackets) through
+  `layoutLinkedText`, so a box wraps as it reads. Links draw in the theme's `link`
+  colour, underlined; the editor shows the raw text.
+- The vault index (src/links/ink-link-index.ts) writes each source's links into
+  `metadataCache.resolvedLinks`/`unresolvedLinks`, keyed by the PDF or the notebook,
+  NEVER the sidecar. Those keys are ours alone (Obsidian keeps none for them). It is
+  private API: guarded, try/caught, and the `inkLinksInGraph` setting turns it all
+  off, removing every entry.
+- Links are cached by store mtime and size in the plugin folder's `link-index.json`,
+  so startup re-reads only changed files. A notebook's base beside it is read too;
+  one not found is not searched for, and the entry is re-read next start.
+- `resolved` is triggered once per batch, never per file. Obsidian's own `resolved`
+  re-applies the entries, and nothing is triggered when they are already in place,
+  which is what stops the loop.
+- A target renamed with Obsidian's "Automatically update internal links" on
+  rewrites the matching links (`rewriteLinks`): through the open view as one
+  undoable edit, or by loading an AnnotationStore, editing and flushing, so a
+  closed notebook is still written in place, never by rename.
+- The Backlinks pane only scans `.md` files and extensions with a registered
+  `metadataCache.linkUpdaters` entry (checked in Obsidian 1.15.1), so it never lists
+  a PDF or notebook. Not patched.
+
 ## Page themes
 - Theme is render-time only: never rewrite a stored colour. Only base ink (near
   black or near white, per channel) maps to the theme's base ink; every other colour

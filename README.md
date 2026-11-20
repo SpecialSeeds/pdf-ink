@@ -132,6 +132,29 @@ fingers are not drawing), or `Ctrl`/`Cmd`+click it with a mouse. A link within t
 document jumps there and offers **Back to page N** to return; a web or mail link
 opens outside Obsidian. The pen always draws, over links or not.
 
+### Linking to other files
+
+Type a wikilink into a text box (`[[Note]]`, `[[Worksheet 3.pdf]]`,
+`[[Worksheet 3.pdf#page=2]]`, `[[Note#Heading|alias]]`) and it links this PDF or
+notebook to that file, as a link in a note would:
+
+- The box shows the alias, or the file's name, underlined in the link colour. Editing
+  the box shows the brackets again.
+- Tap it with a finger, `Ctrl`/`Cmd`+click it, or click it in reading mode to open the
+  target. Hold `Ctrl`/`Cmd` over it for a page preview.
+- The **graph view** draws a line from the PDF or notebook to the target (turn on
+  **Attachments** in the graph's filters to see PDFs). A link to a file that does not
+  exist yet shows as an unresolved link.
+- Renaming the target updates the text in the box, when Obsidian's **Automatically
+  update internal links** is on.
+- In an exported PDF the link is drawn without brackets, with a link annotation that
+  opens the target in this vault through an `obsidian://` URI. That URI includes
+  the vault's name and the target's path.
+
+The **Backlinks** pane does not list a PDF or notebook as linking to a note.
+Obsidian's Backlinks pane only searches markdown files and file types with their own
+built-in link support (such as Canvas), so the graph is where these links show.
+
 ## Tools
 
 | Tool | What it does |
@@ -354,6 +377,8 @@ it cannot read it and refuses to save over it.
 - Page size and ruling for **new PDFs**.
 - **Tool palette side**, left or right.
 - **Input diagnostics**, for reporting a problem with a pen or tablet.
+- **Show ink links in graph and backlinks**: whether text box links go into Obsidian's
+  link index. Off removes every entry the plugin added.
 
 ### Input diagnostics
 

@@ -49,3 +49,6 @@ export const SETTLE_DELAY_MS = 140;
  * switching file still writes at once.
  */
 export const SAVE_DEBOUNCE_MS = 2000;
+
+/** The hover-link source text box links report, for Obsidian's page preview. */
+export const INK_LINK_HOVER_SOURCE = 'pdf-ink';

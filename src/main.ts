@@ -1,6 +1,6 @@
 import { Plugin } from 'obsidian';
 import { registerCommands } from './commands';
-import { NOTEBOOK_ICON, VIEW_TYPE_PDF_INK } from './constants';
+import { INK_LINK_HOVER_SOURCE, NOTEBOOK_ICON, VIEW_TYPE_PDF_INK } from './constants';
 import { NOTEBOOK_EXTENSION } from './core/new-notebook';
 import { registerFileMenu } from './menus/file-menu';
 import { registerSidecarEvents } from './pdf/sidecar';
@@ -21,11 +21,20 @@ import { forgetImage, retryMissingImages, setImageLoader } from './ui/image-cach
 import { readImageBytes } from './utils/images';
 import { createPdf } from './utils/create-pdf';
 import { DefaultPdfViewer } from './utils/default-viewer';
+import { InkLinkIndex } from './links/ink-link-index';
+import { AnnotationStore } from './pdf/annotation-store';
 
 export default class PdfInkPlugin extends Plugin {
 	settings: PdfInkSettings = DEFAULT_SETTINGS;
 	private readonly defaultViewer = new DefaultPdfViewer(this);
 	private readonly boards = new BoardLifecycle(this);
+	private readonly links = new InkLinkIndex(
+		this,
+		() => this.settings.inkLinksInGraph,
+		(sourcePath, rewrite) => this.rewriteLinks(sourcePath, rewrite),
+	);
+	/** Whether the link index was on at the last save, so a change starts or clears it. */
+	private linksEnabled = DEFAULT_SETTINGS.inkLinksInGraph;
 
 	override async onload(): Promise<void> {
 		// Registered before any await: a restored workspace holding a pdf-ink-view
@@ -96,12 +105,19 @@ export default class PdfInkPlugin extends Plugin {
 			}),
 		);
 
+		// Text box links: in the graph, followed on renames, previewed on hover.
+		this.registerHoverLinkSource(INK_LINK_HOVER_SOURCE, { display: 'PDF Ink', defaultMod: true });
+
 		registerCommands(this, this.boards);
 		registerFileMenu(this);
 		// Vault-wide, so a PDF renamed while closed does not orphan its sidecar.
 		registerSidecarEvents(this);
 
 		this.settings = mergeSettings(await this.loadData());
+		this.linksEnabled = this.settings.inkLinksInGraph;
+		// After the settings: enabled mid-session, layout ready fires at once, and
+		// must see whether links are switched off.
+		this.links.register();
 		this.defaultViewer.apply(this.settings.openByDefault);
 		this.addSettingTab(new PdfInkSettingTab(this.app, this));
 	}
@@ -117,6 +133,28 @@ export default class PdfInkPlugin extends Plugin {
 		if (leaf) await workspace.revealLeaf(leaf);
 	}
 
+	/**
+	 * Rewrite one PDF's or notebook's text boxes: a link's target was renamed.
+	 * An open document is edited through its view, as one undoable edit; a
+	 * closed one is loaded, merged with what is on disk and saved the usual
+	 * way, which for a notebook means in place, never by rename.
+	 */
+	private async rewriteLinks(sourcePath: string, rewrite: (text: string) => string | null): Promise<void> {
+		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_PDF_INK)) {
+			const view = leaf.view;
+			if (view instanceof PdfInkView && view.file?.path === sourcePath) {
+				view.rewriteLinkText(rewrite);
+				return;
+			}
+		}
+		const file = this.app.vault.getFileByPath(sourcePath);
+		if (!file) return;
+		const store = new AnnotationStore(this.app, () => {});
+		await store.load(file);
+		if (store.isFrozen) return;
+		if (store.rewriteText(rewrite) > 0) await store.flush();
+	}
+
 	/** The view type that shows a PDF without ink, for leaving the ink view. */
 	get plainPdfViewType(): string {
 		return this.defaultViewer.plainViewType;
@@ -125,6 +163,10 @@ export default class PdfInkPlugin extends Plugin {
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
 		this.defaultViewer.apply(this.settings.openByDefault);
+		if (this.settings.inkLinksInGraph !== this.linksEnabled) {
+			this.linksEnabled = this.settings.inkLinksInGraph;
+			void this.links.setEnabled(this.linksEnabled);
+		}
 		// Settings that change how an open view behaves — the diagnostics overlay —
 		// take effect where the user can see them, not on the next reopen.
 		for (const leaf of [

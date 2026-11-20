@@ -12,7 +12,8 @@ import {
 } from '../core/items';
 import { pathGeometry } from '../core/path';
 import { type PathSegment, shapeGeometry, shapeLineStyle } from '../core/shapes';
-import { layoutTextLines } from '../core/text-layout';
+import { UNDERLINE_OFFSET, UNDERLINE_WIDTH, layoutLinkedText } from '../core/ink-links';
+import type { MeasureText } from '../core/text-layout';
 import { type PageTheme, renderColor } from '../core/theme';
 import type { Vec2 } from 'perfect-freehand';
 import {
@@ -306,6 +307,32 @@ const renderImage: ItemRenderer<ImageItem> = (item, target) => {
 export const TEXT_FONT_STACK =
 	"'Noto Sans', 'Inter', 'Helvetica Neue', Arial, sans-serif";
 
+/**
+ * Text widths in PDF points at a font size, measured the way {@link renderText}
+ * measures, for hit testing what it drew. One canvas per document, reused.
+ */
+export function measureTextPoints(doc: Document): (fontSize: number) => MeasureText {
+	let ctx = measuringContexts.get(doc);
+	if (ctx === undefined) {
+		ctx = doc.createElement('canvas').getContext('2d');
+		measuringContexts.set(doc, ctx);
+	}
+	const context = ctx;
+	return (fontSize) => {
+		if (!context || fontSize <= 0) return () => 0;
+		// Measured large and scaled down, so rounding at small sizes does not
+		// creep into where a link's area ends.
+		const px = MEASURE_PX;
+		return (text) => {
+			context.font = `${String(px)}px ${TEXT_FONT_STACK}`;
+			return (context.measureText(text).width * fontSize) / px;
+		};
+	};
+}
+
+const MEASURE_PX = 100;
+const measuringContexts = new WeakMap<Document, CanvasRenderingContext2D | null>();
+
 const renderText: ItemRenderer<TextItem> = (item, target) => {
 	const { ctx, scale } = target;
 	const fontPx = item.fontSize * scale;
@@ -313,10 +340,10 @@ const renderText: ItemRenderer<TextItem> = (item, target) => {
 	ctx.font = `${String(fontPx)}px ${TEXT_FONT_STACK}`;
 	ctx.textBaseline = 'alphabetic';
 	ctx.globalAlpha = item.opacity;
-	ctx.fillStyle = renderColor(item.color, target.theme);
 
 	// Measure in PDF points, so wrapping is zoom-independent and matches export.
-	const lines = layoutTextLines(item.text, item.box, item.fontSize, (text) =>
+	// Laid out as it reads: a [[link]] shows its display text, not its brackets.
+	const lines = layoutLinkedText(item.text, item.box, item.fontSize, (text) =>
 		scale > 0 ? ctx.measureText(text).width / scale : 0,
 	);
 
@@ -331,10 +358,20 @@ const renderText: ItemRenderer<TextItem> = (item, target) => {
 		ctx.translate(-cx, -cy);
 	}
 
+	const ink = renderColor(item.color, target.theme);
 	for (const line of lines) {
-		if (line.text.length === 0) continue;
-		const [x, y] = target.viewport.convertToViewportPoint(line.x, line.y);
-		ctx.fillText(line.text, x, y);
+		for (const run of line.runs) {
+			if (run.text.length === 0) continue;
+			const [x, y] = target.viewport.convertToViewportPoint(run.x, line.y);
+			ctx.fillStyle = run.link ? target.theme.link : ink;
+			ctx.fillText(run.text, x, y);
+			if (run.link) {
+				// The page is unrotated in viewport space here, so the underline
+				// runs along the baseline in CSS pixels.
+				const thickness = Math.max(UNDERLINE_WIDTH * fontPx, 0.75);
+				ctx.fillRect(x, y + UNDERLINE_OFFSET * fontPx, run.width * scale, thickness);
+			}
+		}
 	}
 	ctx.restore();
 };

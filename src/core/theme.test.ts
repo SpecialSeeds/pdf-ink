@@ -119,7 +119,7 @@ describe('hasLowContrast', () => {
 		expect(hasLowContrast(DEFAULT_PAGE_THEMES.light)).toBe(false);
 		expect(hasLowContrast(DEFAULT_PAGE_THEMES.dark)).toBe(false);
 		expect(
-			hasLowContrast({ paper: '#1e1e1e', grid: '#000', baseInk: '#444444', headerMuted: '#888888' }),
+			hasLowContrast({ paper: '#1e1e1e', grid: '#000', baseInk: '#444444', headerMuted: '#888888', link: '#5599ff' }),
 		).toBe(true);
 	});
 });

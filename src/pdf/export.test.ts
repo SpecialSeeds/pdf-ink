@@ -1180,3 +1180,50 @@ describe('small handwriting exports whole', () => {
 		expect(Math.max(...ys) - Math.min(...ys)).toBeLessThan(1.6);
 	});
 });
+
+describe('text box links', () => {
+	async function linkAnnotations(bytes: Uint8Array): Promise<{ uri: string; rect: number[] }[]> {
+		const doc = await PDFDocument.load(bytes);
+		const annots = doc.getPage(0).node.Annots();
+		const out: { uri: string; rect: number[] }[] = [];
+		for (let i = 0; i < (annots?.size() ?? 0); i++) {
+			const annot = annots?.lookup(i, PDFDict);
+			if (annot?.get(PDFName.of('Subtype'))?.toString() !== '/Link') continue;
+			const action = annot.lookup(PDFName.of('A'), PDFDict);
+			const uri = action.get(PDFName.of('URI'))?.toString() ?? '';
+			const rect = annot.lookup(PDFName.of('Rect'));
+			out.push({
+				uri: uri.replace(/^\(|\)$/g, ''),
+				rect: rect ? (rect as unknown as { asArray(): { asNumber(): number }[] }).asArray().map((n) => n.asNumber()) : [],
+			});
+		}
+		return out;
+	}
+
+	it('puts a link annotation over the display text, not the brackets', async () => {
+		const bytes = await exportAnnotatedPdf({
+			pdfBytes: await blankPdf(),
+			pages: { 'pdf:0': [textItem('see [[Folder/Note|the note]] here')] },
+			linkUri: (link) => `obsidian://open?file=${link.linkpath}`,
+		});
+		const [link, ...rest] = await linkAnnotations(bytes);
+		expect(rest).toEqual([]);
+		expect(link?.uri).toBe('obsidian://open?file=Folder/Note');
+		// The run starts after "see " and is as wide as "the note" in the embedded font.
+		const doc = await PDFDocument.create();
+		doc.registerFontkit((await import('@pdf-lib/fontkit')).default);
+		const font = await doc.embedFont(embeddedFontBytes(), { subset: true });
+		const [x1 = 0, , x2 = 0] = link?.rect ?? [];
+		expect(x1).toBeCloseTo(50 + font.widthOfTextAtSize('see ', 12), 3);
+		expect(x2 - x1).toBeCloseTo(font.widthOfTextAtSize('the note', 12), 3);
+	});
+
+	it('draws links with nothing to click when no target is given', async () => {
+		const bytes = await exportAnnotatedPdf({
+			pdfBytes: await blankPdf(),
+			pages: { 'pdf:0': [textItem('[[Missing]]')] },
+			linkUri: () => null,
+		});
+		expect(await linkAnnotations(bytes)).toEqual([]);
+	});
+});

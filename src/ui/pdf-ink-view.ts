@@ -1,7 +1,10 @@
 import {
 	Component,
 	FileView,
+	type HoverParent,
+	type HoverPopover,
 	type IconName,
+	Keymap,
 	Notice,
 	Platform,
 	TFile,
@@ -9,7 +12,7 @@ import {
 	type ViewStateResult,
 	type WorkspaceLeaf,
 } from 'obsidian';
-import { PAGE_GAP, PDF_INK_ICON, VIEW_TYPE_PDF_INK } from '../constants';
+import { INK_LINK_HOVER_SOURCE, PAGE_GAP, PDF_INK_ICON, VIEW_TYPE_PDF_INK } from '../constants';
 import {
 	type CanvasBudget,
 	DESKTOP_BUDGET,
@@ -17,6 +20,8 @@ import {
 } from '../core/canvas-budget';
 import { computeLayout, maxBaseHeight, maxBaseWidth, remapOffset } from '../core/layout';
 import { type PdfLink, linkAt } from '../core/pdf-links';
+import { type InkLink, inkLinkAt, linkText } from '../core/ink-links';
+import { measureTextPoints } from './item-renderers';
 import { type Bounds, boundsContain, itemBounds, itemsBounds } from '../core/hit-test';
 import { grownBoardPage } from '../core/board';
 import { type BlockBox, blockBox, segmentPage } from '../core/blocks';
@@ -55,7 +60,7 @@ interface Place {
 import { type HeaderText, headerText, headerTitleBox } from '../core/header';
 import { HeaderEditor } from './header-editor';
 import { renameNotebookFromTitle } from '../utils/rename-notebook';
-import { type InkData, type Item, isLive } from '../core/items';
+import { type InkData, type Item, isLive, isText } from '../core/items';
 import {
 	NOTEBOOK_EXTENSION,
 	isNotebookPath,
@@ -128,7 +133,11 @@ const SCROLL_AXIS_NOTICES: Record<ScrollAxis, string> = {
  * setting off it is reached through its command, its file-menu item, or a
  * restored workspace.
  */
-export class PdfInkView extends FileView implements ZoomHost {
+export class PdfInkView extends FileView implements ZoomHost, HoverParent {
+	/** The page preview shown for a hovered text box link; Obsidian manages it. */
+	hoverPopover: HoverPopover | null = null;
+	/** The link last offered for a hover preview, so moving over it asks only once. */
+	private hoveredLink: { link: InkLink; mod: boolean } | null = null;
 	scrollEl!: HTMLElement;
 	sizerEl!: HTMLElement;
 	pagesEl!: HTMLElement;
@@ -406,6 +415,15 @@ export class PdfInkView extends FileView implements ZoomHost {
 			// A hidden scroller clamps its scroll to 0, which is not where the user was.
 			if (!this.isHidden()) this.shownPlace = this.capturePlace();
 			this.scheduleCanvasGrowth();
+		});
+		// Text box links: a hover preview, as over a link in a note. Obsidian's page
+		// preview decides whether Ctrl/Cmd has to be held.
+		this.registerDomEvent(this.scrollEl, 'mousemove', (evt) => {
+			this.hoverInkLink(evt);
+		});
+		this.registerDomEvent(this.scrollEl, 'mouseleave', () => {
+			this.hoveredLink = null;
+			this.scrollEl.removeClass('pdf-ink-over-link');
 		});
 		this.find = new PdfFind(bodyEl, this, {
 			pageData: () => this.pageData,
@@ -1550,12 +1568,85 @@ export class PdfInkView extends FileView implements ZoomHost {
 		if (startedAt !== null && this.lastScrollAt >= startedAt - LINK_AFTER_SCROLL_MS) return;
 		const data = this.pageData;
 		const record = this.pageList?.recordForTarget(this.scrollEl.doc.elementFromPoint(clientX, clientY));
-		if (!data || !record || record.geom.source.kind !== 'pdf') return;
+		if (!record) return;
 		const rect = record.inkCanvasEl.getBoundingClientRect();
 		const [x = 0, y = 0] = record.viewport.convertToPdfPoint(clientX - rect.left, clientY - rect.top);
 		const slop = (startedAt === null ? LINK_SLOP_CLICK_PX : LINK_SLOP_TOUCH_PX) / (record.viewport.scale || 1);
+		// A [[link]] typed on the page is above the PDF's own links, as it is drawn.
+		const inkLink = this.inkLinkAtPoint(record, x, y, slop);
+		if (inkLink) {
+			this.openInkLink(inkLink);
+			return;
+		}
+		if (!data || record.geom.source.kind !== 'pdf') return;
 		const link = linkAt(await data.linksFor(record.geom.source.pdfIndex), x, y, slop);
 		if (link) await this.followLink(link, data);
+	}
+
+	/** The topmost text box link under a PDF-space point on a page, if any. */
+	private inkLinkAtPoint(record: PageRecord, x: number, y: number, slop: number): InkLink | null {
+		const items = this.annotations.itemsFor(record.geom.key);
+		const measure = measureTextPoints(this.containerEl.doc);
+		// Topmost first, as they are painted.
+		const texts = items.filter(isText).sort((a, b) => b.z - a.z);
+		for (const item of texts) {
+			const link = inkLinkAt(item, x, y, slop, measure(item.fontSize));
+			if (link) return link;
+		}
+		return null;
+	}
+
+	/** Where this view's links are resolved from: the PDF or notebook, never its sidecar. */
+	get linkSourcePath(): string {
+		return this.file?.path ?? '';
+	}
+
+	/** Open a text box link the way a link in a note opens. */
+	private openInkLink(link: InkLink): void {
+		void this.app.workspace.openLinkText(linkText(link), this.linkSourcePath, false).catch((err: unknown) => {
+			console.error('pdf-ink: could not open a link', err);
+		});
+	}
+
+	/** Offer a page preview for the text box link under the mouse, once per link. */
+	private hoverInkLink(evt: MouseEvent): void {
+		const record = this.pageList?.recordForTarget(evt.target instanceof Element ? evt.target : null);
+		let link: InkLink | null = null;
+		if (record) {
+			const rect = record.inkCanvasEl.getBoundingClientRect();
+			const [x = 0, y = 0] = record.viewport.convertToPdfPoint(evt.clientX - rect.left, evt.clientY - rect.top);
+			link = this.inkLinkAtPoint(record, x, y, 0);
+		}
+		const mod = Keymap.isModEvent(evt) !== false;
+		// A pointer only where a click would follow the link: in reading mode, or
+		// with Ctrl/Cmd held, since a plain click writes.
+		this.scrollEl.toggleClass('pdf-ink-over-link', link !== null && (this.reading || mod));
+		const last = this.hoveredLink;
+		if (!link) {
+			this.hoveredLink = null;
+			return;
+		}
+		// Asked again when Ctrl/Cmd goes down over the same link, as in a note.
+		if (last && last.link.start === link.start && linkText(last.link) === linkText(link) && last.mod === mod) return;
+		this.hoveredLink = { link, mod };
+		if (!record) return;
+		this.app.workspace.trigger('hover-link', {
+			event: evt,
+			source: INK_LINK_HOVER_SOURCE,
+			hoverParent: this,
+			targetEl: record.inkCanvasEl,
+			linktext: linkText(link),
+			sourcePath: this.linkSourcePath,
+		});
+	}
+
+	/**
+	 * Rewrite this document's text boxes as one undoable edit, saved as any
+	 * edit is: a link's target was renamed. Returns how many boxes changed.
+	 */
+	rewriteLinkText(rewrite: (text: string) => string | null): number {
+		if (this.annotations.isFrozen) return 0;
+		return this.annotations.rewriteText(rewrite);
 	}
 
 	private async followLink(link: PdfLink, data: PdfPageData): Promise<void> {

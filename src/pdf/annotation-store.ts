@@ -259,6 +259,26 @@ export class AnnotationStore implements ItemStore {
 		this.afterMutation();
 	}
 
+	/**
+	 * Rewrite the text of every live text box `rewrite` changes, both layers, as
+	 * ONE undoable transform — what renaming a link's target does. Returns how
+	 * many boxes changed.
+	 */
+	rewriteText(rewrite: (text: string) => string | null): number {
+		const changes: ItemChange[] = [];
+		for (const pageKey of this.ink.pageKeys()) {
+			for (const item of this.ink.itemsFor(pageKey)) {
+				if (item.type !== 'text') continue;
+				const text = rewrite(item.text);
+				if (text !== null && text !== item.text) {
+					changes.push({ pageKey, before: item, after: { ...item, text } });
+				}
+			}
+		}
+		this.transformItems(changes);
+		return changes.length;
+	}
+
 	// --- pages ----------------------------------------------------------
 
 	/** Live inserted-page records. Display order comes from `orderPages`. */
