@@ -189,7 +189,7 @@ export class InkToolbar {
 		// The two modes as buttons, like the tools above them. The size button
 		// below already sets the reach or radius, so there is nothing to open.
 		for (const mode of [
-			{ kind: 'stroke' as EraserMode, icon: 'squiggle', label: 'Erase whole strokes' },
+			{ kind: 'stroke' as EraserMode, icon: 'line-squiggle', label: 'Erase whole strokes' },
 			{ kind: 'sized' as EraserMode, icon: 'circle-dashed', label: 'Sized eraser' },
 		]) {
 			this.eraserModeButtons.set(
